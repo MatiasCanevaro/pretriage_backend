@@ -13,12 +13,9 @@ public class Medico {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    private String nombre;
-    private String apellido;
-    private String numeroDocumento;
+    @OneToOne(cascade = CascadeType.ALL)
+    @JoinColumn(name = "auth_id", referencedColumnName = "id")
+    private UsuarioAuth usuarioAuth;
 
-    @Enumerated(EnumType.STRING)
-    private TipoDocumento tipoDocumento;
-    private String correoElectronico;
     private String matricula;
 }
