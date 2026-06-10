@@ -6,6 +6,6 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface RepoRecepcionistas  extends JpaRepository<Recepcionista, Long> {
-
+    boolean existsByUsuarioAuthId(String auth0Id);
 
 }

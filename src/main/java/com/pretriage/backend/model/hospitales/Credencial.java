@@ -2,6 +2,7 @@ package com.pretriage.backend.model.hospitales;
 
 import java.time.LocalDate;
 
+import com.pretriage.backend.model.personas.Paciente;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -21,4 +22,8 @@ public class Credencial {
     @ManyToOne
     @JoinColumn(name="id_obra_social", referencedColumnName = "id")
     private ObraSocial obraSocial;
+
+    @ManyToOne
+    @JoinColumn(name = "id_paciente", referencedColumnName = "id")
+    private Paciente paciente;
 }

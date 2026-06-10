@@ -23,8 +23,10 @@ public class Paciente {
     @JoinColumn(name = "auth_id", referencedColumnName = "id")
     private UsuarioAuth usuarioAuth;
 
-    @OneToMany
-    @JoinColumn(name="id_paciente")
+    @OneToMany(
+            mappedBy = "paciente",
+            cascade = CascadeType.ALL,
+            orphanRemoval = true)
     private List<Credencial> credenciales;
 
     @OneToOne
