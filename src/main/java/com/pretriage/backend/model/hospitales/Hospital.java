@@ -20,7 +20,6 @@ public class Hospital {
 
     private String placeId; //id en api de google maps
 
-    @Column(columnDefinition = "TEXT")
     private String nombre;
 
     @OneToMany

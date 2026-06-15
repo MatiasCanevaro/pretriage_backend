@@ -28,7 +28,6 @@ public class HospitalController {
 
     //todo test estos endpoints
 
-
     @PostMapping("/api/hospitales/cercanos")
     public ResponseEntity<List<HospitalCercanoDTO>> obtenerHospitalesCercanos(
             @RequestBody CoordenadaRequest request
