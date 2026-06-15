@@ -17,6 +17,9 @@ public class Hospital {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    private String placeId; //id en api de google maps
+
     @Column(columnDefinition = "TEXT")
     private String nombre;
 
