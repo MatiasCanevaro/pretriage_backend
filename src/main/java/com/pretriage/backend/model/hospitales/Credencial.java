@@ -14,9 +14,11 @@ public class Credencial {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
+    @Column(columnDefinition = "TEXT")
     private String numeroAfiliado;
+    @Column(columnDefinition = "TEXT")
     private String plan;
+
     private LocalDate fechaVencimiento;
 
     @ManyToOne

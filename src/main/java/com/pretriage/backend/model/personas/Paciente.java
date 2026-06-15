@@ -1,5 +1,6 @@
 package com.pretriage.backend.model.personas;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -32,6 +33,18 @@ public class Paciente {
     @OneToOne
     @JoinColumn(name="id_coordenada", referencedColumnName = "id")
     private Coordenada coordenadaActual;
+
+    private LocalDate generoBiologico;
+
+    @Enumerated(EnumType.STRING)
+    private Genero generoConElQueSeIdentifica;
+
+    @Enumerated(EnumType.STRING)
+    private Genero fechaNacimiento;
+
+    private Double peso;
+
+    private Integer altura;
 
     public Paciente() {
         this.credenciales = new ArrayList<>();
