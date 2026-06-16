@@ -3,6 +3,7 @@ package com.pretriage.backend.controllers;
 import com.pretriage.backend.controllers.dtos.CoordenadaRequest;
 import com.pretriage.backend.controllers.dtos.HospitalCercanoDTO;
 import com.pretriage.backend.controllers.dtos.SeleccionHospitalRequest;
+import com.pretriage.backend.controllers.dtos.TiempoEstimadoAtencionResponse;
 import com.pretriage.backend.services.AtencionHospitalService;
 import com.pretriage.backend.services.GooglePlacesService;
 import jakarta.validation.Valid;
@@ -37,18 +38,19 @@ public class HospitalController {
     }
 
     @PostMapping("/api/atencion/hospital")
-    public ResponseEntity<Map<String, String>> seleccionarHospital(
+    public ResponseEntity<TiempoEstimadoAtencionResponse> seleccionarHospital(
             @AuthenticationPrincipal Jwt jwt,
             @RequestBody @Valid SeleccionHospitalRequest request
     ){
+        String auth0Id = jwt.getSubject();
+
         atencionHospitalService.seleccionarHospital(
-                jwt.getSubject(),
+                auth0Id,
                 request.getPlaceId());
 
-        return ResponseEntity.ok(
-                Map.of(
-                        "mensaje",
-                        "Hospital seleccionado correctamente"));
+        TiempoEstimadoAtencionResponse response = atencionHospitalService.obtenerTiempoEstimadoDeAtencion(auth0Id);
+
+        return ResponseEntity.ok(response);
     }
 
 }
