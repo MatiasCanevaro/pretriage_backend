@@ -26,7 +26,6 @@ public class HospitalController {
 
     private final AtencionHospitalService atencionHospitalService;
 
-    //todo test estos endpoints
 
     @PostMapping("/api/hospitales/cercanos")
     public ResponseEntity<List<HospitalCercanoDTO>> obtenerHospitalesCercanos(

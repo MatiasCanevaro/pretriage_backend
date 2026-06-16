@@ -29,10 +29,10 @@ import static org.mockito.Mockito.when;
 class CredencialServiceTest {
 
     @Mock
-    private RepoPacientes repoPacientes;
+    private PacienteService pacienteService;
 
     @Mock
-    private RepoRecepcionistas repoRecepcionistas;
+    private RecepcionistaService recepcionistaService;
 
     @Mock
     private RepoObraSociales repoObraSociales;
@@ -59,7 +59,7 @@ class CredencialServiceTest {
         request.setPlan("210");
         request.setFechaVencimiento(LocalDate.now().plusYears(1));
 
-        when(repoPacientes.findByUsuarioAuthId("auth0|paciente"))
+        when(pacienteService.obtenerPacienteConUsuarioAuthId("auth0|paciente"))
                 .thenReturn(Optional.of(paciente));
 
         when(repoCredenciales.existsByPacienteIdAndFechaVencimientoGreaterThanEqual(
@@ -89,7 +89,7 @@ class CredencialServiceTest {
 
         CredencialRequest request = new CredencialRequest();
 
-        when(repoPacientes.findByUsuarioAuthId("auth0|paciente"))
+        when(pacienteService.obtenerPacienteConUsuarioAuthId("auth0|paciente"))
                 .thenReturn(Optional.of(paciente));
 
         when(repoCredenciales
