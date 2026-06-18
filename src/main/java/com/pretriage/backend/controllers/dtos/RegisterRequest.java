@@ -1,6 +1,7 @@
 package com.pretriage.backend.controllers.dtos;
 
 import com.pretriage.backend.model.personas.TipoDocumento;
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
@@ -26,4 +27,11 @@ public class RegisterRequest {
     private TipoUsuario tipoUsuario;
 
     private String matricula;
+
+    @Email(message = "Es obligatorio ingresar el mail")
+    private String email;
+
+
+    @NotBlank(message = "Es obligatorio ingresar la contraseña")
+    private String password;
 }

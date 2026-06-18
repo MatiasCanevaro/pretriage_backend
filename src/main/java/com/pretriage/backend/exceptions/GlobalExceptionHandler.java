@@ -11,7 +11,8 @@ import java.util.Map;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    @ExceptionHandler({CredencialValidaYaExisteException.class, PacienteNoExisteException.class})
+    @ExceptionHandler({CredencialValidaYaExisteException.class, PacienteNoExisteException.class,
+            NoSePudoCrearUsuario.class, NoSePudoEstimarElHorarioDeAtencion.class})
     public ResponseEntity<Map<String, String>> handleExceptions(
             RuntimeException e) {
 
