@@ -16,7 +16,6 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 
@@ -66,10 +65,9 @@ public class AtencionHospitalService {
 
         repoConsultasMedicas.save(consultaMedica);
 
-        this.ingresarALaColaDelHospital(consultaMedica); // TODO modificar tests de seleccionarHospital si es necesario
+        this.ingresarALaColaDelHospital(consultaMedica);
     }
 
-    ////TODO testear estos metodos de aca para abajo
     @Transactional
     public TiempoEstimadoAtencionResponse obtenerTiempoEstimadoDeAtencion(String auth0Id){
         Paciente paciente = this.obtenerPaciente(auth0Id);

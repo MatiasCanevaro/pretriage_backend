@@ -7,8 +7,6 @@ import com.pretriage.backend.model.personas.Paciente;
 import com.pretriage.backend.model.personas.UsuarioAuth;
 import com.pretriage.backend.repositories.RepoCredenciales;
 import com.pretriage.backend.repositories.RepoObraSociales;
-import com.pretriage.backend.repositories.RepoPacientes;
-import com.pretriage.backend.repositories.RepoRecepcionistas;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;

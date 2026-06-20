@@ -1,16 +1,12 @@
 package com.pretriage.backend.services;
 
-import com.pretriage.backend.controllers.dtos.auth0.AuthIdTokenResponse;
-import com.pretriage.backend.controllers.dtos.auth0.AuthRegisterTokenYUserId;
 import com.pretriage.backend.controllers.dtos.auth0.AuthTokenResponse;
 import com.pretriage.backend.controllers.dtos.auth0.AuthUserDetailsResponse;
 import com.pretriage.backend.exceptions.NoSePudoCrearUsuario;
-import com.pretriage.backend.repositories.RepoUsuariosAuth;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.ObjectMapper;
@@ -58,7 +54,7 @@ public class AuthService {
 
 
 
-    public AuthRegisterTokenYUserId registrarUsuarioYObtenerToken(String email, String password) {
+    public String registrarUsuarioYObtenerAuth0Id(String email, String password) {
             String tokenParaCrearUsuario = this.obtenerTokenParaCrearUsuario();
 
             Map<String, String> bodyRequest = Map.of(
@@ -75,14 +71,7 @@ public class AuthService {
 
         AuthUserDetailsResponse userDetailsNuevo = objectMapper.readValue(responseUserDetails, AuthUserDetailsResponse.class);
 
-        String responseTokenLogin = this.obtenerTokenParaLogearUsuario(email, password);
-        AuthIdTokenResponse responseToken = objectMapper.readValue(responseTokenLogin, AuthIdTokenResponse.class);
-
-        AuthRegisterTokenYUserId response = new AuthRegisterTokenYUserId();
-        response.setToken(responseToken.getIdToken());
-        response.setAuth0Id(userDetailsNuevo.getUserId());
-
-        return response;
+        return userDetailsNuevo.getUserId();
     }
 
     public String obtenerTokenParaLogearUsuario(String email, String password){

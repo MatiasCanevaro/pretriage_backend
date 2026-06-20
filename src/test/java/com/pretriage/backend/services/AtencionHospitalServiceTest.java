@@ -1,10 +1,14 @@
 package com.pretriage.backend.services;
 
+import com.pretriage.backend.controllers.dtos.TiempoEstimadoAtencionResponse;
+import com.pretriage.backend.exceptions.NoSePudoEstimarElHorarioDeAtencion;
 import com.pretriage.backend.model.consultas.ConsultaMedica;
 import com.pretriage.backend.model.consultas.EstadoConsulta;
+import com.pretriage.backend.model.consultas.GestorDeCola;
 import com.pretriage.backend.model.hospitales.Hospital;
 import com.pretriage.backend.model.personas.Paciente;
 import com.pretriage.backend.repositories.RepoConsultasMedicas;
+import com.pretriage.backend.repositories.RepoGestoresDeColas;
 import com.pretriage.backend.repositories.RepoHospitales;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,12 +33,15 @@ public class AtencionHospitalServiceTest {
     @Mock
     private RepoHospitales repoHospitales;
     @Mock
+    private RepoGestoresDeColas repoGestorDeCola;
+    @Mock
     private PacienteService pacienteService;
     @Mock
     private GooglePlacesService googlePlacesService;
 
     @InjectMocks
     private AtencionHospitalService service;
+
 
     @Test
     void sePuedeSeleccionarUnHospital(){
@@ -52,6 +59,9 @@ public class AtencionHospitalServiceTest {
         Hospital hospital = new Hospital();
         hospital.setPlaceId(placeId);
 
+        GestorDeCola gestorDeCola = new GestorDeCola();
+        gestorDeCola.setHospital(hospital);
+
         when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id))
                 .thenReturn(Optional.of(paciente));
 
@@ -62,6 +72,7 @@ public class AtencionHospitalServiceTest {
         when(repoHospitales.findByPlaceId(placeId))
                 .thenReturn(Optional.of(hospital));
 
+        when(repoGestorDeCola.findByHospitalId(hospital.getId())).thenReturn(Optional.of(gestorDeCola));
 
         service.seleccionarHospital(auth0Id, placeId);
 
@@ -127,4 +138,122 @@ public class AtencionHospitalServiceTest {
 
         verifyNoInteractions(repoConsultasMedicas, repoHospitales, googlePlacesService);
     }
+
+
+    @Test
+    void sePuedeObtenerTiempoEstimadoDeAtencion() {
+
+        String auth0Id = "auth0|123";
+
+        Paciente paciente = new Paciente();
+        paciente.setId(1L);
+
+        Hospital hospital = new Hospital();
+        hospital.setId(10L);
+
+        ConsultaMedica consulta = new ConsultaMedica();
+        consulta.setHospital(hospital);
+
+        GestorDeCola gestorDeCola = mock(GestorDeCola.class);
+
+        LocalDateTime fechaEsperada =
+                LocalDateTime.of(2026, 6, 20, 15, 30);
+
+        when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id))
+                .thenReturn(Optional.of(paciente));
+
+        when(repoConsultasMedicas.findByPacienteIdAndEstadoConsultaEquals(
+                paciente.getId(),
+                EstadoConsulta.HOSPITAL_SELECCIONADO))
+                .thenReturn(Optional.of(consulta));
+
+        when(repoGestorDeCola.findByHospitalId(hospital.getId()))
+                .thenReturn(Optional.of(gestorDeCola));
+
+        when(gestorDeCola.calcularTiempoDeAtencionPara(consulta))
+                .thenReturn(Optional.of(fechaEsperada));
+
+        TiempoEstimadoAtencionResponse response =
+                service.obtenerTiempoEstimadoDeAtencion(auth0Id);
+
+        assertEquals(
+                fechaEsperada,
+                response.getFechaHoraAtencionEstimada()
+        );
+    }
+
+    @Test
+    void noSePuedeObtenerTiempoEstimadoSinPermisos() {
+
+        String auth0Id = "auth0|123";
+
+        when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id))
+                .thenReturn(Optional.empty());
+
+        assertThrows(
+                AccessDeniedException.class,
+                () -> service.obtenerTiempoEstimadoDeAtencion(auth0Id)
+        );
+
+        verifyNoInteractions(repoConsultasMedicas);
+    }
+
+    @Test
+    void noSePuedeObtenerTiempoEstimadoSinHospitalSeleccionado() {
+
+        String auth0Id = "auth0|123";
+
+        Paciente paciente = new Paciente();
+        paciente.setId(1L);
+
+        when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id))
+                .thenReturn(Optional.of(paciente));
+
+        when(repoConsultasMedicas.findByPacienteIdAndEstadoConsultaEquals(
+                paciente.getId(),
+                EstadoConsulta.HOSPITAL_SELECCIONADO))
+                .thenReturn(Optional.empty());
+
+        assertThrows(
+                NoSuchElementException.class,
+                () -> service.obtenerTiempoEstimadoDeAtencion(auth0Id)
+        );
+    }
+
+    @Test
+    void lanzaExcepcionSiNoSePuedeEstimarElHorario() {
+
+        String auth0Id = "auth0|123";
+
+        Paciente paciente = new Paciente();
+        paciente.setId(1L);
+
+        Hospital hospital = new Hospital();
+        hospital.setId(10L);
+
+        ConsultaMedica consulta = new ConsultaMedica();
+        consulta.setHospital(hospital);
+
+        GestorDeCola gestorDeCola = mock(GestorDeCola.class);
+
+        when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id))
+                .thenReturn(Optional.of(paciente));
+
+        when(repoConsultasMedicas.findByPacienteIdAndEstadoConsultaEquals(
+                paciente.getId(),
+                EstadoConsulta.HOSPITAL_SELECCIONADO))
+                .thenReturn(Optional.of(consulta));
+
+        when(repoGestorDeCola.findByHospitalId(hospital.getId()))
+                .thenReturn(Optional.of(gestorDeCola));
+
+        when(gestorDeCola.calcularTiempoDeAtencionPara(consulta))
+                .thenReturn(Optional.empty());
+
+        assertThrows(
+                NoSePudoEstimarElHorarioDeAtencion.class,
+                () -> service.obtenerTiempoEstimadoDeAtencion(auth0Id)
+        );
+    }
+
 }

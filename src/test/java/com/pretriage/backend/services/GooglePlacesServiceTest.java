@@ -27,7 +27,13 @@ import static org.mockito.Mockito.when;
 @SpringBootTest
 @TestPropertySource(properties = { //se sobreescriben los valores del "application.properties" solo para ejecutar este test
         "google.api.key=test-api-key",
-        "google.places.base-url=http://localhost:8089/v1/places"
+        "google.places.base-url=http://localhost:8089/v1/places",
+        // auth0 no se usan en este test
+        "auth0.client-id.machine-to-machine=AUTH0_M2M_CLIENT_ID",
+        "auth0.client-secret.machine-to-machine=AUTH0_M2M_CLIENT_SECRET",
+        "auth0.scope.machine-to-machine=AUTH0_M2M_SCOPE",
+        "auth0.base-path=http://localhost:8089",
+        "auth0.client-id.app=ATUH0_APP_CLIENT_ID"
 })
 public class GooglePlacesServiceTest {
 

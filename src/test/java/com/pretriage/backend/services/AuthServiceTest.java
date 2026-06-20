@@ -23,7 +23,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
         "auth0.client-secret.machine-to-machine=AUTH0_M2M_CLIENT_SECRET",
         "auth0.scope.machine-to-machine=AUTH0_M2M_SCOPE",
         "auth0.base-path=http://localhost:8089",
-        "auth0.client-id.app=ATUH0_APP_CLIENT_ID"
+        "auth0.client-id.app=ATUH0_APP_CLIENT_ID",
+
+        //no se usan en estos tests
+        "google.api.key=test-api-key",
+        "google.places.base-url=http://localhost:8089/v1/places",
 })
 public class AuthServiceTest {
 
@@ -150,11 +154,9 @@ public class AuthServiceTest {
                         .withHeader("Content-Type", "application/json")
                         .withBody(bodyResponseApiLoginToken)));
 
-        AuthRegisterTokenYUserId responseService = service.registrarUsuarioYObtenerToken("someEmail@gmail.com", "somepass123");
+        String responseService = service.registrarUsuarioYObtenerAuth0Id("someEmail@gmail.com", "somepass123");
 
-        assertEquals("auth0IdFake",responseService.getAuth0Id());
-
-        assertEquals("idtoken",responseService.getToken());
+        assertEquals("auth0IdFake",responseService);
     }
 
 

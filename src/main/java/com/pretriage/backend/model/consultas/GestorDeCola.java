@@ -9,6 +9,7 @@ import java.util.Optional;
 import com.pretriage.backend.model.hospitales.Hospital;
 
 import jakarta.persistence.*;
+import jakarta.transaction.Transactional;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.beans.factory.annotation.Value;
@@ -38,7 +39,6 @@ public class GestorDeCola {
         this.consultasEnEspera = new ArrayList<>();
     }
 
-    //TODO testear estos metodos
 
     public Optional<LocalDateTime> calcularTiempoDeAtencionPara(ConsultaMedica consultaMedica) {
 
@@ -57,6 +57,8 @@ public class GestorDeCola {
     }
 
     private void reordenarColaPorPrioridad() {
+
+        this.eliminarAtendidosDeLaCola();
 
         this.consultasEnEspera.sort(
                 Comparator
@@ -83,5 +85,10 @@ public class GestorDeCola {
     public void agregarConsultaMedicaALaCola(ConsultaMedica consultaMedica) {
         this.consultasEnEspera.add(consultaMedica);
         reordenarColaPorPrioridad();
+    }
+
+    private void eliminarAtendidosDeLaCola(){
+        this.consultasEnEspera.removeIf(consultaMedica -> consultaMedica.getEstadoConsulta().equals(EstadoConsulta.PRETRIAGE_EN_PROCESO) ||
+                consultaMedica.getEstadoConsulta().equals(EstadoConsulta.FINALIZADA));
     }
 }
