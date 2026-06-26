@@ -17,6 +17,5 @@ public class Medico {
     @JoinColumn(name = "auth_id", referencedColumnName = "id")
     private UsuarioAuth usuarioAuth;
 
-    @Column(columnDefinition = "TEXT")
     private String matricula;
 }

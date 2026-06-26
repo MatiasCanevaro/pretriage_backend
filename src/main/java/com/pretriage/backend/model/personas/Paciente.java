@@ -34,13 +34,12 @@ public class Paciente {
     @JoinColumn(name="id_coordenada", referencedColumnName = "id")
     private Coordenada coordenadaActual;
 
-    private LocalDate generoBiologico;
+    private Genero generoBiologico;
 
     @Enumerated(EnumType.STRING)
     private Genero generoConElQueSeIdentifica;
 
-    @Enumerated(EnumType.STRING)
-    private Genero fechaNacimiento;
+    private LocalDate fechaNacimiento;
 
     private Double peso;
 

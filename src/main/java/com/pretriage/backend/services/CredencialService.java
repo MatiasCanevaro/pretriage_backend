@@ -2,7 +2,6 @@ package com.pretriage.backend.services;
 
 import com.pretriage.backend.controllers.dtos.CredencialRequest;
 import com.pretriage.backend.exceptions.CredencialValidaYaExisteException;
-import com.pretriage.backend.exceptions.PacienteNoExisteException;
 import com.pretriage.backend.model.hospitales.Credencial;
 import com.pretriage.backend.model.hospitales.ObraSocial;
 import com.pretriage.backend.model.personas.Paciente;
@@ -21,8 +20,8 @@ import java.util.Optional;
 @Transactional
 public class CredencialService {
 
-    private final RepoPacientes repoPacientes;
-    private final RepoRecepcionistas repoRecepcionistas;
+    private final PacienteService pacienteService;
+    private final RecepcionistaService recepcionistaService;
     private final RepoObraSociales repoObraSociales;
     private final RepoCredenciales repoCredenciales;
 
@@ -40,21 +39,15 @@ public class CredencialService {
 
         verificarSiEsRecepcionista(auth0IdRecepcionista);
 
-        Optional<Paciente> opPaciente = repoPacientes.findById(idPaciente);
-
-        if(opPaciente.isEmpty()){
-            throw new PacienteNoExisteException();
-        }
-
-        Paciente paciente = opPaciente.get();
+        Paciente paciente = pacienteService.obtenerPaciente(idPaciente);;
 
         cargarCredencial(request,paciente);
     }
 
     private Paciente obtenerPaciente(String auth0IdPaciente) {
 
-        Optional<Paciente> opPaciente = repoPacientes
-                .findByUsuarioAuthId(auth0IdPaciente);
+        Optional<Paciente> opPaciente = pacienteService
+                .obtenerPacienteConUsuarioAuthId(auth0IdPaciente);
         if(opPaciente.isEmpty()){
             throw new AccessDeniedException(
                     "No tiene permisos para cargar la credencial");
@@ -66,8 +59,8 @@ public class CredencialService {
 
     private void verificarSiEsRecepcionista(String auth0IdRecepcionista) {
 
-        boolean esRecepcionista = repoRecepcionistas
-                .existsByUsuarioAuthId(auth0IdRecepcionista);
+        boolean esRecepcionista = recepcionistaService
+                .esRecepcionistaConUsuarioId(auth0IdRecepcionista);
         if(!esRecepcionista){
             throw new AccessDeniedException(
                     "No tiene permisos para cargar la credencial");

@@ -47,6 +47,9 @@ public class ConsultaMedica {
     @Enumerated(EnumType.STRING)
     private NivelDeGravedad nivelDeGravedadMedico;
 
+    @Enumerated(EnumType.STRING)
+    private EstadoConsulta estadoConsulta;
+
     @OneToMany
     @JoinColumn(name = "id_consulta_medica", referencedColumnName = "id")
     private List<Mensaje> chat;
@@ -54,6 +57,7 @@ public class ConsultaMedica {
     public ConsultaMedica(){
         this.sintomasBot = new ArrayList<>();
         this.chat = new ArrayList<>();
+        this.estadoConsulta = EstadoConsulta.PENDIENTE;
     }
 
 }

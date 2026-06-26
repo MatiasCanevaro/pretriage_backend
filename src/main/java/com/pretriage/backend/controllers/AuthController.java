@@ -1,5 +1,6 @@
 package com.pretriage.backend.controllers;
 
+import com.pretriage.backend.controllers.dtos.LoginRequest;
 import com.pretriage.backend.controllers.dtos.RegisterRequest;
 import com.pretriage.backend.model.personas.Medico;
 import com.pretriage.backend.model.personas.Paciente;
@@ -8,12 +9,10 @@ import com.pretriage.backend.model.personas.UsuarioAuth;
 import com.pretriage.backend.repositories.RepoMedico;
 import com.pretriage.backend.repositories.RepoPacientes;
 import com.pretriage.backend.repositories.RepoRecepcionistas;
-import com.pretriage.backend.repositories.RepoUsuariosAuth;
+import com.pretriage.backend.services.AuthService;
 import jakarta.validation.Valid;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -22,34 +21,24 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/register")
+@RequestMapping("/api")
+@RequiredArgsConstructor
 public class AuthController {
 
-    @Autowired
-    private RepoUsuariosAuth repoUsuarios;
+    private AuthService authService;
 
-    @Autowired
     private RepoRecepcionistas repoRecepcionistas;
-    @Autowired
     private RepoMedico repoMedico;
-    @Autowired
     private RepoPacientes repoPacientes;
 
-    @PostMapping("")
+    @PostMapping("/register")
     public ResponseEntity<Map<String, String>> register(
-            @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody RegisterRequest request){
 
-        String auth0Id = jwt.getSubject();
-        String email =
-                jwt.getClaimAsString("email");
 
-        if(repoUsuarios.existsById(auth0Id)) {
+        String auth0Id = authService.registrarUsuarioYObtenerAuth0Id(request.getEmail(), request.getPassword());
 
-            return ResponseEntity
-                    .badRequest()
-                    .body(Map.of("error","El usuario ya está registrado"));
-        }
+        String email = request.getEmail();
 
         switch (request.getTipoUsuario()){
             case Medico -> this.crearMedico(request, email, auth0Id);
@@ -57,7 +46,16 @@ public class AuthController {
             case Recepcionista -> this.crearRecepcionista(request, email, auth0Id);
         }
 
-        return ResponseEntity.ok().build();
+        return ResponseEntity.ok(Map.of("message", "usuario creado con éxito"));
+    }
+
+    @PostMapping("/login")
+    public ResponseEntity<Map<String, String>> login(
+            @Valid @RequestBody LoginRequest request){
+
+        String JwtToken = authService.obtenerTokenParaLogearUsuario(request.getEmail(), request.getPassword());
+
+        return ResponseEntity.ok(Map.of("token", JwtToken));
     }
 
     private UsuarioAuth crearUsuario(RegisterRequest request, String email, String auth0Id){
