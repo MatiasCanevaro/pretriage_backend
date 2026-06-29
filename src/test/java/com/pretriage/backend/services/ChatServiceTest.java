@@ -55,7 +55,7 @@ class ChatServiceTest {
 
 
     @Test
-    void enviarMensajeCuandoLaIaFallaCierraConFallbackLocal() {
+    void enviarMensajeCuandoLaIaFallaContinuaConPreguntaFallbackLocal() {
         Paciente paciente = new Paciente();
         Chat chat = new Chat(paciente);
         chat.setId(1L);
@@ -69,13 +69,105 @@ class ChatServiceTest {
 
         var resultado = chatService.enviarMensaje("1", "auth0|paciente", "Tengo dolor de cabeza y fiebre desde ayer.");
 
-        assertTrue(resultado.chat().finalizado());
-        assertNotNull(resultado.resultado());
-        assertEquals("Gracias. Con lo informado, cierro la entrevista y dejo el resumen estructurado.", resultado.respuesta().contenido());
-        assertTrue(resultado.resultado().sintomas().contains("fiebre"));
-        verify(repoChat).save(argThat(Chat::isFinalizado));
+        assertFalse(resultado.chat().finalizado());
+        assertNull(resultado.resultado());
+        assertEquals("Necesito precisar el dolor: del 0 al 10, cuanto te duele ahora y en que zona lo sentis?", resultado.respuesta().contenido());
+        verify(repoChat).save(argThat(chatGuardado -> !chatGuardado.isFinalizado()));
     }
 
+    @Test
+    void enviarMensajeNoAceptaCierreTempranoSinAlarma() {
+        Paciente paciente = new Paciente();
+        Chat chat = new Chat(paciente);
+        chat.setId(1L);
+        chat.agregarMensaje(new Mensaje("Hola. Voy a hacerte algunas preguntas breves para registrar tus sintomas.", AutorMensaje.BOT, null));
+        chat.agregarMensaje(new Mensaje("Tengo fiebre y dolor de cabeza desde ayer.", AutorMensaje.PACIENTE, paciente));
+
+        when(repoChat.findByIdAndPacienteUsuarioAuthId(1L, "auth0|paciente")).thenReturn(Optional.of(chat));
+        when(repoChat.save(any(Chat.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(chatClient.prompt().system(anyString()).user(anyString()).call().entity(eq(TriageAiResponse.class), any()))
+                .thenReturn(new TriageAiResponse(true, "Gracias. Con lo informado, cierro la entrevista y dejo el resumen estructurado.", null));
+
+        var resultado = chatService.enviarMensaje("1", "auth0|paciente", "Tengo fiebre de 39 grados desde ayer y dolor fuerte de cabeza.");
+
+        assertFalse(resultado.chat().finalizado());
+        assertEquals("Necesito precisar el dolor: del 0 al 10, cuanto te duele ahora y en que zona lo sentis?", resultado.respuesta().contenido());
+        verify(repoChat).save(argThat(chatGuardado -> !chatGuardado.isFinalizado()));
+    }
+    @Test
+    void enviarMensajeInsisteSiPacienteEsquivaContextoClinicoBasico() {
+        Paciente paciente = new Paciente();
+        Chat chat = new Chat(paciente);
+        chat.setId(1L);
+        chat.agregarMensaje(new Mensaje("Hola. Voy a hacerte algunas preguntas breves para registrar tus sintomas.", AutorMensaje.BOT, null));
+        chat.agregarMensaje(new Mensaje("Me siento mal desde hace un rato, tengo dolor de panza y estoy medio mareada.", AutorMensaje.PACIENTE, paciente));
+        chat.agregarMensaje(new Mensaje("Necesito precisar el dolor: del 0 al 10, cuanto te duele ahora y en que zona lo sentis?", AutorMensaje.BOT, null));
+        chat.agregarMensaje(new Mensaje("No se bien, empezo suave ayer pero hoy me molesta mas. Es como abajo de la panza.", AutorMensaje.PACIENTE, paciente));
+        chat.agregarMensaje(new Mensaje("Tenes dificultad para respirar, dolor de pecho, confusion, desmayo, convulsiones o algun empeoramiento importante?", AutorMensaje.BOT, null));
+        chat.agregarMensaje(new Mensaje("Tengo un poco de nauseas, no vomite. No fui mucho al baño, creo que normal.", AutorMensaje.PACIENTE, paciente));
+        chat.agregarMensaje(new Mensaje("Tenes antecedentes relevantes, alergias, tomas alguna medicacion o podria haber embarazo?", AutorMensaje.BOT, null));
+        chat.agregarMensaje(new Mensaje("El dolor viene y va, ahora sera un 6 de 10. Caminar me molesta un poco.", AutorMensaje.PACIENTE, paciente));
+        chat.agregarMensaje(new Mensaje("Antes de cerrar necesito ese dato: alguna enfermedad previa, alergia, medicacion habitual o posibilidad de embarazo?", AutorMensaje.BOT, null));
+
+        when(repoChat.findByIdAndPacienteUsuarioAuthId(1L, "auth0|paciente")).thenReturn(Optional.of(chat));
+        when(repoChat.save(any(Chat.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(chatClient.prompt().system(anyString()).user(anyString()).call().entity(eq(TriageAiResponse.class), any()))
+                .thenReturn(new TriageAiResponse(true, "Gracias. Con lo informado, cierro la entrevista y dejo el resumen estructurado.", null));
+
+        var resultado = chatService.enviarMensaje("1", "auth0|paciente",
+                "No tengo dolor de pecho ni me falta el aire. Me siento debil y tuve algo de temperatura, 37.8.");
+
+        assertFalse(resultado.chat().finalizado());
+        assertEquals("Para completar el pre-triage, respondeme puntualmente: enfermedades previas, alergias, medicacion y posibilidad de embarazo.", resultado.respuesta().contenido());
+    }
+    @Test
+    void enviarMensajeNoCierraSinContextoClinicoBasico() {
+        Paciente paciente = new Paciente();
+        Chat chat = new Chat(paciente);
+        chat.setId(1L);
+        chat.agregarMensaje(new Mensaje("Hola. Voy a hacerte algunas preguntas breves para registrar tus sintomas.", AutorMensaje.BOT, null));
+        chat.agregarMensaje(new Mensaje("Me siento mal desde hace un rato, tengo dolor de panza y estoy medio mareada.", AutorMensaje.PACIENTE, paciente));
+        chat.agregarMensaje(new Mensaje("Necesito precisar el dolor: del 0 al 10, cuanto te duele ahora y en que zona lo sentis?", AutorMensaje.BOT, null));
+        chat.agregarMensaje(new Mensaje("No se bien, empezo suave ayer pero hoy me molesta mas. Es como abajo de la panza.", AutorMensaje.PACIENTE, paciente));
+        chat.agregarMensaje(new Mensaje("Tenes dificultad para respirar, dolor de pecho, confusion, desmayo, convulsiones o algun empeoramiento importante?", AutorMensaje.BOT, null));
+        chat.agregarMensaje(new Mensaje("Tengo un poco de nauseas, no vomite. No fui mucho al baño, creo que normal.", AutorMensaje.PACIENTE, paciente));
+        chat.agregarMensaje(new Mensaje("Tenes antecedentes relevantes, alergias, tomas alguna medicacion o podria haber embarazo?", AutorMensaje.BOT, null));
+
+        when(repoChat.findByIdAndPacienteUsuarioAuthId(1L, "auth0|paciente")).thenReturn(Optional.of(chat));
+        when(repoChat.save(any(Chat.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(chatClient.prompt().system(anyString()).user(anyString()).call().entity(eq(TriageAiResponse.class), any()))
+                .thenReturn(new TriageAiResponse(true, "Gracias. Con lo informado, cierro la entrevista y dejo el resumen estructurado.", null));
+
+        var resultado = chatService.enviarMensaje("1", "auth0|paciente",
+                "El dolor viene y va, ahora sera un 6 de 10. Caminar me molesta un poco.");
+
+        assertFalse(resultado.chat().finalizado());
+        assertEquals("Antes de cerrar necesito ese dato: alguna enfermedad previa, alergia, medicacion habitual o posibilidad de embarazo?", resultado.respuesta().contenido());
+    }
+    @Test
+    void enviarMensajeNoMarcaAlarmasNegadasComoUrgentes() {
+        Paciente paciente = new Paciente();
+        Chat chat = new Chat(paciente);
+        chat.setId(1L);
+        chat.agregarMensaje(new Mensaje("Hola. Voy a hacerte algunas preguntas breves para registrar tus sintomas.", AutorMensaje.BOT, null));
+        chat.agregarMensaje(new Mensaje("Tengo fiebre de 39 grados desde ayer y dolor fuerte de cabeza.", AutorMensaje.PACIENTE, paciente));
+        chat.agregarMensaje(new Mensaje("Necesito precisar el dolor: del 0 al 10, cuanto te duele ahora y en que zona lo sentis?", AutorMensaje.BOT, null));
+        chat.agregarMensaje(new Mensaje("Empezo ayer a la tarde. La fiebre llego a 39 y no baja mucho con paracetamol.", AutorMensaje.PACIENTE, paciente));
+        chat.agregarMensaje(new Mensaje("Tenes dificultad para respirar, dolor de pecho, confusion, desmayo, convulsiones o algun empeoramiento importante?", AutorMensaje.BOT, null));
+
+        when(repoChat.findByIdAndPacienteUsuarioAuthId(1L, "auth0|paciente")).thenReturn(Optional.of(chat));
+        when(repoChat.save(any(Chat.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(chatClient.prompt().system(anyString()).user(anyString()).call().entity(eq(TriageAiResponse.class), any()))
+                .thenThrow(new RuntimeException("ollama down"));
+
+        var resultado = chatService.enviarMensaje("1", "auth0|paciente",
+                "No tengo dificultad para respirar, dolor de pecho, confusion, desmayos ni convulsiones. El dolor de cabeza es 7 de 10, en la frente. No tengo enfermedades previas, alergias ni medicacion habitual.");
+
+        assertNotNull(resultado.resultado());
+        assertFalse(resultado.resultado().requiereAtencionInmediata());
+        assertTrue(resultado.resultado().signosAlarma().isEmpty());
+        verify(repoChat).save(argThat(Chat::isFinalizado));
+    }
     @Test
     void enviarMensajeCuandoLaIaRepiteLaPreguntaCierraLaConversacion() {
         Paciente paciente = new Paciente();
