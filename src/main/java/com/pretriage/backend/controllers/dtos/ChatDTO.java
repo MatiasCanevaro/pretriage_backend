@@ -7,6 +7,5 @@ public record ChatDTO(
         Long id,
         List<MensajeDTO> mensajes,
         LocalDateTime timestamp,
-        boolean finalizado,
-        TriageResultDTO resultado) {
+        boolean finalizado) {
 }

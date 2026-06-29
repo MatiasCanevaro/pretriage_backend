@@ -1,10 +1,12 @@
 package com.pretriage.backend.services;
 
 import com.pretriage.backend.controllers.dtos.TiempoEstimadoAtencionResponse;
+import com.pretriage.backend.exceptions.AtencionEnCursoException;
 import com.pretriage.backend.exceptions.NoSePudoEstimarElHorarioDeAtencion;
 import com.pretriage.backend.model.consultas.ConsultaMedica;
 import com.pretriage.backend.model.consultas.EstadoConsulta;
 import com.pretriage.backend.model.consultas.GestorDeCola;
+import com.pretriage.backend.model.consultas.NivelDeGravedad;
 import com.pretriage.backend.model.hospitales.Hospital;
 import com.pretriage.backend.model.personas.Paciente;
 import com.pretriage.backend.repositories.RepoConsultasMedicas;
@@ -16,12 +18,24 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
 public class AtencionHospitalService {
+
+    private static final List<EstadoConsulta> ESTADOS_CONSULTA_ACTIVA = List.of(
+            EstadoConsulta.PENDIENTE,
+            EstadoConsulta.HOSPITAL_SELECCIONADO,
+            EstadoConsulta.PRETRIAGE_FINALIZADO,
+            EstadoConsulta.PRETRIAGE_EN_PROCESO);
+
+    private static final List<EstadoConsulta> ESTADOS_CONSULTA_CON_HOSPITAL = List.of(
+            EstadoConsulta.HOSPITAL_SELECCIONADO,
+            EstadoConsulta.PRETRIAGE_EN_PROCESO,
+            EstadoConsulta.PRETRIAGE_FINALIZADO);
 
     private final RepoConsultasMedicas repoConsultasMedicas;
     private final RepoHospitales repoHospitales;
@@ -37,15 +51,7 @@ public class AtencionHospitalService {
 
         Paciente paciente = this.obtenerPaciente(auth0Id);
 
-        ConsultaMedica consultaMedica =
-                repoConsultasMedicas.findByPacienteIdAndEstadoConsultaEquals(paciente.getId(), EstadoConsulta.PENDIENTE)
-                        .orElseGet(()-> {
-                            ConsultaMedica consultaMedicaNueva = new ConsultaMedica();
-                            consultaMedicaNueva.setPaciente(paciente);
-                            consultaMedicaNueva.setEstadoConsulta(EstadoConsulta.HOSPITAL_SELECCIONADO);
-                            consultaMedicaNueva.setFechaHoraCreacion(LocalDateTime.now());
-                            return consultaMedicaNueva;
-                        });
+        ConsultaMedica consultaMedica = obtenerOCrearConsultaParaSeleccionarHospital(paciente);
 
 
         Optional<Hospital> opHospital = repoHospitales.findByPlaceId(placeId);
@@ -65,21 +71,58 @@ public class AtencionHospitalService {
 
         repoConsultasMedicas.save(consultaMedica);
 
-        this.ingresarALaColaDelHospital(consultaMedica);
+    }
+    private ConsultaMedica obtenerOCrearConsultaParaSeleccionarHospital(Paciente paciente) {
+        Optional<ConsultaMedica> opConsultaMedica = repoConsultasMedicas
+                .findFirstByPacienteIdAndEstadoConsultaIn(paciente.getId(), ESTADOS_CONSULTA_ACTIVA);
+
+        if (opConsultaMedica.isPresent()) {
+            ConsultaMedica consultaMedica = opConsultaMedica.get();
+            if (consultaMedica.getEstadoConsulta() != EstadoConsulta.PENDIENTE) {
+                throw new AtencionEnCursoException();
+            }
+            return consultaMedica;
+        }
+
+        ConsultaMedica consultaMedicaNueva = new ConsultaMedica();
+        consultaMedicaNueva.setPaciente(paciente);
+        consultaMedicaNueva.setFechaHoraCreacion(LocalDateTime.now());
+        consultaMedicaNueva.setNivelDeGravedadBot(NivelDeGravedad.NORMAL);
+        return consultaMedicaNueva;
     }
 
     @Transactional
     public TiempoEstimadoAtencionResponse obtenerTiempoEstimadoDeAtencion(String auth0Id){
         Paciente paciente = this.obtenerPaciente(auth0Id);
+        ConsultaMedica consultaMedica = obtenerConsultaConHospitalSeleccionado(paciente);
 
+        return calcularTiempoEstimadoDeAtencion(consultaMedica);
+    }
+
+    @Transactional
+    public TiempoEstimadoAtencionResponse finalizarTriageEIngresarACola(String auth0Id, NivelDeGravedad nivelDeGravedadBot) {
+        Paciente paciente = this.obtenerPaciente(auth0Id);
+        ConsultaMedica consultaMedica = obtenerConsultaConHospitalSeleccionado(paciente);
+
+        consultaMedica.setNivelDeGravedadBot(nivelDeGravedadBot);
+        consultaMedica.setEstadoConsulta(EstadoConsulta.PRETRIAGE_FINALIZADO);
+        repoConsultasMedicas.save(consultaMedica);
+        this.ingresarALaColaDelHospital(consultaMedica);
+
+        return calcularTiempoEstimadoDeAtencion(consultaMedica);
+    }
+
+    private ConsultaMedica obtenerConsultaConHospitalSeleccionado(Paciente paciente) {
         Optional<ConsultaMedica> opConsultaMedica =
-                repoConsultasMedicas.findByPacienteIdAndEstadoConsultaEquals(paciente.getId(), EstadoConsulta.HOSPITAL_SELECCIONADO);
+                repoConsultasMedicas.findFirstByPacienteIdAndEstadoConsultaIn(paciente.getId(), ESTADOS_CONSULTA_CON_HOSPITAL);
 
-        if(opConsultaMedica.isEmpty()){ //no deberia suceder nuca de todas maneras
-            throw new NoSuchElementException("Se debe seleccionar primero un hospital para estimar su tiempo de atención");
+        if(opConsultaMedica.isEmpty()){
+            throw new NoSuchElementException("Se debe seleccionar primero un hospital o finalizar el pretriage para estimar su tiempo de atencion");
         }
-        ConsultaMedica consultaMedica = opConsultaMedica.get();
+        return opConsultaMedica.get();
+    }
 
+    private TiempoEstimadoAtencionResponse calcularTiempoEstimadoDeAtencion(ConsultaMedica consultaMedica) {
         GestorDeCola gestorDeCola= this.obtenerOCrearColaDeConsulta(consultaMedica);
 
         Optional<LocalDateTime> opTiempoEstimadoDeAtencion = gestorDeCola.calcularTiempoDeAtencionPara(consultaMedica);
@@ -126,3 +169,8 @@ public class AtencionHospitalService {
                 });
     }
 }
+
+
+
+
+

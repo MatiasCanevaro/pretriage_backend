@@ -14,6 +14,8 @@ public record TriageResultDTO(
         List<String> alergias,
         String posibilidadEmbarazo,
         String observaciones,
+        Integer nivelPrioridad,
         boolean requiereAtencionInmediata,
         String recomendacionSeguridad) {
 }
+

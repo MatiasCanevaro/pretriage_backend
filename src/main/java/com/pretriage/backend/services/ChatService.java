@@ -12,6 +12,7 @@ import com.pretriage.backend.mappers.MapperMensaje;
 import com.pretriage.backend.model.chat.AutorMensaje;
 import com.pretriage.backend.model.chat.Chat;
 import com.pretriage.backend.model.chat.Mensaje;
+import com.pretriage.backend.model.consultas.NivelDeGravedad;
 import com.pretriage.backend.model.personas.Paciente;
 import com.pretriage.backend.repositories.RepoChat;
 import com.pretriage.backend.repositories.RepoPacientes;
@@ -34,13 +35,15 @@ public class ChatService {
 
     private static final String SYSTEM_PROMPT = """
             Sos un asistente de admision para pre-triage medico. Conversas en espanol claro, humano y breve.
-            Tu tarea es recopilar informacion clinica suficiente para que OTRO modelo clasificador asigne luego
-            la prioridad. No diagnostiques, no indiques un nivel de triage y no inventes datos.
+            Tu tarea es recopilar informacion clinica suficiente y, al finalizar, asignar un nivel de prioridad
+            del 1 al 5. No diagnostiques ni inventes datos.
 
             En cada respuesta devolve exclusivamente la estructura solicitada por el esquema.
             - mensaje: una pregunta concreta si faltan datos. Podes agrupar hasta 2 preguntas muy relacionadas
               en una misma frase cuando eso evite alargar la entrevista, por ejemplo inicio + evolucion.
             - resultado: resumen acumulado de lo informado. Usa listas vacias y texto "no informado" cuando corresponda.
+            - resultado.nivelPrioridad: entero entre 1 y 5 solo cuando finalizado=true.
+              5: riesgo vital inmediato; 4: muy urgente; 3: urgente; 2: normal; 1: no urgente.
             - finalizado: true solo cuando exista un signo de alarma, se alcance el limite de mensajes o ya tengas
               una base clinica razonable para clasificar sin seguir preguntando.
 
@@ -73,15 +76,18 @@ public class ChatService {
 
     private final RepoChat repoChat;
     private final RepoPacientes repoPacientes;
+    private final AtencionHospitalService atencionHospitalService;
     private final ChatClient chatClient;
     private final ObjectMapper objectMapper;
 
     public ChatService(RepoChat repoChat,
                        RepoPacientes repoPacientes,
+                       AtencionHospitalService atencionHospitalService,
                        ChatClient.Builder chatClientBuilder,
                        ObjectMapper objectMapper) {
         this.repoChat = repoChat;
         this.repoPacientes = repoPacientes;
+        this.atencionHospitalService = atencionHospitalService;
         this.chatClient = chatClientBuilder.build();
         this.objectMapper = objectMapper;
     }
@@ -94,13 +100,13 @@ public class ChatService {
         Chat chat = new Chat(paciente);
         chat.agregarMensaje(new Mensaje(MENSAJE_INICIAL, AutorMensaje.BOT, null));
         repoChat.save(chat);
-        return MapperChat.toDTO(chat, null);
+        return MapperChat.toDTO(chat);
     }
 
     @Transactional(readOnly = true)
     public ChatDTO obtenerChat(String idChat, String idPaciente) {
         Chat chat = buscarChatPropio(idChat, idPaciente);
-        return MapperChat.toDTO(chat, leerResultado(chat));
+        return MapperChat.toDTO(chat);
     }
 
     @Transactional
@@ -132,17 +138,21 @@ public class ChatService {
         Mensaje mensajeBot = new Mensaje(respuestaIa.mensaje().trim(), AutorMensaje.BOT, null);
         chat.agregarMensaje(mensajeBot);
 
+        TiempoEstimadoAtencionResponse atencionEstimada = null;
         if (respuestaIa.finalizado()) {
+            TriageResultDTO resultadoConPrioridad = normalizarResultadoFinal(respuestaIa.resultado());
+            respuestaIa = new TriageAiResponse(true, respuestaIa.mensaje(), resultadoConPrioridad);
             chat.setFinalizado(true);
-            chat.setResultadoTriageJson(escribirResultado(respuestaIa.resultado()));
+            chat.setResultadoTriageJson(escribirResultado(resultadoConPrioridad));
+            atencionEstimada = atencionHospitalService.finalizarTriageEIngresarACola(
+                    idPaciente,
+                    nivelDeGravedadDesdePrioridad(resultadoConPrioridad.nivelPrioridad()));
         }
 
         repoChat.save(chat);
-        TriageResultDTO resultado = chat.isFinalizado() ? respuestaIa.resultado() : null;
         return new ChatTurnResponse(
-                MapperChat.toDTO(chat, resultado),
                 MapperMensaje.toDTO(mensajeBot),
-                resultado);
+                atencionEstimada);
     }
 
     private TriageAiResponse consultarIa(Chat chat) {
@@ -258,7 +268,7 @@ public class ChatService {
     private TriageAiResponse forzarCierre(Chat chat) {
         return new TriageAiResponse(
                 true,
-                "Gracias. Con lo informado, cierro la entrevista y dejo el resumen estructurado.",
+                "Gracias. Ya registre tus respuestas.",
                 construirResumenBasico(chat));
     }
 
@@ -412,10 +422,72 @@ public class ChatService {
                 List.of(),
                 posibilidadEmbarazo,
                 observaciones,
+                calcularNivelPrioridad(signosAlarma, intensidadDolor, textoNormalizado),
                 requiereAtencionInmediata,
                 recomendacionSeguridad);
     }
 
+
+    private TriageResultDTO normalizarResultadoFinal(TriageResultDTO resultado) {
+        if (resultado == null) {
+            throw new ProveedorIaException(new IllegalStateException("La IA finalizo sin resultado estructurado"));
+        }
+        Integer nivelPrioridad = resultado.nivelPrioridad();
+        if (nivelPrioridad == null || nivelPrioridad < 1 || nivelPrioridad > 5) {
+            nivelPrioridad = resultado.requiereAtencionInmediata() ? 5 : 3;
+        }
+        return new TriageResultDTO(
+                resultado.motivoConsulta(),
+                resultado.sintomas(),
+                resultado.inicio(),
+                resultado.evolucion(),
+                resultado.intensidadDolor(),
+                resultado.signosAlarma(),
+                resultado.antecedentesRelevantes(),
+                resultado.medicamentos(),
+                resultado.alergias(),
+                resultado.posibilidadEmbarazo(),
+                resultado.observaciones(),
+                nivelPrioridad,
+                nivelPrioridad >= 5 || resultado.requiereAtencionInmediata(),
+                resultado.recomendacionSeguridad());
+    }
+
+    private NivelDeGravedad nivelDeGravedadDesdePrioridad(Integer nivelPrioridad) {
+        return switch (nivelPrioridad) {
+            case 5 -> NivelDeGravedad.RIESGO_VITAL_INMEDIATO;
+            case 4 -> NivelDeGravedad.MUY_URGENTE;
+            case 3 -> NivelDeGravedad.URGENTE;
+            case 2 -> NivelDeGravedad.NORMAL;
+            default -> NivelDeGravedad.NO_URGENTE;
+        };
+    }
+
+    private int calcularNivelPrioridad(List<String> signosAlarma, Integer intensidadDolor, String textoNormalizado) {
+        if (!signosAlarma.isEmpty() || contieneSignoAlarmaAfirmado(textoNormalizado,
+                "dificultad para respirar",
+                "falta de aire",
+                "dolor de pecho",
+                "desmayo",
+                "convulsion",
+                "confusion",
+                "sangrado abundante")) {
+            return 5;
+        }
+        if (intensidadDolor != null && intensidadDolor >= 8) {
+            return 4;
+        }
+        if (intensidadDolor != null && intensidadDolor >= 5) {
+            return 3;
+        }
+        if (contieneAlguno(textoNormalizado, "fiebre", "vomitos", "mareo", "debilidad", "sangrado")) {
+            return 3;
+        }
+        if (contieneAlguno(textoNormalizado, "dolor", "tos", "nauseas", "diarrea")) {
+            return 2;
+        }
+        return 1;
+    }
     private void agregarSiContieneAfirmado(String textoNormalizado, List<String> destino, String... variantes) {
         for (String variante : variantes) {
             if (contieneFraseAfirmada(textoNormalizado, variante) && !destino.contains(variante)) {
@@ -556,3 +628,5 @@ public class ChatService {
         }
     }
 }
+
+

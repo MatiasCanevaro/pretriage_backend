@@ -11,6 +11,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -75,7 +76,7 @@ public class GestorDeColaTest {
     }
 
     @Test
-    void alIngresarOtraConsultaMedicaSeReordenaLaColaPorPrioridadYSeEliminanLosQueYaFueronAtendidos(){
+    void alIngresarOtraConsultaMedicaSeReordenaLaColaPorPrioridadYSeEliminanLasFinalizadas(){
 
         ConsultaMedica consultaMedicaMock1 = new ConsultaMedica();
         consultaMedicaMock1.setFechaHoraCreacion(LocalDateTime.now());
@@ -88,7 +89,7 @@ public class GestorDeColaTest {
         assertEquals(1,this.gestorDeCola.getConsultasEnEspera().size());
         assertEquals(consultaMedicaMock1, this.gestorDeCola.getConsultasEnEspera().getFirst());
 
-        consultaMedicaMock1.setEstadoConsulta(EstadoConsulta.PRETRIAGE_EN_PROCESO);//está siendo atendido por el médico
+        consultaMedicaMock1.setEstadoConsulta(EstadoConsulta.FINALIZADA);
 
         //llega otro paciente a la cola
         ConsultaMedica consultaMedicaMock2 = new ConsultaMedica();
@@ -103,5 +104,37 @@ public class GestorDeColaTest {
         assertEquals(consultaMedicaMock2, this.gestorDeCola.getConsultasEnEspera().getFirst());
     }
 
+    @Test
+    void alIngresarVariosPacientesSeOrdenaLaColaPorPrioridadYHoraDeLlegada(){
+        LocalDateTime base = LocalDateTime.of(2026, 6, 29, 10, 0);
+
+        ConsultaMedica normalTemprano = consultaEnEspera(base.plusMinutes(1), NivelDeGravedad.NORMAL);
+        ConsultaMedica riesgoVital = consultaEnEspera(base.plusMinutes(4), NivelDeGravedad.RIESGO_VITAL_INMEDIATO);
+        ConsultaMedica urgenteTemprano = consultaEnEspera(base.plusMinutes(2), NivelDeGravedad.URGENTE);
+        ConsultaMedica noUrgente = consultaEnEspera(base.plusMinutes(3), NivelDeGravedad.NO_URGENTE);
+        ConsultaMedica urgenteTarde = consultaEnEspera(base.plusMinutes(5), NivelDeGravedad.URGENTE);
+
+        this.gestorDeCola.agregarConsultaMedicaALaCola(normalTemprano);
+        this.gestorDeCola.agregarConsultaMedicaALaCola(riesgoVital);
+        this.gestorDeCola.agregarConsultaMedicaALaCola(urgenteTemprano);
+        this.gestorDeCola.agregarConsultaMedicaALaCola(noUrgente);
+        this.gestorDeCola.agregarConsultaMedicaALaCola(urgenteTarde);
+
+        assertEquals(5, this.gestorDeCola.getConsultasEnEspera().size());
+        assertEquals(List.of(riesgoVital, urgenteTemprano, urgenteTarde, normalTemprano, noUrgente),
+                this.gestorDeCola.getConsultasEnEspera());
+    }
+
+    private ConsultaMedica consultaEnEspera(LocalDateTime fechaHoraCreacion, NivelDeGravedad nivelDeGravedad) {
+        ConsultaMedica consultaMedica = new ConsultaMedica();
+        consultaMedica.setFechaHoraCreacion(fechaHoraCreacion);
+        consultaMedica.setNivelDeGravedadBot(nivelDeGravedad);
+        consultaMedica.setHospital(this.hospitalMock);
+        consultaMedica.setEstadoConsulta(EstadoConsulta.PENDIENTE);
+        return consultaMedica;
+    }
 
 }
+
+
+

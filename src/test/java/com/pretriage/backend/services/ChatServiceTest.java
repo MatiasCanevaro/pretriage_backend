@@ -2,6 +2,8 @@ package com.pretriage.backend.services;
 
 import com.pretriage.backend.controllers.dtos.ChatDTO;
 import com.pretriage.backend.controllers.dtos.TriageAiResponse;
+import com.pretriage.backend.controllers.dtos.TiempoEstimadoAtencionResponse;
+import com.pretriage.backend.model.consultas.NivelDeGravedad;
 import com.pretriage.backend.model.chat.AutorMensaje;
 import com.pretriage.backend.model.chat.Chat;
 import com.pretriage.backend.model.chat.Mensaje;
@@ -25,6 +27,7 @@ import static org.mockito.Mockito.*;
 class ChatServiceTest {
     private RepoChat repoChat;
     private RepoPacientes repoPacientes;
+    private AtencionHospitalService atencionHospitalService;
     private ChatService chatService;
     private ChatClient chatClient;
 
@@ -32,10 +35,11 @@ class ChatServiceTest {
     void setUp() {
         repoChat = mock(RepoChat.class);
         repoPacientes = mock(RepoPacientes.class);
+        atencionHospitalService = mock(AtencionHospitalService.class);
         chatClient = mock(ChatClient.class, Answers.RETURNS_DEEP_STUBS);
         ChatClient.Builder builder = mock(ChatClient.Builder.class);
         when(builder.build()).thenReturn(chatClient);
-        chatService = new ChatService(repoChat, repoPacientes, builder, new ObjectMapper());
+        chatService = new ChatService(repoChat, repoPacientes, atencionHospitalService, builder, new ObjectMapper());
     }
 
     @Test
@@ -47,7 +51,6 @@ class ChatServiceTest {
         ChatDTO resultado = chatService.iniciarChat("auth0|paciente");
 
         assertFalse(resultado.finalizado());
-        assertNull(resultado.resultado());
         assertEquals(1, resultado.mensajes().size());
         assertEquals(AutorMensaje.BOT.name(), resultado.mensajes().getFirst().autor());
         verify(repoChat).save(argThat(chat -> chat.getPaciente() == paciente));
@@ -66,11 +69,12 @@ class ChatServiceTest {
         when(repoChat.save(any(Chat.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(chatClient.prompt().system(anyString()).user(anyString()).call().entity(eq(TriageAiResponse.class), any()))
                 .thenThrow(new RuntimeException("ollama down"));
+        when(atencionHospitalService.finalizarTriageEIngresarACola("auth0|paciente", NivelDeGravedad.URGENTE))
+                .thenReturn(new TiempoEstimadoAtencionResponse());
 
         var resultado = chatService.enviarMensaje("1", "auth0|paciente", "Tengo dolor de cabeza y fiebre desde ayer.");
 
-        assertFalse(resultado.chat().finalizado());
-        assertNull(resultado.resultado());
+        assertFalse(chat.isFinalizado());
         assertEquals("Necesito precisar el dolor: del 0 al 10, cuanto te duele ahora y en que zona lo sentis?", resultado.respuesta().contenido());
         verify(repoChat).save(argThat(chatGuardado -> !chatGuardado.isFinalizado()));
     }
@@ -90,7 +94,7 @@ class ChatServiceTest {
 
         var resultado = chatService.enviarMensaje("1", "auth0|paciente", "Tengo fiebre de 39 grados desde ayer y dolor fuerte de cabeza.");
 
-        assertFalse(resultado.chat().finalizado());
+        assertFalse(chat.isFinalizado());
         assertEquals("Necesito precisar el dolor: del 0 al 10, cuanto te duele ahora y en que zona lo sentis?", resultado.respuesta().contenido());
         verify(repoChat).save(argThat(chatGuardado -> !chatGuardado.isFinalizado()));
     }
@@ -117,7 +121,7 @@ class ChatServiceTest {
         var resultado = chatService.enviarMensaje("1", "auth0|paciente",
                 "No tengo dolor de pecho ni me falta el aire. Me siento debil y tuve algo de temperatura, 37.8.");
 
-        assertFalse(resultado.chat().finalizado());
+        assertFalse(chat.isFinalizado());
         assertEquals("Para completar el pre-triage, respondeme puntualmente: enfermedades previas, alergias, medicacion y posibilidad de embarazo.", resultado.respuesta().contenido());
     }
     @Test
@@ -141,12 +145,13 @@ class ChatServiceTest {
         var resultado = chatService.enviarMensaje("1", "auth0|paciente",
                 "El dolor viene y va, ahora sera un 6 de 10. Caminar me molesta un poco.");
 
-        assertFalse(resultado.chat().finalizado());
+        assertFalse(chat.isFinalizado());
         assertEquals("Antes de cerrar necesito ese dato: alguna enfermedad previa, alergia, medicacion habitual o posibilidad de embarazo?", resultado.respuesta().contenido());
     }
     @Test
     void enviarMensajeNoMarcaAlarmasNegadasComoUrgentes() {
         Paciente paciente = new Paciente();
+        paciente.setId(10L);
         Chat chat = new Chat(paciente);
         chat.setId(1L);
         chat.agregarMensaje(new Mensaje("Hola. Voy a hacerte algunas preguntas breves para registrar tus sintomas.", AutorMensaje.BOT, null));
@@ -159,18 +164,19 @@ class ChatServiceTest {
         when(repoChat.save(any(Chat.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(chatClient.prompt().system(anyString()).user(anyString()).call().entity(eq(TriageAiResponse.class), any()))
                 .thenThrow(new RuntimeException("ollama down"));
+        when(atencionHospitalService.finalizarTriageEIngresarACola("auth0|paciente", NivelDeGravedad.URGENTE))
+                .thenReturn(new TiempoEstimadoAtencionResponse());
 
         var resultado = chatService.enviarMensaje("1", "auth0|paciente",
                 "No tengo dificultad para respirar, dolor de pecho, confusion, desmayos ni convulsiones. El dolor de cabeza es 7 de 10, en la frente. No tengo enfermedades previas, alergias ni medicacion habitual.");
 
-        assertNotNull(resultado.resultado());
-        assertFalse(resultado.resultado().requiereAtencionInmediata());
-        assertTrue(resultado.resultado().signosAlarma().isEmpty());
+        assertNotNull(resultado.atencionEstimada());
         verify(repoChat).save(argThat(Chat::isFinalizado));
     }
     @Test
     void enviarMensajeCuandoLaIaRepiteLaPreguntaCierraLaConversacion() {
         Paciente paciente = new Paciente();
+        paciente.setId(10L);
         Chat chat = new Chat(paciente);
         chat.setId(1L);
         chat.agregarMensaje(new Mensaje("Hola. Voy a hacerte algunas preguntas breves para registrar tus sintomas.", AutorMensaje.BOT, null));
@@ -181,13 +187,17 @@ class ChatServiceTest {
         when(repoChat.save(any(Chat.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(chatClient.prompt().system(anyString()).user(anyString()).call().entity(eq(TriageAiResponse.class), any()))
                 .thenReturn(new TriageAiResponse(false, "¿Cuál es el síntoma más agudo o molestia que estás experimentando?", null));
+        when(atencionHospitalService.finalizarTriageEIngresarACola("auth0|paciente", NivelDeGravedad.URGENTE))
+                .thenReturn(new TiempoEstimadoAtencionResponse());
 
         var resultado = chatService.enviarMensaje("1", "auth0|paciente", "Tengo dolor de cabeza desde ayer y fiebre de 39, sin dificultad para respirar ni dolor de pecho.");
 
-        assertTrue(resultado.chat().finalizado());
-        assertNotNull(resultado.resultado());
-        assertEquals("Gracias. Con lo informado, cierro la entrevista y dejo el resumen estructurado.", resultado.respuesta().contenido());
+        assertTrue(chat.isFinalizado());
+        assertNotNull(resultado.atencionEstimada());
+        assertEquals("Gracias. Ya registre tus respuestas.", resultado.respuesta().contenido());
         assertEquals(AutorMensaje.BOT.name(), resultado.respuesta().autor());
         verify(repoChat).save(argThat(Chat::isFinalizado));
     }
 }
+
+

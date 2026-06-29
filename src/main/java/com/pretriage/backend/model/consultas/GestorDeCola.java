@@ -72,6 +72,9 @@ public class GestorDeCola {
     }
 
     private int obtenerPrioridad(NivelDeGravedad nivel) {
+        if (nivel == null) {
+            return 2;
+        }
 
         return switch (nivel) {
             case RIESGO_VITAL_INMEDIATO -> 5;
@@ -83,12 +86,16 @@ public class GestorDeCola {
     }
 
     public void agregarConsultaMedicaALaCola(ConsultaMedica consultaMedica) {
-        this.consultasEnEspera.add(consultaMedica);
+        if (!this.consultasEnEspera.contains(consultaMedica)) {
+            this.consultasEnEspera.add(consultaMedica);
+        }
         reordenarColaPorPrioridad();
     }
 
     private void eliminarAtendidosDeLaCola(){
-        this.consultasEnEspera.removeIf(consultaMedica -> consultaMedica.getEstadoConsulta().equals(EstadoConsulta.PRETRIAGE_EN_PROCESO) ||
+        this.consultasEnEspera.removeIf(consultaMedica ->
                 consultaMedica.getEstadoConsulta().equals(EstadoConsulta.FINALIZADA));
     }
 }
+
+

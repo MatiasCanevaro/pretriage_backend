@@ -1,6 +1,5 @@
 package com.pretriage.backend.services;
 
-import com.pretriage.backend.controllers.dtos.CoordenadaRequest;
 import com.pretriage.backend.controllers.dtos.HospitalCercanoDTO;
 import com.pretriage.backend.controllers.dtos.googleMaps.*;
 import com.pretriage.backend.model.hospitales.Coordenada;
@@ -208,3 +207,4 @@ public class GooglePlacesService {
     }
 
 }
+
