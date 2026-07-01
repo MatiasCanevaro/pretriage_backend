@@ -98,7 +98,7 @@ public class CredencialService {
         ObraSocial obraSocial = obtenerOCrearObraSocial(
                 request.getNombreObraSocial());
 
-        verificarCredencialVigente(paciente);
+        //verificarCredencialVigente(paciente);
 
         Credencial credencial = new Credencial();
         credencial.setObraSocial(obraSocial);
