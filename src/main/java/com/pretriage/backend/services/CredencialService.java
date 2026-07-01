@@ -1,6 +1,7 @@
 package com.pretriage.backend.services;
 
 import com.pretriage.backend.controllers.dtos.CredencialRequest;
+import com.pretriage.backend.controllers.dtos.CredencialResponse;
 import com.pretriage.backend.exceptions.CredencialValidaYaExisteException;
 import com.pretriage.backend.model.hospitales.Credencial;
 import com.pretriage.backend.model.hospitales.ObraSocial;
@@ -13,6 +14,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -31,17 +33,27 @@ public class CredencialService {
 
         Paciente paciente = obtenerPaciente(auth0IdPaciente);
 
-        cargarCredencial(request,paciente);
+        cargarCredencial(request, paciente);
     }
 
+    public List<CredencialResponse> obtenerCredencialesPaciente(String auth0IdPaciente) {
+
+        Paciente paciente = obtenerPaciente(auth0IdPaciente);
+
+        return repoCredenciales
+                .findByPacienteId(paciente.getId())
+                .stream()
+                .map(this::mapearCredencialResponse)
+                .toList();
+    }
 
     public void cargarCredencialRecepcionista(String auth0IdRecepcionista, Long idPaciente, @Valid CredencialRequest request) {
 
         verificarSiEsRecepcionista(auth0IdRecepcionista);
 
-        Paciente paciente = pacienteService.obtenerPaciente(idPaciente);;
+        Paciente paciente = pacienteService.obtenerPaciente(idPaciente);
 
-        cargarCredencial(request,paciente);
+        cargarCredencial(request, paciente);
     }
 
     private Paciente obtenerPaciente(String auth0IdPaciente) {
@@ -110,4 +122,11 @@ public class CredencialService {
         repoCredenciales.save(credencial);
     }
 
+    private CredencialResponse mapearCredencialResponse(Credencial credencial) {
+
+        return new CredencialResponse(
+                credencial.getNumeroAfiliado(),
+                credencial.getPlan(),
+                credencial.getFechaVencimiento());
+    }
 }

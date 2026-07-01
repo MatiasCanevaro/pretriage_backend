@@ -1,6 +1,7 @@
 package com.pretriage.backend.services;
 
 import com.pretriage.backend.controllers.dtos.CredencialRequest;
+import com.pretriage.backend.controllers.dtos.CredencialResponse;
 import com.pretriage.backend.model.hospitales.Credencial;
 import com.pretriage.backend.model.hospitales.ObraSocial;
 import com.pretriage.backend.model.personas.Paciente;
@@ -14,8 +15,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -102,6 +105,43 @@ class CredencialServiceTest {
                 request);
 
         verify(repoCredenciales).save(any(Credencial.class));
+    }
+
+    @Test
+    void pacientePuedeObtenerSusCredenciales() {
+
+        UsuarioAuth usuario = new UsuarioAuth();
+        usuario.setId("auth0|paciente");
+
+        Paciente paciente = new Paciente();
+        paciente.setId(1L);
+        paciente.setUsuarioAuth(usuario);
+
+        ObraSocial obraSocial = new ObraSocial();
+        obraSocial.setId(2L);
+        obraSocial.setNombre("OSDE");
+
+        LocalDate fechaVencimiento = LocalDate.now().plusYears(1);
+
+        Credencial credencial = new Credencial();
+        credencial.setObraSocial(obraSocial);
+        credencial.setNumeroAfiliado("123456");
+        credencial.setPlan("210");
+        credencial.setFechaVencimiento(fechaVencimiento);
+        credencial.setPaciente(paciente);
+
+        when(pacienteService.obtenerPacienteConUsuarioAuthId("auth0|paciente"))
+                .thenReturn(Optional.of(paciente));
+
+        when(repoCredenciales.findByPacienteId(1L))
+                .thenReturn(List.of(credencial));
+
+        List<CredencialResponse> credenciales = service.obtenerCredencialesPaciente("auth0|paciente");
+
+        assertEquals(1, credenciales.size());
+        assertEquals("123456", credenciales.getFirst().getNumeroAfiliado());
+        assertEquals("210", credenciales.getFirst().getPlan());
+        assertEquals(fechaVencimiento, credenciales.getFirst().getFechaVencimiento());
     }
 
 }

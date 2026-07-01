@@ -1,6 +1,7 @@
 package com.pretriage.backend.controllers;
 
 import com.pretriage.backend.controllers.dtos.CredencialRequest;
+import com.pretriage.backend.controllers.dtos.CredencialResponse;
 import com.pretriage.backend.services.CredencialService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -9,6 +10,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -18,7 +20,15 @@ public class ObraSocialController {
 
     private final CredencialService credencialService;
 
-    @PostMapping("/obrasocial/credencial")
+    @GetMapping("/obrasocial/credenciales")
+    public ResponseEntity<List<CredencialResponse>> obtenerCredencialesPaciente(
+            @AuthenticationPrincipal Jwt jwt
+    ){
+        return ResponseEntity.ok(
+                credencialService.obtenerCredencialesPaciente(jwt.getSubject()));
+    }
+
+    @PostMapping("/obrasocial/credenciales")
     public ResponseEntity<Map<String, String>> cargarCredencialPaciente(
             @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody CredencialRequest request
