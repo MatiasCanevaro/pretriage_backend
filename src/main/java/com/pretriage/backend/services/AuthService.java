@@ -67,7 +67,7 @@ public class AuthService {
             String responseUserDetails = this.llamarApiToken(bodyRequest,
                     AUTH0_BASE_PATH+"/api/v2/users",
                     "Authorization",
-                    "Bearer: "+tokenParaCrearUsuario
+                    "Bearer "+tokenParaCrearUsuario
                     );
 
         AuthUserDetailsResponse userDetailsNuevo = objectMapper.readValue(responseUserDetails, AuthUserDetailsResponse.class);

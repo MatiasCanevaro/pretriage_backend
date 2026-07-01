@@ -2,6 +2,7 @@ package com.pretriage.backend.services;
 
 import com.pretriage.backend.controllers.dtos.TiempoEstimadoAtencionResponse;
 import com.pretriage.backend.exceptions.NoSePudoEstimarElHorarioDeAtencion;
+import com.pretriage.backend.exceptions.NoSePudoObtenerHospital;
 import com.pretriage.backend.model.consultas.ConsultaMedica;
 import com.pretriage.backend.model.consultas.EstadoConsulta;
 import com.pretriage.backend.model.consultas.GestorDeCola;
@@ -53,7 +54,12 @@ public class AtencionHospitalService {
 
         if(opHospital.isEmpty()){//evito llamar la api si ya lo tengo en la db dado que lo selecciono otro paciente
             hospital= googlePlacesService.obtenerHospitalDesdeGoogle(placeId);
-            repoHospitales.save(hospital);// solo guardo los seleccionados por los pacientes.
+
+            if(hospital == null){
+                throw new NoSePudoObtenerHospital();
+            }else{
+                repoHospitales.save(hospital);// solo guardo los seleccionados por los pacientes.
+            }
         } else {
             hospital = opHospital.get();
         }
@@ -121,6 +127,7 @@ public class AtencionHospitalService {
                 .orElseGet(()->{
                     GestorDeCola gestorDeColaNuevo = new GestorDeCola();
                     gestorDeColaNuevo.setHospital(hospital);
+                    gestorDeColaNuevo.agregarConsultaMedicaALaCola(consultaMedica);
                     repoGestorDeCola.save(gestorDeColaNuevo);
                     return gestorDeColaNuevo;
                 });

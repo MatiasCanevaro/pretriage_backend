@@ -79,6 +79,7 @@ public class GestorDeCola {
             case URGENTE -> 3;
             case NORMAL -> 2;
             case NO_URGENTE -> 1;
+            case null -> 0; //aun el bot no hizo el triage
         };
     }
 
