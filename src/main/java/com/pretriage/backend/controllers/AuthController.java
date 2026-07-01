@@ -25,11 +25,11 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class AuthController {
 
-    private AuthService authService;
+    private final AuthService authService;
 
-    private RepoRecepcionistas repoRecepcionistas;
-    private RepoMedico repoMedico;
-    private RepoPacientes repoPacientes;
+    private final RepoRecepcionistas repoRecepcionistas;
+    private final RepoMedico repoMedico;
+    private final RepoPacientes repoPacientes;
 
     @PostMapping("/register")
     public ResponseEntity<Map<String, String>> register(
@@ -53,9 +53,9 @@ public class AuthController {
     public ResponseEntity<Map<String, String>> login(
             @Valid @RequestBody LoginRequest request){
 
-        String JwtToken = authService.obtenerTokenParaLogearUsuario(request.getEmail(), request.getPassword());
+        String idToken = authService.obtenerTokenParaLogearUsuario(request.getEmail(), request.getPassword());
 
-        return ResponseEntity.ok(Map.of("token", JwtToken));
+        return ResponseEntity.ok(Map.of("token", idToken));
     }
 
     private UsuarioAuth crearUsuario(RegisterRequest request, String email, String auth0Id){

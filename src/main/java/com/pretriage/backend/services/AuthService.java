@@ -1,5 +1,6 @@
 package com.pretriage.backend.services;
 
+import com.pretriage.backend.controllers.dtos.auth0.AuthIdTokenResponse;
 import com.pretriage.backend.controllers.dtos.auth0.AuthTokenResponse;
 import com.pretriage.backend.controllers.dtos.auth0.AuthUserDetailsResponse;
 import com.pretriage.backend.exceptions.NoSePudoCrearUsuario;
@@ -84,10 +85,14 @@ public class AuthService {
                 CLIENT_ID_FIELD, AUTH0_APP_CLIENT_ID,
                 "realm", REALM_NAME
         );
-        return this.llamarApiToken(bodyTokenRequest,
+        String responseJson = this.llamarApiToken(bodyTokenRequest,
                 AUTH0_BASE_PATH+"/oauth/token",
                 CONTENT_TYPE_HEADER_FIELD,
                 CONTENT_TYPE_APPLICATION_JSON);
+
+        AuthIdTokenResponse response = objectMapper.readValue(responseJson, AuthIdTokenResponse.class);
+
+        return response.getIdToken();
     }
 
     private String obtenerTokenParaCrearUsuario() {

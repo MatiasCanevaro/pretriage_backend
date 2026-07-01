@@ -68,7 +68,7 @@ public class AuthServiceTest {
 
         String token = service.obtenerTokenParaLogearUsuario("someEmail@gmail.com", "somepass123");
 
-        assertEquals(bodyResponseApi, token);
+        assertEquals("fakeIdToken", token);
     }
 
     @Test
