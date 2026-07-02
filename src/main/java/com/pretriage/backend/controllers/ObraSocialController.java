@@ -51,4 +51,27 @@ public class ObraSocialController {
         return ResponseEntity.ok(Map.of("mensaje", "credencial cargada con éxito"));
     }
 
+    @DeleteMapping("/obrasocial/credenciales/{idCredencial}")
+    public ResponseEntity<Map<String, String>> eliminarCredencialPaciente(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable("idCredencial") Long idCredencial
+    ){
+
+        credencialService.eliminarCredencial(idCredencial, jwt.getSubject());
+
+        return ResponseEntity.ok(Map.of("mensaje", "credencial eliminada con éxito"));
+    }
+
+    @DeleteMapping("/pacientes/{idPaciente}/obrasocial/credenciales/{idCredencial}")
+    public ResponseEntity<Map<String, String>> eliminarCredencialRecepcionista(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable("idPaciente") Long idPaciente,
+            @PathVariable("idCredencial") Long idCredencial
+    ){
+
+        credencialService.eliminarCredencialRecepcionista(idCredencial, idPaciente, jwt.getSubject());
+
+        return ResponseEntity.ok(Map.of("mensaje", "credencial eliminada con éxito"));
+    }
+
 }

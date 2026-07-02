@@ -11,6 +11,8 @@ import java.time.LocalDate;
 @AllArgsConstructor
 public class CredencialResponse {
 
+    private Long id;
+
     private String numeroAfiliado;
 
     private String plan;

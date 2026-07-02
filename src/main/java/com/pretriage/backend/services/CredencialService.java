@@ -125,8 +125,45 @@ public class CredencialService {
     private CredencialResponse mapearCredencialResponse(Credencial credencial) {
 
         return new CredencialResponse(
+                credencial.getId(),
                 credencial.getNumeroAfiliado(),
                 credencial.getPlan(),
                 credencial.getFechaVencimiento());
+    }
+
+    @Transactional
+    public void eliminarCredencial(Long idCredencial, String auth0IdPaciente) {
+
+        Paciente paciente = obtenerPaciente(auth0IdPaciente);
+
+        Credencial credencial = repoCredenciales.findById(idCredencial)
+                .orElseThrow(() -> new AccessDeniedException(
+                        "No tiene permisos para eliminar la credencial"));
+
+        if(!credencial.getPaciente().getId().equals(paciente.getId())) {
+            throw new AccessDeniedException(
+                    "No tiene permisos para eliminar esta credencial");
+        }
+
+        repoCredenciales.deleteById(idCredencial);
+    }
+
+    @Transactional
+    public void eliminarCredencialRecepcionista(Long idCredencial, Long idPaciente, String auth0IdRecepcionista) {
+
+        verificarSiEsRecepcionista(auth0IdRecepcionista);
+
+        Paciente paciente = pacienteService.obtenerPaciente(idPaciente);
+
+        Credencial credencial = repoCredenciales.findById(idCredencial)
+                .orElseThrow(() -> new AccessDeniedException(
+                        "No tiene permisos para eliminar la credencial"));
+
+        if(!credencial.getPaciente().getId().equals(paciente.getId())) {
+            throw new AccessDeniedException(
+                    "No tiene permisos para eliminar esta credencial");
+        }
+
+        repoCredenciales.deleteById(idCredencial);
     }
 }
