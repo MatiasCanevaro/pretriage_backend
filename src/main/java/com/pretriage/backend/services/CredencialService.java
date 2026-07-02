@@ -3,6 +3,7 @@ package com.pretriage.backend.services;
 import com.pretriage.backend.controllers.dtos.CredencialRequest;
 import com.pretriage.backend.controllers.dtos.CredencialResponse;
 import com.pretriage.backend.exceptions.CredencialValidaYaExisteException;
+import com.pretriage.backend.mappers.MapperCredencial;
 import com.pretriage.backend.model.hospitales.Credencial;
 import com.pretriage.backend.model.hospitales.ObraSocial;
 import com.pretriage.backend.model.personas.Paciente;
@@ -43,7 +44,7 @@ public class CredencialService {
         return repoCredenciales
                 .findByPacienteId(paciente.getId())
                 .stream()
-                .map(this::mapearCredencialResponse)
+                .map(MapperCredencial::toDTOResponse)
                 .toList();
     }
 
@@ -87,30 +88,15 @@ public class CredencialService {
 
                     ObraSocial obraSocial = new ObraSocial();
                     obraSocial.setNombre(nombre);
-
-                    return repoObraSociales.save(obraSocial);
+                    repoObraSociales.save(obraSocial);
+                    return obraSocial;
                 });
-    }
-
-    private void verificarCredencialVigente(Paciente paciente) {
-
-        boolean existeCredencialVigente =
-                repoCredenciales
-                        .existsByPacienteIdAndFechaVencimientoGreaterThanEqual(
-                                paciente.getId(),
-                                LocalDate.now());
-
-        if(existeCredencialVigente){
-            throw new CredencialValidaYaExisteException();
-        }
     }
 
 
     private void cargarCredencial(CredencialRequest request, Paciente paciente){
         ObraSocial obraSocial = obtenerOCrearObraSocial(
                 request.getNombreObraSocial());
-
-        //verificarCredencialVigente(paciente);
 
         Credencial credencial = new Credencial();
         credencial.setObraSocial(obraSocial);
@@ -122,28 +108,13 @@ public class CredencialService {
         repoCredenciales.save(credencial);
     }
 
-    private CredencialResponse mapearCredencialResponse(Credencial credencial) {
-
-        return new CredencialResponse(
-                credencial.getId(),
-                credencial.getNumeroAfiliado(),
-                credencial.getPlan(),
-                credencial.getFechaVencimiento());
-    }
 
     @Transactional
     public void eliminarCredencial(Long idCredencial, String auth0IdPaciente) {
 
         Paciente paciente = obtenerPaciente(auth0IdPaciente);
 
-        Credencial credencial = repoCredenciales.findById(idCredencial)
-                .orElseThrow(() -> new AccessDeniedException(
-                        "No tiene permisos para eliminar la credencial"));
-
-        if(!credencial.getPaciente().getId().equals(paciente.getId())) {
-            throw new AccessDeniedException(
-                    "No tiene permisos para eliminar esta credencial");
-        }
+        this.obtenerCredencialYVerificarPermiso(paciente.getId(),idCredencial);
 
         repoCredenciales.deleteById(idCredencial);
     }
@@ -151,19 +122,84 @@ public class CredencialService {
     @Transactional
     public void eliminarCredencialRecepcionista(Long idCredencial, Long idPaciente, String auth0IdRecepcionista) {
 
+        this.obtenerCredencialYVerificarPermisoRecepcionista(auth0IdRecepcionista, idPaciente, idCredencial);
+
+        repoCredenciales.deleteById(idCredencial);
+    }
+
+    @Transactional
+    public void editarCredencialPaciente(
+            Long idCredencial, 
+            String auth0IdPaciente, 
+            CredencialRequest request
+    ) {
+
+        Paciente paciente = obtenerPaciente(auth0IdPaciente);
+
+        Credencial credencial = this.obtenerCredencialYVerificarPermiso(paciente.getId(),idCredencial);
+
+        ObraSocial obraSocial = obtenerOCrearObraSocial(
+                request.getNombreObraSocial());
+
+        credencial.setObraSocial(obraSocial);
+        credencial.setNumeroAfiliado(request.getNumeroAfiliado());
+        credencial.setPlan(request.getPlan());
+        credencial.setFechaVencimiento(request.getFechaVencimiento());
+
+        repoCredenciales.save(credencial);
+    }
+
+    @Transactional
+    public void editarCredencialRecepcionista(
+            Long idCredencial, 
+            Long idPaciente, 
+            String auth0IdRecepcionista, 
+            CredencialRequest request
+    ) {
+
+        Credencial credencial = this.obtenerCredencialYVerificarPermisoRecepcionista(auth0IdRecepcionista, idPaciente, idCredencial);
+
+        ObraSocial obraSocial = this.obtenerOCrearObraSocial(
+                request.getNombreObraSocial());
+
+        credencial.setObraSocial(obraSocial);
+        credencial.setNumeroAfiliado(request.getNumeroAfiliado());
+        credencial.setPlan(request.getPlan());
+        credencial.setFechaVencimiento(request.getFechaVencimiento());
+
+        repoCredenciales.save(credencial);
+    }
+
+    @Transactional
+    private Credencial obtenerCredencialYVerificarPermiso(Long idPaciente, Long idCredencial){
+
+        Credencial credencial = repoCredenciales.findById(idCredencial)
+                .orElseThrow(() -> new AccessDeniedException(
+                        "No tiene permisos para editar la credencial"));
+
+        if(!credencial.getPaciente().getId().equals(idPaciente)) {
+            throw new AccessDeniedException(
+                    "No tiene permisos para editar esta credencial");
+        }
+
+        return credencial;
+    }
+
+    @Transactional
+    private Credencial obtenerCredencialYVerificarPermisoRecepcionista(String auth0IdRecepcionista, Long idPaciente, Long idCredencial){
         verificarSiEsRecepcionista(auth0IdRecepcionista);
 
         Paciente paciente = pacienteService.obtenerPaciente(idPaciente);
 
         Credencial credencial = repoCredenciales.findById(idCredencial)
                 .orElseThrow(() -> new AccessDeniedException(
-                        "No tiene permisos para eliminar la credencial"));
+                        "No tiene permisos para editar la credencial"));
 
         if(!credencial.getPaciente().getId().equals(paciente.getId())) {
             throw new AccessDeniedException(
-                    "No tiene permisos para eliminar esta credencial");
+                    "No tiene permisos para editar esta credencial");
         }
 
-        repoCredenciales.deleteById(idCredencial);
+        return credencial;
     }
 }
