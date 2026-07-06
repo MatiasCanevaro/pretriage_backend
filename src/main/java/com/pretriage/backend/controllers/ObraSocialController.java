@@ -2,6 +2,8 @@ package com.pretriage.backend.controllers;
 
 import com.pretriage.backend.controllers.dtos.CredencialRequest;
 import com.pretriage.backend.controllers.dtos.CredencialResponse;
+import com.pretriage.backend.controllers.dtos.ObraSocialDTO;
+import com.pretriage.backend.model.hospitales.ObraSocial;
 import com.pretriage.backend.services.CredencialService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -97,6 +99,17 @@ public class ObraSocialController {
         credencialService.editarCredencialRecepcionista(idCredencial, idPaciente, jwt.getSubject(), request);
 
         return ResponseEntity.ok(Map.of("mensaje", "credencial actualizada con éxito"));
+    }
+
+    @PostMapping("/obrasocial")
+    public ResponseEntity<Map<String, String>> cargarObraSocialAdmin(
+            @AuthenticationPrincipal Jwt jwt,
+            @Valid @RequestBody ObraSocialDTO request
+    ){
+
+        credencialService.cargarObraSocialAdmin(jwt.getSubject(), request);
+
+        return ResponseEntity.ok(Map.of("mensaje", "obra social cargada con éxito"));
     }
 
 }

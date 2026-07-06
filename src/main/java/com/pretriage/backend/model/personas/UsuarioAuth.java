@@ -20,4 +20,5 @@ public class UsuarioAuth {
 
     private String correoElectronico;
 
+    private RolSistema rol;
 }

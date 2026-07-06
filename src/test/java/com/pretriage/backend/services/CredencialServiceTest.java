@@ -1,10 +1,14 @@
 package com.pretriage.backend.services;
 
+import com.github.tomakehurst.wiremock.core.Admin;
 import com.pretriage.backend.controllers.dtos.CredencialRequest;
 import com.pretriage.backend.controllers.dtos.CredencialResponse;
+import com.pretriage.backend.controllers.dtos.ObraSocialDTO;
+import com.pretriage.backend.exceptions.ObraSocialYaExisteException;
 import com.pretriage.backend.model.hospitales.Credencial;
 import com.pretriage.backend.model.hospitales.ObraSocial;
 import com.pretriage.backend.model.personas.Paciente;
+import com.pretriage.backend.model.personas.RolSistema;
 import com.pretriage.backend.model.personas.UsuarioAuth;
 import com.pretriage.backend.repositories.RepoCredenciales;
 import com.pretriage.backend.repositories.RepoObraSociales;
@@ -585,6 +589,76 @@ class CredencialServiceTest {
                 () -> service.editarCredencialRecepcionista(999L, 1L, recepcionistaAuth0Id, new CredencialRequest()),
                 "Debería lanzar AccessDeniedException al intentar editar credencial inexistente como recepcionista"
         );
+    }
+
+    @Test
+    void recepcionistaAdminPuedeCargarNuevasObrasSociales() {
+
+        String recepcionistaAuth0Id = "auth0|recepcionista";
+
+        ObraSocialDTO requestDto = new ObraSocialDTO();
+        String nombreObraSocial = "OSDE";
+        requestDto.setNombre(nombreObraSocial);
+
+        UsuarioAuth usuarioAuthRecepcionista = new UsuarioAuth();
+        usuarioAuthRecepcionista.setRol(RolSistema.ADMIN);
+        usuarioAuthRecepcionista.setId(recepcionistaAuth0Id);
+
+        when(recepcionistaService.obtenerUsuarioAuth(recepcionistaAuth0Id))
+                .thenReturn(usuarioAuthRecepcionista);
+
+        when(repoObraSociales.findByNombreEqualsIgnoreCase(nombreObraSocial))
+                .thenReturn(Optional.empty());
+
+        this.service.cargarObraSocialAdmin(recepcionistaAuth0Id, requestDto);
+
+        verify(repoObraSociales).save(any(ObraSocial.class));
+    }
+
+    @Test
+    void noEsrecepcionistaAdminNoPuedeCargarNuevasObrasSociales() {
+
+        String recepcionistaAuth0Id = "auth0|recepcionista";
+
+        ObraSocialDTO requestDto = new ObraSocialDTO();
+        String nombreObraSocial = "OSDE";
+        requestDto.setNombre(nombreObraSocial);
+
+        UsuarioAuth usuarioAuthRecepcionista = new UsuarioAuth();
+        usuarioAuthRecepcionista.setRol(RolSistema.USER);
+        usuarioAuthRecepcionista.setId(recepcionistaAuth0Id);
+
+        when(recepcionistaService.obtenerUsuarioAuth(recepcionistaAuth0Id))
+                .thenReturn(usuarioAuthRecepcionista);
+
+        assertThrows(AccessDeniedException.class,
+                () -> this.service.cargarObraSocialAdmin(recepcionistaAuth0Id, requestDto));
+    }
+
+    @Test
+    void recepcionistaAdminNoPuedeCargarNuevasObrasSocialesSiYaExiste() {
+
+        String recepcionistaAuth0Id = "auth0|recepcionista";
+
+        ObraSocialDTO requestDto = new ObraSocialDTO();
+        String nombreObraSocial = "OSDE";
+        requestDto.setNombre(nombreObraSocial);
+
+        UsuarioAuth usuarioAuthRecepcionista = new UsuarioAuth();
+        usuarioAuthRecepcionista.setRol(RolSistema.ADMIN);
+        usuarioAuthRecepcionista.setId(recepcionistaAuth0Id);
+
+        when(recepcionistaService.obtenerUsuarioAuth(recepcionistaAuth0Id))
+                .thenReturn(usuarioAuthRecepcionista);
+
+        ObraSocial obraSocial = new ObraSocial();
+        obraSocial.setNombre(nombreObraSocial);
+
+        when(repoObraSociales.findByNombreEqualsIgnoreCase(nombreObraSocial))
+                .thenReturn(Optional.of(obraSocial));
+
+        assertThrows(ObraSocialYaExisteException.class,
+                () -> this.service.cargarObraSocialAdmin(recepcionistaAuth0Id, requestDto));
     }
 
 }

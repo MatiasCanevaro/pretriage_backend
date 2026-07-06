@@ -2,12 +2,15 @@ package com.pretriage.backend.services;
 
 import com.pretriage.backend.controllers.dtos.CredencialRequest;
 import com.pretriage.backend.controllers.dtos.CredencialResponse;
-import com.pretriage.backend.exceptions.CredencialValidaYaExisteException;
+import com.pretriage.backend.controllers.dtos.ObraSocialDTO;
 import com.pretriage.backend.exceptions.ObraSocialNoExisteException;
+import com.pretriage.backend.exceptions.ObraSocialYaExisteException;
 import com.pretriage.backend.mappers.MapperCredencial;
 import com.pretriage.backend.model.hospitales.Credencial;
 import com.pretriage.backend.model.hospitales.ObraSocial;
 import com.pretriage.backend.model.personas.Paciente;
+import com.pretriage.backend.model.personas.RolSistema;
+import com.pretriage.backend.model.personas.UsuarioAuth;
 import com.pretriage.backend.repositories.*;
 import jakarta.transaction.Transactional;
 import jakarta.validation.Valid;
@@ -164,6 +167,18 @@ public class CredencialService {
         repoCredenciales.save(credencial);
     }
 
+    public void cargarObraSocialAdmin(String auth0id, ObraSocialDTO request){
+        this.verificarSiEsAdmin(auth0id);
+
+        if(this.repoObraSociales.findByNombreEqualsIgnoreCase(request.getNombre()).isPresent()){
+            throw new ObraSocialYaExisteException();
+        } else {
+            ObraSocial obraSocial = new ObraSocial();
+            obraSocial.setNombre(request.getNombre());
+            repoObraSociales.save(obraSocial);
+        }
+    }
+
     @Transactional
     private Credencial obtenerCredencialYVerificarPermiso(Long idPaciente, Long idCredencial){
 
@@ -195,5 +210,14 @@ public class CredencialService {
         }
 
         return credencial;
+    }
+
+    private void verificarSiEsAdmin(String auth0Id){ // asumo que los admins son recepcionistas
+        UsuarioAuth recepcionistaUser = recepcionistaService
+                .obtenerUsuarioAuth(auth0Id);
+        if(!recepcionistaUser.getRol().equals(RolSistema.ADMIN)){
+            throw new AccessDeniedException(
+                    "No tiene permisos para cargar la credencial");
+        }
     }
 }
