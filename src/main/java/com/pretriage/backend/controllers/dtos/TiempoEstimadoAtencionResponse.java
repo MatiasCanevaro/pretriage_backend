@@ -9,7 +9,9 @@ import java.time.LocalDateTime;
 @Setter
 public class TiempoEstimadoAtencionResponse {
 
-    private LocalDateTime fechaHoraAtencionEstimada;
+    private LocalDateTime fechaHoraAtencionEstimadaDesde;
+    private LocalDateTime fechaHoraAtencionEstimadaHasta;
+
 
 
 }

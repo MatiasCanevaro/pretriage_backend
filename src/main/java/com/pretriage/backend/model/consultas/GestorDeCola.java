@@ -40,20 +40,24 @@ public class GestorDeCola {
     }
 
 
-    public Optional<LocalDateTime> calcularTiempoDeAtencionPara(ConsultaMedica consultaMedica) {
+    public List<LocalDateTime> calcularTiempoDeAtencionPara(ConsultaMedica consultaMedica) {
 
         reordenarColaPorPrioridad();
 
         int posicion = consultasEnEspera.indexOf(consultaMedica);
 
         if (posicion == -1) {
-            return Optional.empty();
+            return List.of(); //empty list
         }
 
-        return Optional.of(
-                LocalDateTime.now()
-                        .plusSeconds(posicion * TIEMPO_ESTIMADO_DE_ATENCION_TRIAGE)// asumiendo que las cosultas son siempre a futuro
-        );
+        LocalDateTime tiempoEstimado = LocalDateTime.now()
+                .plusSeconds(posicion * TIEMPO_ESTIMADO_DE_ATENCION_TRIAGE);// asumiendo que las cosultas son siempre a futuro
+
+        List<LocalDateTime> rangoDeTiempoEstimadoDeAtencion = new ArrayList<>();
+        rangoDeTiempoEstimadoDeAtencion.add(tiempoEstimado.minusMinutes(10));
+        rangoDeTiempoEstimadoDeAtencion.add(tiempoEstimado.plusMinutes(10));
+
+        return rangoDeTiempoEstimadoDeAtencion;
     }
 
     private void reordenarColaPorPrioridad() {
@@ -89,7 +93,7 @@ public class GestorDeCola {
     }
 
     private void eliminarAtendidosDeLaCola(){
-        this.consultasEnEspera.removeIf(consultaMedica -> consultaMedica.getEstadoConsulta().equals(EstadoConsulta.PRETRIAGE_EN_PROCESO) ||
+        this.consultasEnEspera.removeIf(consultaMedica -> consultaMedica.getEstadoConsulta().equals(EstadoConsulta.PACIENTE_NO_ASISTIO) ||
                 consultaMedica.getEstadoConsulta().equals(EstadoConsulta.FINALIZADA));
     }
 }

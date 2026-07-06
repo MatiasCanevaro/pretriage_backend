@@ -19,6 +19,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.access.AccessDeniedException;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 
@@ -156,8 +157,11 @@ public class AtencionHospitalServiceTest {
 
         GestorDeCola gestorDeCola = mock(GestorDeCola.class);
 
-        LocalDateTime fechaEsperada =
+        LocalDateTime fechaEsperadaDesde =
                 LocalDateTime.of(2026, 6, 20, 15, 30);
+
+        LocalDateTime fechaEsperadaHasta =
+                LocalDateTime.of(2026, 6, 20, 15, 40);
 
         when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id))
                 .thenReturn(Optional.of(paciente));
@@ -171,14 +175,19 @@ public class AtencionHospitalServiceTest {
                 .thenReturn(Optional.of(gestorDeCola));
 
         when(gestorDeCola.calcularTiempoDeAtencionPara(consulta))
-                .thenReturn(Optional.of(fechaEsperada));
+                .thenReturn(List.of(fechaEsperadaDesde, fechaEsperadaHasta));
 
         TiempoEstimadoAtencionResponse response =
                 service.obtenerTiempoEstimadoDeAtencion(auth0Id);
 
         assertEquals(
-                fechaEsperada,
-                response.getFechaHoraAtencionEstimada()
+                fechaEsperadaDesde,
+                response.getFechaHoraAtencionEstimadaDesde()
+        );
+
+        assertEquals(
+                fechaEsperadaHasta,
+                response.getFechaHoraAtencionEstimadaHasta()
         );
     }
 
@@ -248,7 +257,7 @@ public class AtencionHospitalServiceTest {
                 .thenReturn(Optional.of(gestorDeCola));
 
         when(gestorDeCola.calcularTiempoDeAtencionPara(consulta))
-                .thenReturn(Optional.empty());
+                .thenReturn(List.of());
 
         assertThrows(
                 NoSePudoEstimarElHorarioDeAtencion.class,

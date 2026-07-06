@@ -17,6 +17,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 
@@ -88,15 +89,15 @@ public class AtencionHospitalService {
 
         GestorDeCola gestorDeCola= this.obtenerOCrearColaDeConsulta(consultaMedica);
 
-        Optional<LocalDateTime> opTiempoEstimadoDeAtencion = gestorDeCola.calcularTiempoDeAtencionPara(consultaMedica);
+        List<LocalDateTime> rangoTiempoEstimadoAtencion = gestorDeCola.calcularTiempoDeAtencionPara(consultaMedica);
 
-        if(opTiempoEstimadoDeAtencion.isEmpty()){
+        if(rangoTiempoEstimadoAtencion.isEmpty()){
             throw new NoSePudoEstimarElHorarioDeAtencion();
         }
-        LocalDateTime tiempoEstimadoDeAtencion = opTiempoEstimadoDeAtencion.get();
 
         TiempoEstimadoAtencionResponse response = new TiempoEstimadoAtencionResponse();
-        response.setFechaHoraAtencionEstimada(tiempoEstimadoDeAtencion);
+        response.setFechaHoraAtencionEstimadaDesde(rangoTiempoEstimadoAtencion.getFirst());
+        response.setFechaHoraAtencionEstimadaHasta(rangoTiempoEstimadoAtencion.getLast());
 
         return response;
     }
