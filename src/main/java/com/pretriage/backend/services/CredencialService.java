@@ -83,16 +83,16 @@ public class CredencialService {
         }
     }
 
-    private ObraSocial obtenerOCrearObraSocial(String nombre) {
+    private ObraSocial obtenerObraSocial(String nombre) {
 
         return repoObraSociales
-                .findByNombreEqualsIgnoreCase(nombre)
+                .findByNombreEqualsIgnoreCaseAndVirgenteTrue(nombre)
                 .orElseThrow(ObraSocialNoExisteException::new);
     }
 
 
     private void cargarCredencial(CredencialRequest request, Paciente paciente){
-        ObraSocial obraSocial = obtenerOCrearObraSocial(
+        ObraSocial obraSocial = obtenerObraSocial(
                 request.getNombreObraSocial());
 
         Credencial credencial = new Credencial();
@@ -135,7 +135,7 @@ public class CredencialService {
 
         Credencial credencial = this.obtenerCredencialYVerificarPermiso(paciente.getId(),idCredencial);
 
-        ObraSocial obraSocial = obtenerOCrearObraSocial(
+        ObraSocial obraSocial = obtenerObraSocial(
                 request.getNombreObraSocial());
 
         credencial.setObraSocial(obraSocial);
@@ -156,7 +156,7 @@ public class CredencialService {
 
         Credencial credencial = this.obtenerCredencialYVerificarPermisoRecepcionista(auth0IdRecepcionista, idPaciente, idCredencial);
 
-        ObraSocial obraSocial = this.obtenerOCrearObraSocial(
+        ObraSocial obraSocial = this.obtenerObraSocial(
                 request.getNombreObraSocial());
 
         credencial.setObraSocial(obraSocial);
@@ -167,16 +167,26 @@ public class CredencialService {
         repoCredenciales.save(credencial);
     }
 
-    public void cargarObraSocialAdmin(String auth0id, ObraSocialDTO request){
+    public ObraSocial cargarObraSocialAdmin(String auth0id, ObraSocialDTO request){
         this.verificarSiEsAdmin(auth0id);
 
-        if(this.repoObraSociales.findByNombreEqualsIgnoreCase(request.getNombre()).isPresent()){
+        if(this.repoObraSociales.findByNombreEqualsIgnoreCaseAndVirgenteTrue(request.getNombre()).isPresent()){
             throw new ObraSocialYaExisteException();
         } else {
             ObraSocial obraSocial = new ObraSocial();
             obraSocial.setNombre(request.getNombre());
-            repoObraSociales.save(obraSocial);
+           return repoObraSociales.save(obraSocial);
         }
+    }
+
+    public void eliminarObraSocial(String auth0Id, Long idObraSocial){
+        this.verificarSiEsAdmin(auth0Id);
+
+        ObraSocial obraSocial = repoObraSociales.findById(idObraSocial)
+                .orElseThrow(ObraSocialNoExisteException::new);
+
+        obraSocial.setVirgente(false); //borrado lógico
+        repoObraSociales.save(obraSocial);
     }
 
     @Transactional

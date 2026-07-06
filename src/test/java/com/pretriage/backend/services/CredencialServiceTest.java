@@ -4,6 +4,7 @@ import com.github.tomakehurst.wiremock.core.Admin;
 import com.pretriage.backend.controllers.dtos.CredencialRequest;
 import com.pretriage.backend.controllers.dtos.CredencialResponse;
 import com.pretriage.backend.controllers.dtos.ObraSocialDTO;
+import com.pretriage.backend.exceptions.ObraSocialNoExisteException;
 import com.pretriage.backend.exceptions.ObraSocialYaExisteException;
 import com.pretriage.backend.model.hospitales.Credencial;
 import com.pretriage.backend.model.hospitales.ObraSocial;
@@ -23,8 +24,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -73,7 +73,7 @@ class CredencialServiceTest {
         when(pacienteService.obtenerPacienteConUsuarioAuthId("auth0|paciente"))
                 .thenReturn(Optional.of(paciente));
 
-        when(repoObraSociales.findByNombreEqualsIgnoreCase(nombreObraSocial))
+        when(repoObraSociales.findByNombreEqualsIgnoreCaseAndVirgenteTrue(nombreObraSocial))
                 .thenReturn(Optional.of(obraSocial));
 
         service.cargarCredencialPaciente(
@@ -110,7 +110,7 @@ class CredencialServiceTest {
         when(pacienteService.obtenerPacienteConUsuarioAuthId("auth0|paciente"))
                 .thenReturn(Optional.of(paciente));
 
-        when(repoObraSociales.findByNombreEqualsIgnoreCase("OSDE"))
+        when(repoObraSociales.findByNombreEqualsIgnoreCaseAndVirgenteTrue("OSDE"))
                 .thenReturn(Optional.of(obraSocial));
 
         service.cargarCredencialPaciente(
@@ -385,7 +385,7 @@ class CredencialServiceTest {
         when(repoCredenciales.findById(1L))
                 .thenReturn(Optional.of(credencial));
 
-        when(repoObraSociales.findByNombreEqualsIgnoreCase(nombreObraSocial))
+        when(repoObraSociales.findByNombreEqualsIgnoreCaseAndVirgenteTrue(nombreObraSocial))
                 .thenReturn(Optional.of(obraSocial));
 
         service.editarCredencialPaciente(1L, auth0IdPaciente, request);
@@ -472,7 +472,7 @@ class CredencialServiceTest {
         when(repoCredenciales.findById(1L))
                 .thenReturn(Optional.of(credencial));
 
-        when(repoObraSociales.findByNombreEqualsIgnoreCase(nombreObraSocial))
+        when(repoObraSociales.findByNombreEqualsIgnoreCaseAndVirgenteTrue(nombreObraSocial))
                 .thenReturn(Optional.of(obraSocial));
 
         service.editarCredencialRecepcionista(1L, 1L, recepcionistaAuth0Id, request);
@@ -607,7 +607,7 @@ class CredencialServiceTest {
         when(recepcionistaService.obtenerUsuarioAuth(recepcionistaAuth0Id))
                 .thenReturn(usuarioAuthRecepcionista);
 
-        when(repoObraSociales.findByNombreEqualsIgnoreCase(nombreObraSocial))
+        when(repoObraSociales.findByNombreEqualsIgnoreCaseAndVirgenteTrue(nombreObraSocial))
                 .thenReturn(Optional.empty());
 
         this.service.cargarObraSocialAdmin(recepcionistaAuth0Id, requestDto);
@@ -654,11 +654,78 @@ class CredencialServiceTest {
         ObraSocial obraSocial = new ObraSocial();
         obraSocial.setNombre(nombreObraSocial);
 
-        when(repoObraSociales.findByNombreEqualsIgnoreCase(nombreObraSocial))
+        when(repoObraSociales.findByNombreEqualsIgnoreCaseAndVirgenteTrue(nombreObraSocial))
                 .thenReturn(Optional.of(obraSocial));
 
         assertThrows(ObraSocialYaExisteException.class,
                 () -> this.service.cargarObraSocialAdmin(recepcionistaAuth0Id, requestDto));
+    }
+
+
+    @Test
+    void recepcionistaAdminPuedeEliminarObrasSociales() {
+
+        String recepcionistaAuth0Id = "auth0|recepcionista";
+
+        String nombreObraSocial = "OSDE";
+
+        ObraSocial obraSocial = new ObraSocial();
+        obraSocial.setNombre(nombreObraSocial);
+
+        UsuarioAuth usuarioAuthRecepcionista = new UsuarioAuth();
+        usuarioAuthRecepcionista.setRol(RolSistema.ADMIN);
+        usuarioAuthRecepcionista.setId(recepcionistaAuth0Id);
+
+        when(recepcionistaService.obtenerUsuarioAuth(recepcionistaAuth0Id))
+                .thenReturn(usuarioAuthRecepcionista);
+
+        when(repoObraSociales.findById(1L))
+                .thenReturn(Optional.of(obraSocial));
+
+        this.service.eliminarObraSocial(recepcionistaAuth0Id, 1L);
+
+        verify(repoObraSociales).save(any(ObraSocial.class)); //borrado lógico
+        assertFalse(obraSocial.isVirgente());
+    }
+
+
+    @Test
+    void recepcionistaAdminNoPuedeEliminarObrasSocialesSiNoExisten() {
+
+        String recepcionistaAuth0Id = "auth0|recepcionista";
+
+
+        UsuarioAuth usuarioAuthRecepcionista = new UsuarioAuth();
+        usuarioAuthRecepcionista.setRol(RolSistema.ADMIN);
+        usuarioAuthRecepcionista.setId(recepcionistaAuth0Id);
+
+        when(recepcionistaService.obtenerUsuarioAuth(recepcionistaAuth0Id))
+                .thenReturn(usuarioAuthRecepcionista);
+
+        when(repoObraSociales.findById(2L))
+                .thenReturn(Optional.empty());
+
+        assertThrows(ObraSocialNoExisteException.class,
+                ()-> this.service.eliminarObraSocial(recepcionistaAuth0Id, 2L));
+
+    }
+
+    @Test
+    void noEsrecepcionistaAdminNoPuedeEliminarObrasSociales() {
+
+        String recepcionistaAuth0Id = "auth0|recepcionista";
+
+        UsuarioAuth usuarioAuthRecepcionista = new UsuarioAuth();
+        usuarioAuthRecepcionista.setRol(RolSistema.USER);
+        usuarioAuthRecepcionista.setId(recepcionistaAuth0Id);
+
+        when(recepcionistaService.obtenerUsuarioAuth(recepcionistaAuth0Id))
+                .thenReturn(usuarioAuthRecepcionista);
+
+
+        assertThrows(AccessDeniedException.class,
+                ()-> this.service.eliminarObraSocial(recepcionistaAuth0Id, 1L));
+
     }
 
 }

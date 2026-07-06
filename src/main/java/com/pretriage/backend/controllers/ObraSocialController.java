@@ -101,15 +101,28 @@ public class ObraSocialController {
         return ResponseEntity.ok(Map.of("mensaje", "credencial actualizada con éxito"));
     }
 
+    //obras sociales admin
+
     @PostMapping("/obrasocial")
-    public ResponseEntity<Map<String, String>> cargarObraSocialAdmin(
+    public ResponseEntity<ObraSocial> cargarObraSocialAdmin(
             @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody ObraSocialDTO request
     ){
 
-        credencialService.cargarObraSocialAdmin(jwt.getSubject(), request);
+        ObraSocial obraSocial = credencialService.cargarObraSocialAdmin(jwt.getSubject(), request);
 
-        return ResponseEntity.ok(Map.of("mensaje", "obra social cargada con éxito"));
+        return ResponseEntity.ok(obraSocial);
+    }
+
+    @DeleteMapping("/obrasocial/{idObraSocial}")
+    public ResponseEntity<Map<String, String>> eliminarObraSocialAdmin(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable("idObraSocial") Long idObraSocial
+    ){
+
+        credencialService.eliminarObraSocial(jwt.getSubject(), idObraSocial);
+
+        return ResponseEntity.ok(Map.of("mensaje", "obra social eliminada con éxito"));
     }
 
 }
