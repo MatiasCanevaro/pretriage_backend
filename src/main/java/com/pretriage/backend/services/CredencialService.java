@@ -3,6 +3,7 @@ package com.pretriage.backend.services;
 import com.pretriage.backend.controllers.dtos.CredencialRequest;
 import com.pretriage.backend.controllers.dtos.CredencialResponse;
 import com.pretriage.backend.exceptions.CredencialValidaYaExisteException;
+import com.pretriage.backend.exceptions.ObraSocialNoExisteException;
 import com.pretriage.backend.mappers.MapperCredencial;
 import com.pretriage.backend.model.hospitales.Credencial;
 import com.pretriage.backend.model.hospitales.ObraSocial;
@@ -14,7 +15,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -32,9 +32,9 @@ public class CredencialService {
             String auth0IdPaciente,
             CredencialRequest request) {
 
-        Paciente paciente = obtenerPaciente(auth0IdPaciente);
+        Paciente paciente = this.obtenerPaciente(auth0IdPaciente);
 
-        cargarCredencial(request, paciente);
+        this.cargarCredencial(request, paciente);
     }
 
     public List<CredencialResponse> obtenerCredencialesPaciente(String auth0IdPaciente) {
@@ -84,13 +84,7 @@ public class CredencialService {
 
         return repoObraSociales
                 .findByNombreEqualsIgnoreCase(nombre)
-                .orElseGet(() -> {
-
-                    ObraSocial obraSocial = new ObraSocial();
-                    obraSocial.setNombre(nombre);
-                    repoObraSociales.save(obraSocial);
-                    return obraSocial;
-                });
+                .orElseThrow(ObraSocialNoExisteException::new);
     }
 
 

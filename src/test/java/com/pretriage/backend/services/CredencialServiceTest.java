@@ -53,17 +53,24 @@ class CredencialServiceTest {
         paciente.setUsuarioAuth(usuario);
         paciente.setId(1L);
 
+        ObraSocial obraSocial = new ObraSocial();
+        obraSocial.setId(2L);
+        String nombreObraSocial = "OSDE";
+        String numeroAfiliado = "123456" ;
+        String plan = "210";
+        obraSocial.setNombre(nombreObraSocial);
+
         CredencialRequest request = new CredencialRequest();
-        request.setNombreObraSocial("OSDE");
-        request.setNumeroAfiliado("123456");
-        request.setPlan("210");
+        request.setNombreObraSocial(nombreObraSocial);
+        request.setNumeroAfiliado(numeroAfiliado);
+        request.setPlan(plan);
         request.setFechaVencimiento(LocalDate.now().plusYears(1));
 
         when(pacienteService.obtenerPacienteConUsuarioAuthId("auth0|paciente"))
                 .thenReturn(Optional.of(paciente));
 
-        when(repoObraSociales.findByNombreEqualsIgnoreCase("OSDE"))
-                .thenReturn(Optional.empty());
+        when(repoObraSociales.findByNombreEqualsIgnoreCase(nombreObraSocial))
+                .thenReturn(Optional.of(obraSocial));
 
         service.cargarCredencialPaciente(
                 "auth0|paciente",
@@ -355,10 +362,17 @@ class CredencialServiceTest {
         credencial.setId(1L);
         credencial.setPaciente(paciente);
 
+        ObraSocial obraSocial = new ObraSocial();
+        obraSocial.setId(2L);
+        String nombreObraSocial = "OSDE";
+        String numeroAfiliado = "654321" ;
+        String plan = "321";
+        obraSocial.setNombre(nombreObraSocial);
+
         CredencialRequest request = new CredencialRequest();
-        request.setNombreObraSocial("OSDE NUEVO");
-        request.setNumeroAfiliado("654321");
-        request.setPlan("321");
+        request.setNombreObraSocial(nombreObraSocial);
+        request.setNumeroAfiliado(numeroAfiliado);
+        request.setPlan(plan);
         request.setFechaVencimiento(LocalDate.now().plusYears(2));
 
         when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0IdPaciente))
@@ -367,14 +381,14 @@ class CredencialServiceTest {
         when(repoCredenciales.findById(1L))
                 .thenReturn(Optional.of(credencial));
 
-        when(repoObraSociales.findByNombreEqualsIgnoreCase("OSDE NUEVO"))
-                .thenReturn(Optional.empty());
+        when(repoObraSociales.findByNombreEqualsIgnoreCase(nombreObraSocial))
+                .thenReturn(Optional.of(obraSocial));
 
         service.editarCredencialPaciente(1L, auth0IdPaciente, request);
 
-        assertEquals("OSDE NUEVO", credencial.getObraSocial().getNombre());
-        assertEquals("654321", credencial.getNumeroAfiliado());
-        assertEquals("321", credencial.getPlan());
+        assertEquals(nombreObraSocial, credencial.getObraSocial().getNombre());
+        assertEquals(numeroAfiliado, credencial.getNumeroAfiliado());
+        assertEquals(plan, credencial.getPlan());
         assertEquals(LocalDate.now().plusYears(2), credencial.getFechaVencimiento());
         verify(repoCredenciales).save(credencial);
     }
@@ -432,10 +446,17 @@ class CredencialServiceTest {
         credencial.setId(1L);
         credencial.setPaciente(paciente);
 
+        ObraSocial obraSocial = new ObraSocial();
+        obraSocial.setId(2L);
+        String nombreObraSocial = "OSDE EDITADO";
+        String numeroAfiliado = "999888" ;
+        String plan = "777";
+        obraSocial.setNombre(nombreObraSocial);
+
         CredencialRequest request = new CredencialRequest();
-        request.setNombreObraSocial("OSDE EDITADO");
-        request.setNumeroAfiliado("999888");
-        request.setPlan("777");
+        request.setNombreObraSocial(nombreObraSocial);
+        request.setNumeroAfiliado(numeroAfiliado);
+        request.setPlan(plan);
         request.setFechaVencimiento(LocalDate.now().plusYears(1));
 
         when(recepcionistaService.esRecepcionistaConUsuarioId(recepcionistaAuth0Id))
@@ -447,14 +468,14 @@ class CredencialServiceTest {
         when(repoCredenciales.findById(1L))
                 .thenReturn(Optional.of(credencial));
 
-        when(repoObraSociales.findByNombreEqualsIgnoreCase("OSDE EDITADO"))
-                .thenReturn(Optional.empty());
+        when(repoObraSociales.findByNombreEqualsIgnoreCase(nombreObraSocial))
+                .thenReturn(Optional.of(obraSocial));
 
         service.editarCredencialRecepcionista(1L, 1L, recepcionistaAuth0Id, request);
 
-        assertEquals("OSDE EDITADO", credencial.getObraSocial().getNombre());
-        assertEquals("999888", credencial.getNumeroAfiliado());
-        assertEquals("777", credencial.getPlan());
+        assertEquals(nombreObraSocial, credencial.getObraSocial().getNombre());
+        assertEquals(numeroAfiliado, credencial.getNumeroAfiliado());
+        assertEquals(plan, credencial.getPlan());
         verify(repoCredenciales).save(credencial);
     }
 
