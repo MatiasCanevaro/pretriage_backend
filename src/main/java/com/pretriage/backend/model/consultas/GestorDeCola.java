@@ -62,7 +62,7 @@ public class GestorDeCola {
 
     private void reordenarColaPorPrioridad() {
 
-        this.eliminarAtendidosDeLaCola();
+        this.eliminarAtendidosDeLaCola();//TODO HACER QUE SE ELIMINE CUANDO EL MEDICO INDICA QUE YA LO ATENDIO
 
         this.consultasEnEspera.sort(
                 Comparator
