@@ -30,6 +30,7 @@ public class GestorDeCola {
     @JoinColumn(name = "id_gestor_de_cola", referencedColumnName = "id")
     private List<ConsultaMedica> consultasEnEspera;
 
+    @Transient
     @Value("${tiempo.estimado.atencion-triage.segundos}")
     private long TIEMPO_ESTIMADO_DE_ATENCION_TRIAGE; //en segundos
 
@@ -90,6 +91,11 @@ public class GestorDeCola {
     public void agregarConsultaMedicaALaCola(ConsultaMedica consultaMedica) {
         this.consultasEnEspera.add(consultaMedica);
         reordenarColaPorPrioridad();
+    }
+
+    @Transactional
+    public void sacarConsultaMedicaDeLaCola(ConsultaMedica consultaMedica){
+        this.consultasEnEspera.removeIf(consultaEnEspera -> consultaEnEspera.getId().equals(consultaMedica.getId()));
     }
 
     private void eliminarAtendidosDeLaCola(){

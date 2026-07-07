@@ -37,16 +37,20 @@ public class AtencionHospitalService {
             String placeId) {
 
         Paciente paciente = this.obtenerPaciente(auth0Id);
+        Long pacienteId = paciente.getId();
 
-        ConsultaMedica consultaMedica =
-                repoConsultasMedicas.findByPacienteIdAndEstadoConsultaEquals(paciente.getId(), EstadoConsulta.PENDIENTE)
-                        .orElseGet(()-> {
-                            ConsultaMedica consultaMedicaNueva = new ConsultaMedica();
-                            consultaMedicaNueva.setPaciente(paciente);
-                            consultaMedicaNueva.setEstadoConsulta(EstadoConsulta.HOSPITAL_SELECCIONADO);
-                            consultaMedicaNueva.setFechaHoraCreacion(LocalDateTime.now());
-                            return consultaMedicaNueva;
-                        });
+        Optional<ConsultaMedica> opConsultaMedica =
+                repoConsultasMedicas.findByPacienteIdAndEstadoConsultaEquals(pacienteId, EstadoConsulta.PENDIENTE);
+
+        ConsultaMedica consultaMedica;
+        consultaMedica = opConsultaMedica.orElseGet(
+                () -> repoConsultasMedicas.findByPacienteIdAndEstadoConsultaEquals(pacienteId, EstadoConsulta.HOSPITAL_SELECCIONADO)
+                .orElseGet(() -> {
+                    ConsultaMedica consultaMedicaNueva = new ConsultaMedica();
+                    consultaMedicaNueva.setPaciente(paciente);
+                    consultaMedicaNueva.setEstadoConsulta(EstadoConsulta.PENDIENTE);
+                    return consultaMedicaNueva;
+                }));
 
 
         Optional<Hospital> opHospital = repoHospitales.findByPlaceId(placeId);
@@ -63,7 +67,9 @@ public class AtencionHospitalService {
         } else {
             hospital = opHospital.get();
         }
-
+        if(consultaMedica.getEstadoConsulta().equals(EstadoConsulta.HOSPITAL_SELECCIONADO)){//si se quiere cambiar el hospital seleccionado
+            this.sacarDeLaColaDelHospital(consultaMedica); //lo saco de la cola anterior
+        }
         consultaMedica.setHospital(hospital);
 
         consultaMedica.setEstadoConsulta(
@@ -135,5 +141,13 @@ public class AtencionHospitalService {
                     repoGestorDeCola.save(gestorDeColaNuevo);
                     return gestorDeColaNuevo;
                 });
+    }
+
+    @Transactional
+    private void sacarDeLaColaDelHospital(ConsultaMedica consultaMedica){
+        GestorDeCola gestorDeCola = this.obtenerOCrearColaDeConsulta(consultaMedica);
+
+        gestorDeCola.sacarConsultaMedicaDeLaCola(consultaMedica);
+        repoGestorDeCola.save(gestorDeCola);//update cola dinámica
     }
 }

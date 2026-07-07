@@ -302,4 +302,75 @@ public class AtencionHospitalServiceTest {
         );
     }
 
+    @Test
+    void sePuedeCambiarDeHospitalYActualizaLaColaDinamica() {
+        String auth0Id = "auth0|123";
+        String placeIdAnterior = "place_1";
+        String placeIdNuevo = "place_2";
+
+        Paciente paciente = new Paciente();
+        paciente.setId(10L);
+
+        Hospital hospitalAnterior = new Hospital();
+        hospitalAnterior.setId(1L);
+        hospitalAnterior.setPlaceId(placeIdAnterior);
+
+        Hospital hospitalNuevo = new Hospital();
+        hospitalNuevo.setId(2L);
+        hospitalNuevo.setPlaceId(placeIdNuevo);
+
+        ConsultaMedica consultaMedica = new ConsultaMedica();
+        consultaMedica.setId(100L);
+        consultaMedica.setPaciente(paciente);
+        consultaMedica.setHospital(hospitalAnterior);
+        consultaMedica.setEstadoConsulta(EstadoConsulta.HOSPITAL_SELECCIONADO);
+        consultaMedica.setFechaHoraCreacion(LocalDateTime.now().minusHours(1));
+
+        GestorDeCola gestorDeColaAnterior = new GestorDeCola();
+        gestorDeColaAnterior.setHospital(hospitalAnterior);
+        gestorDeColaAnterior.getConsultasEnEspera().add(consultaMedica);
+
+        GestorDeCola gestorDeColaNuevo = new GestorDeCola();
+        gestorDeColaNuevo.setHospital(hospitalNuevo);
+
+        when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id))
+                .thenReturn(Optional.of(paciente));
+
+        when(repoConsultasMedicas.findByPacienteIdAndEstadoConsultaEquals(
+                paciente.getId(), EstadoConsulta.PENDIENTE))
+                .thenReturn(Optional.empty());
+
+        when(repoConsultasMedicas.findByPacienteIdAndEstadoConsultaEquals(
+                paciente.getId(), EstadoConsulta.HOSPITAL_SELECCIONADO))
+                .thenReturn(Optional.of(consultaMedica));
+
+        when(repoHospitales.findByPlaceId(placeIdNuevo))
+                .thenReturn(Optional.of(hospitalNuevo));
+
+        when(repoGestorDeCola.findByHospitalId(hospitalAnterior.getId()))
+                .thenReturn(Optional.of(gestorDeColaAnterior));
+
+        when(repoGestorDeCola.findByHospitalId(hospitalNuevo.getId()))
+                .thenReturn(Optional.of(gestorDeColaNuevo));
+
+        service.seleccionarHospital(auth0Id, placeIdNuevo);
+
+        ArgumentCaptor<ConsultaMedica> consultaCaptor = ArgumentCaptor.forClass(ConsultaMedica.class);
+        verify(repoConsultasMedicas).save(consultaCaptor.capture());
+
+        ConsultaMedica consultaGuardada = consultaCaptor.getValue();
+        assertSame(hospitalNuevo, consultaGuardada.getHospital());
+        assertEquals(EstadoConsulta.HOSPITAL_SELECCIONADO, consultaGuardada.getEstadoConsulta());
+
+        assertFalse(gestorDeColaAnterior.getConsultasEnEspera().contains(consultaMedica));
+        assertTrue(gestorDeColaNuevo.getConsultasEnEspera().contains(consultaMedica));
+
+        ArgumentCaptor<GestorDeCola> gestorCaptor = ArgumentCaptor.forClass(GestorDeCola.class);
+        verify(repoGestorDeCola, times(2)).save(gestorCaptor.capture());
+
+        List<GestorDeCola> gestoresGuardados = gestorCaptor.getAllValues();
+        assertTrue(gestoresGuardados.contains(gestorDeColaAnterior));
+        assertTrue(gestoresGuardados.contains(gestorDeColaNuevo));
+    }
+
 }
