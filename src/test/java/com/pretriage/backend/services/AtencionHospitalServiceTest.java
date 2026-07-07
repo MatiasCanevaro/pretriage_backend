@@ -2,6 +2,7 @@ package com.pretriage.backend.services;
 
 import com.pretriage.backend.controllers.dtos.TiempoEstimadoAtencionResponse;
 import com.pretriage.backend.exceptions.NoSePudoEstimarElHorarioDeAtencion;
+import com.pretriage.backend.model.consultas.AtencionMedica;
 import com.pretriage.backend.model.consultas.ConsultaMedica;
 import com.pretriage.backend.model.consultas.EstadoConsulta;
 import com.pretriage.backend.model.consultas.GestorDeCola;
@@ -39,6 +40,8 @@ public class AtencionHospitalServiceTest {
     private PacienteService pacienteService;
     @Mock
     private GooglePlacesService googlePlacesService;
+    @Mock
+    private SalaService salaService;
 
     @InjectMocks
     private AtencionHospitalService service;
@@ -163,6 +166,20 @@ public class AtencionHospitalServiceTest {
         LocalDateTime fechaEsperadaHasta =
                 LocalDateTime.of(2026, 6, 20, 15, 40);
 
+        AtencionMedica atencionMedica1 = new AtencionMedica();
+        atencionMedica1.setFechaHoraInicioAtencion(LocalDateTime.now());
+        atencionMedica1.setFechaHoraFinAtencion(LocalDateTime.now().plusMinutes(15));
+
+        AtencionMedica atencionMedica2 = new AtencionMedica();
+        atencionMedica2.setFechaHoraInicioAtencion(LocalDateTime.now());
+        atencionMedica2.setFechaHoraFinAtencion(LocalDateTime.now().plusMinutes(30));
+
+        AtencionMedica atencionMedica3 = new AtencionMedica();
+        atencionMedica3.setFechaHoraInicioAtencion(LocalDateTime.now());
+        atencionMedica3.setFechaHoraFinAtencion(LocalDateTime.now().plusMinutes(50));
+
+        List<AtencionMedica> atencionesMedicas = List.of(atencionMedica1, atencionMedica2, atencionMedica3);
+
         when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id))
                 .thenReturn(Optional.of(paciente));
 
@@ -174,7 +191,10 @@ public class AtencionHospitalServiceTest {
         when(repoGestorDeCola.findByHospitalId(hospital.getId()))
                 .thenReturn(Optional.of(gestorDeCola));
 
-        when(gestorDeCola.calcularTiempoDeAtencionPara(consulta))
+        when(salaService.obtenerAtencionesMedicasActuales())
+                .thenReturn(atencionesMedicas);
+
+        when(gestorDeCola.calcularTiempoDeAtencionPara(consulta, atencionesMedicas))
                 .thenReturn(List.of(fechaEsperadaDesde, fechaEsperadaHasta));
 
         TiempoEstimadoAtencionResponse response =
@@ -245,6 +265,20 @@ public class AtencionHospitalServiceTest {
 
         GestorDeCola gestorDeCola = mock(GestorDeCola.class);
 
+        AtencionMedica atencionMedica1 = new AtencionMedica();
+        atencionMedica1.setFechaHoraInicioAtencion(LocalDateTime.now());
+        atencionMedica1.setFechaHoraFinAtencion(LocalDateTime.now().plusMinutes(15));
+
+        AtencionMedica atencionMedica2 = new AtencionMedica();
+        atencionMedica2.setFechaHoraInicioAtencion(LocalDateTime.now());
+        atencionMedica2.setFechaHoraFinAtencion(LocalDateTime.now().plusMinutes(30));
+
+        AtencionMedica atencionMedica3 = new AtencionMedica();
+        atencionMedica3.setFechaHoraInicioAtencion(LocalDateTime.now());
+        atencionMedica3.setFechaHoraFinAtencion(LocalDateTime.now().plusMinutes(50));
+
+        List<AtencionMedica> atencionesMedicas = List.of(atencionMedica1, atencionMedica2, atencionMedica3);
+
         when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id))
                 .thenReturn(Optional.of(paciente));
 
@@ -256,7 +290,10 @@ public class AtencionHospitalServiceTest {
         when(repoGestorDeCola.findByHospitalId(hospital.getId()))
                 .thenReturn(Optional.of(gestorDeCola));
 
-        when(gestorDeCola.calcularTiempoDeAtencionPara(consulta))
+        when(salaService.obtenerAtencionesMedicasActuales())
+                .thenReturn(atencionesMedicas);
+
+        when(gestorDeCola.calcularTiempoDeAtencionPara(consulta, atencionesMedicas))
                 .thenReturn(List.of());
 
         assertThrows(

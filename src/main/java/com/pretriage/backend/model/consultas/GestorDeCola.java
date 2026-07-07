@@ -1,10 +1,7 @@
 package com.pretriage.backend.model.consultas;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 
 import com.pretriage.backend.model.hospitales.Hospital;
 
@@ -12,6 +9,7 @@ import jakarta.persistence.*;
 import jakarta.transaction.Transactional;
 import lombok.Getter;
 import lombok.Setter;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 
 @Getter
@@ -40,7 +38,8 @@ public class GestorDeCola {
     }
 
 
-    public List<LocalDateTime> calcularTiempoDeAtencionPara(ConsultaMedica consultaMedica) {
+    public List<LocalDateTime> calcularTiempoDeAtencionPara(ConsultaMedica consultaMedica,
+                                                            List<AtencionMedica> atencionesMedicasActuales) {
 
         reordenarColaPorPrioridad();
 
@@ -50,8 +49,9 @@ public class GestorDeCola {
             return List.of(); //empty list
         }
 
-        LocalDateTime tiempoEstimado = LocalDateTime.now()
-                .plusSeconds(posicion * TIEMPO_ESTIMADO_DE_ATENCION_TRIAGE);// asumiendo que las cosultas son siempre a futuro
+        LocalDateTime proximaSalaDisponible = this.obtenerProximaSalaDisponible(atencionesMedicasActuales);
+        LocalDateTime tiempoEstimado = this.calcularTiempoBasadoEnPosicionYSalas(posicion, proximaSalaDisponible);
+
 
         List<LocalDateTime> rangoDeTiempoEstimadoDeAtencion = new ArrayList<>();
         rangoDeTiempoEstimadoDeAtencion.add(tiempoEstimado.minusMinutes(10));
@@ -95,5 +95,22 @@ public class GestorDeCola {
     private void eliminarAtendidosDeLaCola(){
         this.consultasEnEspera.removeIf(consultaMedica -> consultaMedica.getEstadoConsulta().equals(EstadoConsulta.PACIENTE_NO_ASISTIO) ||
                 consultaMedica.getEstadoConsulta().equals(EstadoConsulta.FINALIZADA));
+    }
+
+    private LocalDateTime calcularTiempoBasadoEnPosicionYSalas(int posicion, LocalDateTime proximaSalaDisponible) {
+
+        LocalDateTime base = proximaSalaDisponible.isAfter(LocalDateTime.now())
+                ? proximaSalaDisponible
+                : LocalDateTime.now();
+
+        return base.plusSeconds(posicion * TIEMPO_ESTIMADO_DE_ATENCION_TRIAGE);
+    }
+
+    private LocalDateTime obtenerProximaSalaDisponible(List<AtencionMedica> atencionesMedicasActuales) {
+        return atencionesMedicasActuales.stream()
+                .map(AtencionMedica::getFechaHoraFinAtencion)
+                .filter(Objects::nonNull)
+                .min(LocalDateTime::compareTo)
+                .orElse(LocalDateTime.now());
     }
 }

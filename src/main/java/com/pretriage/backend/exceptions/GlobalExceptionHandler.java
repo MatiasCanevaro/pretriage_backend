@@ -13,7 +13,8 @@ import java.util.Map;
 public class GlobalExceptionHandler {
 
     @ExceptionHandler({CredencialValidaYaExisteException.class, PacienteNoExisteException.class,
-            NoSePudoCrearUsuario.class, NoSePudoEstimarElHorarioDeAtencion.class, NoSePudoObtenerHospital.class, AccessDeniedException.class})
+            NoSePudoCrearUsuario.class, NoSePudoEstimarElHorarioDeAtencion.class, NoSePudoObtenerHospital.class,
+            AccessDeniedException.class, NoEixstenSalasActivasException.class})
     public ResponseEntity<Map<String, String>> handleExceptions(
             RuntimeException e) {
 

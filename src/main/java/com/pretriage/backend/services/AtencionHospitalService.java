@@ -3,9 +3,7 @@ package com.pretriage.backend.services;
 import com.pretriage.backend.controllers.dtos.TiempoEstimadoAtencionResponse;
 import com.pretriage.backend.exceptions.NoSePudoEstimarElHorarioDeAtencion;
 import com.pretriage.backend.exceptions.NoSePudoObtenerHospital;
-import com.pretriage.backend.model.consultas.ConsultaMedica;
-import com.pretriage.backend.model.consultas.EstadoConsulta;
-import com.pretriage.backend.model.consultas.GestorDeCola;
+import com.pretriage.backend.model.consultas.*;
 import com.pretriage.backend.model.hospitales.Hospital;
 import com.pretriage.backend.model.personas.Paciente;
 import com.pretriage.backend.repositories.RepoConsultasMedicas;
@@ -31,6 +29,7 @@ public class AtencionHospitalService {
 
     private final PacienteService pacienteService;
     private final GooglePlacesService googlePlacesService;
+    private final SalaService salaService;
 
     @Transactional
     public void seleccionarHospital(
@@ -89,7 +88,11 @@ public class AtencionHospitalService {
 
         GestorDeCola gestorDeCola= this.obtenerOCrearColaDeConsulta(consultaMedica);
 
-        List<LocalDateTime> rangoTiempoEstimadoAtencion = gestorDeCola.calcularTiempoDeAtencionPara(consultaMedica);
+        List<AtencionMedica> atencionesMedicasActuales = salaService.obtenerAtencionesMedicasActuales();
+
+        List<LocalDateTime> rangoTiempoEstimadoAtencion = gestorDeCola.calcularTiempoDeAtencionPara(
+                consultaMedica,
+                atencionesMedicasActuales);
 
         if(rangoTiempoEstimadoAtencion.isEmpty()){
             throw new NoSePudoEstimarElHorarioDeAtencion();

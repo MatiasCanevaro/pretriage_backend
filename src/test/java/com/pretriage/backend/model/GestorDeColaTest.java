@@ -1,9 +1,6 @@
 package com.pretriage.backend.model;
 
-import com.pretriage.backend.model.consultas.ConsultaMedica;
-import com.pretriage.backend.model.consultas.EstadoConsulta;
-import com.pretriage.backend.model.consultas.GestorDeCola;
-import com.pretriage.backend.model.consultas.NivelDeGravedad;
+import com.pretriage.backend.model.consultas.*;
 import com.pretriage.backend.model.hospitales.Hospital;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -12,7 +9,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -126,9 +122,19 @@ public class GestorDeColaTest {
         this.gestorDeCola.agregarConsultaMedicaALaCola(consultaMedicaMock1);
         this.gestorDeCola.agregarConsultaMedicaALaCola(consultaMedicaMock2);
 
-        LocalDateTime antesDeCalculo = LocalDateTime.now();
+        AtencionMedica atencionMedica3 = new AtencionMedica();
+        atencionMedica3.setFechaHoraInicioAtencion(LocalDateTime.now().minusMinutes(10));
+        atencionMedica3.setFechaHoraFinAtencion(LocalDateTime.now().plusMinutes(5));
 
-        List<LocalDateTime> rangoTiempoEstimado = this.gestorDeCola.calcularTiempoDeAtencionPara(consultaMedicaMock1);
+        AtencionMedica atencionMedica2 = new AtencionMedica();
+        atencionMedica2.setFechaHoraInicioAtencion(LocalDateTime.now().minusMinutes(14));
+        atencionMedica2.setFechaHoraFinAtencion(LocalDateTime.now().plusMinutes(1));
+
+        List<AtencionMedica> atencionesMedicasActuales = List.of(atencionMedica2, atencionMedica3);
+
+        LocalDateTime antesDeCalculo = LocalDateTime.now().plusMinutes(1);
+
+        List<LocalDateTime> rangoTiempoEstimado = this.gestorDeCola.calcularTiempoDeAtencionPara(consultaMedicaMock1, atencionesMedicasActuales);
 
         assertEquals(2, rangoTiempoEstimado.size());
 
@@ -137,11 +143,8 @@ public class GestorDeColaTest {
 
         LocalDateTime tiempoEstimadoCentral = antesDeCalculo.plusSeconds(TIEMPO_ESTIMADO_DE_ATENCION_TRIAGE);
 
-        long diferenciaMinima = ChronoUnit.MINUTES.between(tiempoEstimadoCentral, tiempoMinimo);
-        long diferenciaMaxima = ChronoUnit.MINUTES.between(tiempoEstimadoCentral, tiempoMaximo);
-
-        assertTrue(diferenciaMinima >= -11 && diferenciaMinima <= -9);
-        assertTrue(diferenciaMaxima >= 9 && diferenciaMaxima <= 11);
+        assertEquals(tiempoEstimadoCentral.minusMinutes(10),tiempoMinimo);
+        assertEquals(tiempoEstimadoCentral.plusMinutes(10),tiempoMaximo);
     }
 
 
