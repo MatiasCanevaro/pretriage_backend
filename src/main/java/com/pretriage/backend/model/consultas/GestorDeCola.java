@@ -30,35 +30,14 @@ public class GestorDeCola {
     @JoinColumn(name = "id_gestor_de_cola", referencedColumnName = "id")
     private List<ConsultaMedica> consultasEnEspera;
 
-    @Transient
-    @Value("${tiempo.estimado.atencion-triage.segundos}")
-    private long TIEMPO_ESTIMADO_DE_ATENCION_TRIAGE; //en segundos
 
     public GestorDeCola (){
         this.consultasEnEspera = new ArrayList<>();
     }
 
 
-    public List<LocalDateTime> calcularTiempoDeAtencionPara(ConsultaMedica consultaMedica,
-                                                            List<AtencionMedica> atencionesMedicasActuales) {
-
-        reordenarColaPorPrioridad();
-
-        int posicion = consultasEnEspera.indexOf(consultaMedica);
-
-        if (posicion == -1) {
-            return List.of(); //empty list
-        }
-
-        LocalDateTime proximaSalaDisponible = this.obtenerProximaSalaDisponible(atencionesMedicasActuales);
-        LocalDateTime tiempoEstimado = this.calcularTiempoBasadoEnPosicionYSalas(posicion, proximaSalaDisponible);
-
-
-        List<LocalDateTime> rangoDeTiempoEstimadoDeAtencion = new ArrayList<>();
-        rangoDeTiempoEstimadoDeAtencion.add(tiempoEstimado.minusMinutes(10));
-        rangoDeTiempoEstimadoDeAtencion.add(tiempoEstimado.plusMinutes(10));
-
-        return rangoDeTiempoEstimadoDeAtencion;
+    public int obtenerPosicionDe(ConsultaMedica consultaMedica){
+        return this.consultasEnEspera.indexOf(consultaMedica);
     }
 
     private void reordenarColaPorPrioridad() {
@@ -103,20 +82,5 @@ public class GestorDeCola {
                 consultaMedica.getEstadoConsulta().equals(EstadoConsulta.FINALIZADA));
     }
 
-    private LocalDateTime calcularTiempoBasadoEnPosicionYSalas(int posicion, LocalDateTime proximaSalaDisponible) {
 
-        LocalDateTime base = proximaSalaDisponible.isAfter(LocalDateTime.now())
-                ? proximaSalaDisponible
-                : LocalDateTime.now();
-
-        return base.plusSeconds(posicion * TIEMPO_ESTIMADO_DE_ATENCION_TRIAGE);
-    }
-
-    private LocalDateTime obtenerProximaSalaDisponible(List<AtencionMedica> atencionesMedicasActuales) {
-        return atencionesMedicasActuales.stream()
-                .map(AtencionMedica::getFechaHoraFinAtencion)
-                .filter(Objects::nonNull)
-                .min(LocalDateTime::compareTo)
-                .orElse(LocalDateTime.now());
-    }
 }

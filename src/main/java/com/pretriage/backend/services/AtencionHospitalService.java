@@ -30,6 +30,7 @@ public class AtencionHospitalService {
     private final PacienteService pacienteService;
     private final GooglePlacesService googlePlacesService;
     private final SalaService salaService;
+    private final TiempoEstimadoService tiempoEstimadoService;
 
     @Transactional
     public void seleccionarHospital(
@@ -96,9 +97,10 @@ public class AtencionHospitalService {
 
         List<AtencionMedica> atencionesMedicasActuales = salaService.obtenerAtencionesMedicasActuales();
 
-        List<LocalDateTime> rangoTiempoEstimadoAtencion = gestorDeCola.calcularTiempoDeAtencionPara(
+        List<LocalDateTime> rangoTiempoEstimadoAtencion = tiempoEstimadoService.calcularTiempoDeAtencionPara(
                 consultaMedica,
-                atencionesMedicasActuales);
+                atencionesMedicasActuales,
+                gestorDeCola);
 
         if(rangoTiempoEstimadoAtencion.isEmpty()){
             throw new NoSePudoEstimarElHorarioDeAtencion();

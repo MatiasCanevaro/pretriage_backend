@@ -42,6 +42,8 @@ public class AtencionHospitalServiceTest {
     private GooglePlacesService googlePlacesService;
     @Mock
     private SalaService salaService;
+    @Mock
+    private TiempoEstimadoService tiempoEstimadoService;
 
     @InjectMocks
     private AtencionHospitalService service;
@@ -194,7 +196,7 @@ public class AtencionHospitalServiceTest {
         when(salaService.obtenerAtencionesMedicasActuales())
                 .thenReturn(atencionesMedicas);
 
-        when(gestorDeCola.calcularTiempoDeAtencionPara(consulta, atencionesMedicas))
+        when(tiempoEstimadoService.calcularTiempoDeAtencionPara(consulta, atencionesMedicas, gestorDeCola))
                 .thenReturn(List.of(fechaEsperadaDesde, fechaEsperadaHasta));
 
         TiempoEstimadoAtencionResponse response =
@@ -293,7 +295,7 @@ public class AtencionHospitalServiceTest {
         when(salaService.obtenerAtencionesMedicasActuales())
                 .thenReturn(atencionesMedicas);
 
-        when(gestorDeCola.calcularTiempoDeAtencionPara(consulta, atencionesMedicas))
+        when(tiempoEstimadoService.calcularTiempoDeAtencionPara(consulta, atencionesMedicas, gestorDeCola))
                 .thenReturn(List.of());
 
         assertThrows(
