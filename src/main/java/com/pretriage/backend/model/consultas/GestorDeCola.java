@@ -78,7 +78,8 @@ public class GestorDeCola {
     }
 
     private void eliminarAtendidosDeLaCola(){
-        this.consultasEnEspera.removeIf(consultaMedica -> consultaMedica.getEstadoConsulta().equals(EstadoConsulta.PACIENTE_NO_ASISTIO) ||
+        this.consultasEnEspera.removeIf(consultaMedica ->
+                consultaMedica.getEstadoConsulta().equals(EstadoConsulta.PACIENTE_NO_ASISTIO) ||
                 consultaMedica.getEstadoConsulta().equals(EstadoConsulta.FINALIZADA));
     }
 

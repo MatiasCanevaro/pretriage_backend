@@ -15,8 +15,8 @@ public class SalaService {
 
     private final RepoAtencionMedica repoAsignacionMedica;
 
-    public List<AtencionMedica> obtenerAtencionesMedicasActuales() {
-        return this.repoAsignacionMedica.findAllByfechaHoraFinAtencionAfter(LocalDateTime.now())
+    public List<AtencionMedica> obtenerAtencionesMedicasActuales(Long idHospital) {
+        return this.repoAsignacionMedica.findAllByfechaHoraFinAtencionAfterAndIdHospital(LocalDateTime.now(), idHospital)
                 .orElseThrow(NoEixstenSalasActivasException::new);//no deberia pasar
     }
 

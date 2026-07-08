@@ -7,7 +7,6 @@ import com.pretriage.backend.model.consultas.*;
 import com.pretriage.backend.model.hospitales.Hospital;
 import com.pretriage.backend.model.personas.Paciente;
 import com.pretriage.backend.repositories.RepoConsultasMedicas;
-import com.pretriage.backend.repositories.RepoGestoresDeColas;
 import com.pretriage.backend.repositories.RepoHospitales;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -25,12 +24,12 @@ public class AtencionHospitalService {
 
     private final RepoConsultasMedicas repoConsultasMedicas;
     private final RepoHospitales repoHospitales;
-    private final RepoGestoresDeColas repoGestorDeCola;
 
     private final PacienteService pacienteService;
     private final GooglePlacesService googlePlacesService;
     private final SalaService salaService;
     private final TiempoEstimadoService tiempoEstimadoService;
+    private final ColaService colaService;
 
     @Transactional
     public void seleccionarHospital(
@@ -69,7 +68,7 @@ public class AtencionHospitalService {
             hospital = opHospital.get();
         }
         if(consultaMedica.getEstadoConsulta().equals(EstadoConsulta.HOSPITAL_SELECCIONADO)){//si se quiere cambiar el hospital seleccionado
-            this.sacarDeLaColaDelHospital(consultaMedica); //lo saco de la cola anterior
+            colaService.sacarDeLaColaDelHospital(consultaMedica); //lo saco de la cola anterior
         }
         consultaMedica.setHospital(hospital);
 
@@ -78,7 +77,7 @@ public class AtencionHospitalService {
 
         repoConsultasMedicas.save(consultaMedica);
 
-        this.ingresarALaColaDelHospital(consultaMedica);
+        colaService.agregarConsulta(consultaMedica);
     }
 
     @Transactional
@@ -93,9 +92,11 @@ public class AtencionHospitalService {
         }
         ConsultaMedica consultaMedica = opConsultaMedica.get();
 
-        GestorDeCola gestorDeCola= this.obtenerOCrearColaDeConsulta(consultaMedica);
+        GestorDeCola gestorDeCola= colaService.obtenerOCrearColaDeConsulta(consultaMedica);
 
-        List<AtencionMedica> atencionesMedicasActuales = salaService.obtenerAtencionesMedicasActuales();
+        List<AtencionMedica> atencionesMedicasActuales = salaService.obtenerAtencionesMedicasActuales(
+                consultaMedica.getHospital().getId()
+        );
 
         List<LocalDateTime> rangoTiempoEstimadoAtencion = tiempoEstimadoService.calcularTiempoDeAtencionPara(
                 consultaMedica,
@@ -106,11 +107,10 @@ public class AtencionHospitalService {
             throw new NoSePudoEstimarElHorarioDeAtencion();
         }
 
-        TiempoEstimadoAtencionResponse response = new TiempoEstimadoAtencionResponse();
-        response.setFechaHoraAtencionEstimadaDesde(rangoTiempoEstimadoAtencion.getFirst());
-        response.setFechaHoraAtencionEstimadaHasta(rangoTiempoEstimadoAtencion.getLast());
-
-        return response;
+        return new TiempoEstimadoAtencionResponse(
+                consultaMedica.getId(),
+                rangoTiempoEstimadoAtencion.getFirst(),
+                rangoTiempoEstimadoAtencion.getLast());
     }
 
     private Paciente obtenerPaciente(String auth0Id){
@@ -124,32 +124,5 @@ public class AtencionHospitalService {
         return opPaciente.get();
     }
 
-    @Transactional
-    private void ingresarALaColaDelHospital(ConsultaMedica consultaMedica){
-        GestorDeCola gestorDeCola= this.obtenerOCrearColaDeConsulta(consultaMedica);
 
-        gestorDeCola.agregarConsultaMedicaALaCola(consultaMedica);
-        repoGestorDeCola.save(gestorDeCola);//update cola dinámica
-    }
-
-    private GestorDeCola obtenerOCrearColaDeConsulta(ConsultaMedica consultaMedica){
-        Hospital hospital = consultaMedica.getHospital();
-
-        return repoGestorDeCola.findByHospitalId(hospital.getId()) // si no existe lo creo
-                .orElseGet(()->{
-                    GestorDeCola gestorDeColaNuevo = new GestorDeCola();
-                    gestorDeColaNuevo.setHospital(hospital);
-                    gestorDeColaNuevo.agregarConsultaMedicaALaCola(consultaMedica);
-                    repoGestorDeCola.save(gestorDeColaNuevo);
-                    return gestorDeColaNuevo;
-                });
-    }
-
-    @Transactional
-    private void sacarDeLaColaDelHospital(ConsultaMedica consultaMedica){
-        GestorDeCola gestorDeCola = this.obtenerOCrearColaDeConsulta(consultaMedica);
-
-        gestorDeCola.sacarConsultaMedicaDeLaCola(consultaMedica);
-        repoGestorDeCola.save(gestorDeCola);//update cola dinámica
-    }
 }

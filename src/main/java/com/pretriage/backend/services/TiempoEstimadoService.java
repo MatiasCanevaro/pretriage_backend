@@ -1,5 +1,6 @@
 package com.pretriage.backend.services;
 
+import com.pretriage.backend.controllers.dtos.TiempoEstimadoAtencionResponse;
 import com.pretriage.backend.model.consultas.AtencionMedica;
 import com.pretriage.backend.model.consultas.ConsultaMedica;
 import com.pretriage.backend.model.consultas.GestorDeCola;
@@ -57,4 +58,27 @@ public class TiempoEstimadoService {
         return base.plusSeconds(posicion * TIEMPO_ESTIMADO_DE_ATENCION_TRIAGE);
     }
 
+    public List<TiempoEstimadoAtencionResponse> calcularTodos(GestorDeCola gestor, List<AtencionMedica> atenciones) {
+        List<TiempoEstimadoAtencionResponse> tiempos = new ArrayList<>();
+
+        LocalDateTime proximaSala = this.obtenerProximaSalaDisponible(atenciones);
+
+        List<ConsultaMedica> cola = gestor.getConsultasEnEspera();
+
+        for (int posicion = 0; posicion < cola.size(); posicion++) {
+
+            ConsultaMedica consulta = cola.get(posicion);
+
+            LocalDateTime tiempo = this.calcularTiempoBasadoEnPosicionYSalas(posicion, proximaSala);
+
+            tiempos.add(
+                    new TiempoEstimadoAtencionResponse(
+                            consulta.getId(),
+                            tiempo.minusMinutes(10),
+                            tiempo.plusMinutes(10)
+                    )
+            );
+        }
+        return tiempos;
+    }
 }

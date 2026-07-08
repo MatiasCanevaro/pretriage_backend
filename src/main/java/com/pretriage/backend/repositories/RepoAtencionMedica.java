@@ -13,6 +13,6 @@ import java.util.Optional;
 public interface RepoAtencionMedica extends JpaRepository<AtencionMedica, Long> {
 
 
-    @Query("SELECT a FROM AtencionMedica a WHERE a.fechaHoraFinAtencion >= :fechaHora")
-    Optional<List<AtencionMedica>> findAllByfechaHoraFinAtencionAfter(LocalDateTime fechaHora);
+    @Query("SELECT a FROM AtencionMedica a WHERE a.fechaHoraFinAtencion >= :fechaHora and a.hospital.id = :idHospital")
+    Optional<List<AtencionMedica>> findAllByfechaHoraFinAtencionAfterAndIdHospital(LocalDateTime fechaHora, Long idHospital);
 }

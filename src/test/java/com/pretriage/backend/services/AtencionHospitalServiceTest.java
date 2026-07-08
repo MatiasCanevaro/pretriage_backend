@@ -35,8 +35,6 @@ public class AtencionHospitalServiceTest {
     @Mock
     private RepoHospitales repoHospitales;
     @Mock
-    private RepoGestoresDeColas repoGestorDeCola;
-    @Mock
     private PacienteService pacienteService;
     @Mock
     private GooglePlacesService googlePlacesService;
@@ -44,7 +42,8 @@ public class AtencionHospitalServiceTest {
     private SalaService salaService;
     @Mock
     private TiempoEstimadoService tiempoEstimadoService;
-
+    @Mock
+    private ColaService colaService;
     @InjectMocks
     private AtencionHospitalService service;
 
@@ -65,9 +64,6 @@ public class AtencionHospitalServiceTest {
         Hospital hospital = new Hospital();
         hospital.setPlaceId(placeId);
 
-        GestorDeCola gestorDeCola = new GestorDeCola();
-        gestorDeCola.setHospital(hospital);
-
         when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id))
                 .thenReturn(Optional.of(paciente));
 
@@ -78,10 +74,7 @@ public class AtencionHospitalServiceTest {
         when(repoHospitales.findByPlaceId(placeId))
                 .thenReturn(Optional.of(hospital));
 
-        when(repoGestorDeCola.findByHospitalId(hospital.getId())).thenReturn(Optional.of(gestorDeCola));
-
         service.seleccionarHospital(auth0Id, placeId);
-
 
         ArgumentCaptor<ConsultaMedica> consultaCaptor = ArgumentCaptor.forClass(ConsultaMedica.class);
         verify(repoConsultasMedicas).save(consultaCaptor.capture());
@@ -90,6 +83,8 @@ public class AtencionHospitalServiceTest {
         assertSame(consultaMedica, consultaGuardada);
         assertSame(hospital, consultaGuardada.getHospital());
         assertEquals(EstadoConsulta.HOSPITAL_SELECCIONADO, consultaGuardada.getEstadoConsulta());
+
+        verify(colaService).agregarConsulta(consultaGuardada);
 
         verify(googlePlacesService, never()).obtenerHospitalDesdeGoogle(anyString());
         verify(repoHospitales, never()).save(any());
@@ -190,10 +185,10 @@ public class AtencionHospitalServiceTest {
                 EstadoConsulta.HOSPITAL_SELECCIONADO))
                 .thenReturn(Optional.of(consulta));
 
-        when(repoGestorDeCola.findByHospitalId(hospital.getId()))
-                .thenReturn(Optional.of(gestorDeCola));
+        when(colaService.obtenerOCrearColaDeConsulta(consulta))
+                .thenReturn(gestorDeCola);
 
-        when(salaService.obtenerAtencionesMedicasActuales())
+        when(salaService.obtenerAtencionesMedicasActuales(hospital.getId()))
                 .thenReturn(atencionesMedicas);
 
         when(tiempoEstimadoService.calcularTiempoDeAtencionPara(consulta, atencionesMedicas, gestorDeCola))
@@ -289,10 +284,10 @@ public class AtencionHospitalServiceTest {
                 EstadoConsulta.HOSPITAL_SELECCIONADO))
                 .thenReturn(Optional.of(consulta));
 
-        when(repoGestorDeCola.findByHospitalId(hospital.getId()))
-                .thenReturn(Optional.of(gestorDeCola));
+        when(colaService.obtenerOCrearColaDeConsulta(consulta))
+                .thenReturn(gestorDeCola);
 
-        when(salaService.obtenerAtencionesMedicasActuales())
+        when(salaService.obtenerAtencionesMedicasActuales(hospital.getId()))
                 .thenReturn(atencionesMedicas);
 
         when(tiempoEstimadoService.calcularTiempoDeAtencionPara(consulta, atencionesMedicas, gestorDeCola))
@@ -328,13 +323,6 @@ public class AtencionHospitalServiceTest {
         consultaMedica.setEstadoConsulta(EstadoConsulta.HOSPITAL_SELECCIONADO);
         consultaMedica.setFechaHoraCreacion(LocalDateTime.now().minusHours(1));
 
-        GestorDeCola gestorDeColaAnterior = new GestorDeCola();
-        gestorDeColaAnterior.setHospital(hospitalAnterior);
-        gestorDeColaAnterior.getConsultasEnEspera().add(consultaMedica);
-
-        GestorDeCola gestorDeColaNuevo = new GestorDeCola();
-        gestorDeColaNuevo.setHospital(hospitalNuevo);
-
         when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id))
                 .thenReturn(Optional.of(paciente));
 
@@ -349,13 +337,9 @@ public class AtencionHospitalServiceTest {
         when(repoHospitales.findByPlaceId(placeIdNuevo))
                 .thenReturn(Optional.of(hospitalNuevo));
 
-        when(repoGestorDeCola.findByHospitalId(hospitalAnterior.getId()))
-                .thenReturn(Optional.of(gestorDeColaAnterior));
-
-        when(repoGestorDeCola.findByHospitalId(hospitalNuevo.getId()))
-                .thenReturn(Optional.of(gestorDeColaNuevo));
-
         service.seleccionarHospital(auth0Id, placeIdNuevo);
+
+        verify(colaService).sacarDeLaColaDelHospital(consultaMedica);
 
         ArgumentCaptor<ConsultaMedica> consultaCaptor = ArgumentCaptor.forClass(ConsultaMedica.class);
         verify(repoConsultasMedicas).save(consultaCaptor.capture());
@@ -363,16 +347,6 @@ public class AtencionHospitalServiceTest {
         ConsultaMedica consultaGuardada = consultaCaptor.getValue();
         assertSame(hospitalNuevo, consultaGuardada.getHospital());
         assertEquals(EstadoConsulta.HOSPITAL_SELECCIONADO, consultaGuardada.getEstadoConsulta());
-
-        assertFalse(gestorDeColaAnterior.getConsultasEnEspera().contains(consultaMedica));
-        assertTrue(gestorDeColaNuevo.getConsultasEnEspera().contains(consultaMedica));
-
-        ArgumentCaptor<GestorDeCola> gestorCaptor = ArgumentCaptor.forClass(GestorDeCola.class);
-        verify(repoGestorDeCola, times(2)).save(gestorCaptor.capture());
-
-        List<GestorDeCola> gestoresGuardados = gestorCaptor.getAllValues();
-        assertTrue(gestoresGuardados.contains(gestorDeColaAnterior));
-        assertTrue(gestoresGuardados.contains(gestorDeColaNuevo));
     }
 
 }
