@@ -17,10 +17,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @ExtendWith(MockitoExtension.class)
 public class GestorDeColaTest {
 
-
     private Hospital hospitalMock;
     private GestorDeCola gestorDeCola;
-
 
     @BeforeEach
     void setUp(){
@@ -75,9 +73,10 @@ public class GestorDeColaTest {
     }
 
     @Test
-    void alIngresarOtraConsultaMedicaSeReordenaLaColaPorPrioridadYSeEliminanLosQueYaFueronAtendidos(){
+    void sePuedeSacarAUnaConsultaMedicaDeLaCola(){
 
         ConsultaMedica consultaMedicaMock1 = new ConsultaMedica();
+        consultaMedicaMock1.setId(1L);
         consultaMedicaMock1.setFechaHoraCreacion(LocalDateTime.now());
         consultaMedicaMock1.setNivelDeGravedadBot(NivelDeGravedad.NORMAL);
         consultaMedicaMock1.setHospital(this.hospitalMock);
@@ -88,16 +87,17 @@ public class GestorDeColaTest {
         assertEquals(1,this.gestorDeCola.getConsultasEnEspera().size());
         assertEquals(consultaMedicaMock1, this.gestorDeCola.getConsultasEnEspera().getFirst());
 
-        consultaMedicaMock1.setEstadoConsulta(EstadoConsulta.FINALIZADA);//ya fue atendido por el médico
-
         //llega otro paciente a la cola
         ConsultaMedica consultaMedicaMock2 = new ConsultaMedica();
+        consultaMedicaMock2.setId(2L);
         consultaMedicaMock2.setFechaHoraCreacion(LocalDateTime.now());
         consultaMedicaMock2.setNivelDeGravedadBot(NivelDeGravedad.URGENTE);
         consultaMedicaMock2.setHospital(this.hospitalMock);
         consultaMedicaMock2.setEstadoConsulta(EstadoConsulta.PENDIENTE);
 
         this.gestorDeCola.agregarConsultaMedicaALaCola(consultaMedicaMock2);
+
+        this.gestorDeCola.sacarConsultaMedicaDeLaCola(consultaMedicaMock1);
 
         assertEquals(1,this.gestorDeCola.getConsultasEnEspera().size());
         assertEquals(consultaMedicaMock2, this.gestorDeCola.getConsultasEnEspera().getFirst());

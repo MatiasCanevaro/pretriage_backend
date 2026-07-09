@@ -5,6 +5,7 @@ import com.pretriage.backend.model.consultas.AtencionMedica;
 import com.pretriage.backend.model.consultas.ConsultaMedica;
 import com.pretriage.backend.model.consultas.GestorDeCola;
 import jakarta.persistence.Transient;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -21,6 +22,7 @@ public class TiempoEstimadoService {
     @Value("${tiempo.estimado.atencion-triage.segundos}")
     private long TIEMPO_ESTIMADO_DE_ATENCION_TRIAGE; //en segundos
 
+    @Transactional
     public List<LocalDateTime> calcularTiempoDeAtencionPara(ConsultaMedica consultaMedica,
                                                             List<AtencionMedica> atencionesMedicasActuales,
                                                             GestorDeCola gestorDeCola) {
@@ -41,6 +43,7 @@ public class TiempoEstimadoService {
         return rangoDeTiempoEstimadoDeAtencion;
     }
 
+    @Transactional
     private LocalDateTime obtenerProximaSalaDisponible(List<AtencionMedica> atencionesMedicasActuales) {
         return atencionesMedicasActuales.stream()
                 .map(AtencionMedica::getFechaHoraFinAtencion)
@@ -58,6 +61,7 @@ public class TiempoEstimadoService {
         return base.plusSeconds(posicion * TIEMPO_ESTIMADO_DE_ATENCION_TRIAGE);
     }
 
+    @Transactional
     public List<TiempoEstimadoAtencionResponse> calcularTodos(GestorDeCola gestor, List<AtencionMedica> atenciones) {
         List<TiempoEstimadoAtencionResponse> tiempos = new ArrayList<>();
 

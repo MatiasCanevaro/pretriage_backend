@@ -31,9 +31,7 @@ public class ColaService {
         GestorDeCola gestor = this.obtenerOCrearColaDeConsulta(consulta);
         gestor.agregarConsultaMedicaALaCola(consulta);
 
-        gestor.agregarConsultaMedicaALaCola(consulta);
-
-        this.notificarCambio(consulta);
+        this.notificarCambio(consulta, gestor);
         repoGestorDeCola.save(gestor);//update cola dinámica
     }
 
@@ -43,10 +41,11 @@ public class ColaService {
 
         gestorDeCola.sacarConsultaMedicaDeLaCola(consulta);
 
-        this.notificarCambio(consulta);
+        this.notificarCambio(consulta, gestorDeCola);
         repoGestorDeCola.save(gestorDeCola);//update cola dinámica
     }
 
+    @Transactional
     public GestorDeCola obtenerOCrearColaDeConsulta(ConsultaMedica consultaMedica){
         Hospital hospital = consultaMedica.getHospital();
 
@@ -61,15 +60,13 @@ public class ColaService {
     }
 
     @Transactional
-    private void notificarCambio(ConsultaMedica consulta){
+    private void notificarCambio(ConsultaMedica consulta, GestorDeCola gestorDeCola){
         Long hospitalId = consulta.getHospital().getId();
-
-        GestorDeCola gestor =repoGestorDeCola.findByHospitalId(hospitalId).orElseThrow();
 
         List<AtencionMedica> atenciones = salaService.obtenerAtencionesMedicasActuales(hospitalId);
 
         List<TiempoEstimadoAtencionResponse> nuevosTiempos = tiempoService.calcularTodos(
-                gestor,
+                gestorDeCola,
                 atenciones
         );
 

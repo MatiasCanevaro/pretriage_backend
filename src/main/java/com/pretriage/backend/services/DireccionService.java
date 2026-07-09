@@ -6,6 +6,7 @@ import com.pretriage.backend.model.hospitales.Coordenada;
 import com.pretriage.backend.model.hospitales.Direccion;
 import com.pretriage.backend.repositories.RepoCoordenadas;
 import com.pretriage.backend.repositories.RepoDirecciones;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,6 +26,7 @@ public class DireccionService {
 
     private static final Logger log = LoggerFactory.getLogger(DireccionService.class);
 
+    @Transactional
     public Direccion buscarOCrearDireccion(List<AddressComponent> addressComponents, LatLng location, String placeId) {
         HashMap<String, String> direccionComponents = new HashMap<>();
 

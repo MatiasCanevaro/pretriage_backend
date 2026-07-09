@@ -28,6 +28,7 @@ public class CredencialService {
     private final RepoObraSociales repoObraSociales;
     private final RepoCredenciales repoCredenciales;
 
+    @Transactional
     public void cargarCredencialPaciente(
             String auth0IdPaciente,
             CredencialRequest request) {
@@ -48,6 +49,7 @@ public class CredencialService {
                 .toList();
     }
 
+    @Transactional
     public void cargarCredencialRecepcionista(String auth0IdRecepcionista, Long idPaciente, @Valid CredencialRequest request) {
 
         verificarSiEsRecepcionista(auth0IdRecepcionista);

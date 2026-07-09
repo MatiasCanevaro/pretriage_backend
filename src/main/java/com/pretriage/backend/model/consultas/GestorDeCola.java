@@ -1,6 +1,5 @@
 package com.pretriage.backend.model.consultas;
 
-import java.time.LocalDateTime;
 import java.util.*;
 
 import com.pretriage.backend.model.hospitales.Hospital;
@@ -9,8 +8,6 @@ import jakarta.persistence.*;
 import jakarta.transaction.Transactional;
 import lombok.Getter;
 import lombok.Setter;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 
 @Getter
 @Setter
@@ -41,8 +38,6 @@ public class GestorDeCola {
     }
 
     private void reordenarColaPorPrioridad() {
-
-        this.eliminarAtendidosDeLaCola();//TODO HACER QUE SE ELIMINE CUANDO EL MEDICO INDICA QUE YA LO ATENDIO
 
         this.consultasEnEspera.sort(
                 Comparator
@@ -75,12 +70,6 @@ public class GestorDeCola {
     @Transactional
     public void sacarConsultaMedicaDeLaCola(ConsultaMedica consultaMedica){
         this.consultasEnEspera.removeIf(consultaEnEspera -> consultaEnEspera.getId().equals(consultaMedica.getId()));
-    }
-
-    private void eliminarAtendidosDeLaCola(){
-        this.consultasEnEspera.removeIf(consultaMedica ->
-                consultaMedica.getEstadoConsulta().equals(EstadoConsulta.PACIENTE_NO_ASISTIO) ||
-                consultaMedica.getEstadoConsulta().equals(EstadoConsulta.FINALIZADA));
     }
 
 
