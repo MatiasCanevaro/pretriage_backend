@@ -6,6 +6,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -13,7 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 public class TiempoEstimadoNotifier {
 
-    private final Map<Long, SseEmitter> conexiones = new ConcurrentHashMap<>();
+    private final Map<Long, List<SseEmitter>> conexiones = new ConcurrentHashMap<>();
 
     private final Map<Long, TiempoEstimadoAtencionResponse> ultimoTiempoEnviado = new ConcurrentHashMap<>();
 
@@ -21,19 +23,32 @@ public class TiempoEstimadoNotifier {
 
         SseEmitter emitter = new SseEmitter(0L);
 
-        conexiones.put(consultaId, emitter);
+        if(conexiones.containsKey(consultaId)){//si ya se conecto antes ...
+            List<SseEmitter> emittersPrev =conexiones.get(consultaId);
+            emittersPrev.add(emitter);
+        } else { // si no se conecto antes
+            List<SseEmitter> emittersNuevo = new ArrayList<>();
+            emittersNuevo.add(emitter);
+            conexiones.put(consultaId, emittersNuevo);
+        }
+
+
+        log.info("Cliente conectado {}", consultaId);
 
         emitter.onCompletion(() -> {
             conexiones.remove(consultaId);
             ultimoTiempoEnviado.remove(consultaId);
+            log.info("Cliente desconectado (completion) {}", consultaId);
         });
         emitter.onTimeout(() -> {
             conexiones.remove(consultaId);
             ultimoTiempoEnviado.remove(consultaId);
+            log.info("Cliente desconectado (timeout) {}", consultaId);
         });
         emitter.onError(e -> {
             conexiones.remove(consultaId);
             ultimoTiempoEnviado.remove(consultaId);
+            log.info("Cliente desconectado (error) {}", consultaId);
         });
 
         return emitter;
@@ -41,9 +56,9 @@ public class TiempoEstimadoNotifier {
 
     public void notificar(TiempoEstimadoAtencionResponse response){
 
-        SseEmitter emitter = conexiones.get(response.getIdConsulta());
+        List<SseEmitter> emitters = conexiones.get(response.getIdConsulta());
 
-        if(emitter == null){
+        if(emitters == null || emitters.isEmpty()){
             return;
         }
 
@@ -55,24 +70,27 @@ public class TiempoEstimadoNotifier {
         }
 
         try{//se avisa al front del cambio
-            emitter.send(
-                    SseEmitter.event()
-                            .name("tiempo-estimado")
-                            .data(response)
-            );
-
+            log.info("Enviando actualización {}", response.getIdConsulta());
+            for(SseEmitter emitter : emitters){
+                emitter.send(
+                        SseEmitter.event()
+                                .name("tiempo-estimado")
+                                .data(response)
+                );
+            }
             ultimoTiempoEnviado.put(
                     response.getIdConsulta(),
                     response
             );
         }catch(IOException e){
-
-            emitter.complete();
+            for(SseEmitter emitter : emitters){
+                emitter.complete();
+            }
 
             conexiones.remove(response.getIdConsulta());
             ultimoTiempoEnviado.remove(response.getIdConsulta());
 
-            log.error("no se pudo enviar al front la actualización del tiempo estimado de atención para la consulta {}: {}",
+            log.error("no se pudo enviar al front la actualización del tiempo estimado de atención para la consulta {}:\n {}",
                     response.getIdConsulta(),
                     e.getMessage());
         }
