@@ -2,11 +2,13 @@ package com.pretriage.backend.services;
 
 import com.pretriage.backend.controllers.dtos.TiempoEstimadoAtencionResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -93,6 +95,36 @@ public class TiempoEstimadoNotifier {
             log.error("no se pudo enviar al front la actualización del tiempo estimado de atención para la consulta {}:\n {}",
                     response.getIdConsulta(),
                     e.getMessage());
+        }
+    }
+
+    @Scheduled(fixedRate = 30000)
+    public void enviarHeartbeat(){//TODO probar heartbear si anda
+
+        Iterator<Map.Entry<Long, List<SseEmitter>>> iterator =
+                conexiones.entrySet().iterator();
+
+        while(iterator.hasNext()) {
+
+            Map.Entry<Long, List<SseEmitter>> entry =
+                    iterator.next();
+
+            List<SseEmitter> emitters = entry.getValue();
+            emitters.forEach((emitter -> {
+                        try {
+                            emitter.send(
+                                    SseEmitter.event()
+                                            .name("heartbeat")
+                                            .comment("keep-alive")
+                            );
+                        } catch (Exception ex) {
+                            emitter.complete();
+                            emitters.remove(emitter);
+                        }
+                    }));
+            if(emitters.isEmpty()){
+                iterator.remove();
+            }
         }
     }
 }
