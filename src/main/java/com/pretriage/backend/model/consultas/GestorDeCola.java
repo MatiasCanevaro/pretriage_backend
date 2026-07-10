@@ -4,6 +4,8 @@ import java.util.*;
 
 import com.pretriage.backend.model.hospitales.Hospital;
 
+import com.pretriage.backend.model.personas.Medico;
+import com.pretriage.backend.model.personas.Paciente;
 import jakarta.persistence.*;
 import jakarta.transaction.Transactional;
 import lombok.Getter;
@@ -73,4 +75,13 @@ public class GestorDeCola {
     }
 
 
+    @Transactional
+    public List<Paciente> obtenerPacientesParaAtender() {
+       return this.consultasEnEspera.stream()
+                .filter(consultaMedica ->
+                        consultaMedica.getEstadoConsulta().equals(EstadoConsulta.EN_ESPERA) ||
+                        consultaMedica.getEstadoConsulta().equals(EstadoConsulta.HOSPITAL_SELECCIONADO))
+               .map(ConsultaMedica::getPaciente)
+                .toList();
+    }
 }

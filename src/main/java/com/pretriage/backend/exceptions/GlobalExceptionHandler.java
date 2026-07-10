@@ -17,7 +17,8 @@ public class GlobalExceptionHandler {
             NoSePudoCrearUsuario.class, NoSePudoEstimarElHorarioDeAtencion.class, NoSePudoObtenerHospital.class,
             AccessDeniedException.class, NoEixstenSalasActivasException.class,
             ObraSocialYaExisteException.class, ObraSocialNoExisteException.class,
-            RecepcionistaNoExisteException.class})
+            RecepcionistaNoExisteException.class, MedicoNoEncontradoException.class,
+            HospitalNoEncontradoException.class})
 
     public ResponseEntity<Map<String, String>> handleExceptions(
             RuntimeException e) {

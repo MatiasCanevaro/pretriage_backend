@@ -2,6 +2,7 @@ package com.pretriage.backend.repositories;
 
 import com.pretriage.backend.model.consultas.ConsultaMedica;
 import com.pretriage.backend.model.consultas.EstadoConsulta;
+import com.pretriage.backend.model.personas.Paciente;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -11,4 +12,6 @@ import java.util.Optional;
 public interface RepoConsultasMedicas extends JpaRepository<ConsultaMedica, Long> {
 
     Optional<ConsultaMedica> findByPacienteIdAndEstadoConsultaEquals(Long idPaciente, EstadoConsulta estadoConsulta);
+
+    Optional<ConsultaMedica> findByPacienteId(Long idPaciente);
 }
