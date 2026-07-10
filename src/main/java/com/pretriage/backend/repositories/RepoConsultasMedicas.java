@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -18,4 +19,7 @@ public interface RepoConsultasMedicas extends JpaRepository<ConsultaMedica, Long
 
     @Query("SELECT c FROM ConsultaMedica c WHERE c.hospital.id = :idHospital AND c.medico.id = :idMedico")
     List<ConsultaMedica> findAllByHospitalIdAndMedicoId(Long idHospital, Long idMedico);
+
+
+    List<ConsultaMedica> findAllByEstadoConsultaAndFechaHoraPuestaEnEsperaBefore(EstadoConsulta estado, LocalDateTime fecha);
 }
