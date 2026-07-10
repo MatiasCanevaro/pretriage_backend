@@ -2,7 +2,6 @@ package com.pretriage.backend.controllers;
 
 import com.pretriage.backend.controllers.dtos.PacienteDTO;
 import com.pretriage.backend.services.MedicoService;
-import com.pretriage.backend.services.PacienteService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -30,12 +29,14 @@ public class MedicoController {
         return ResponseEntity.ok(medicoService.obtenerTodosPacientesParaAtender(idHospital, jwt.getSubject()));
     }
 
-    /*TODO obtenerTodosLosPacientes
+
     @GetMapping("/hospitales/{idHospital}/pacientes")
-    public ResponseEntity<List<Paciente>> obtenerTodosLosPacientes() {
-        return ResponseEntity.ok(medicoService.findAllPacientes());
+    public ResponseEntity<List<PacienteDTO>> obtenerTodosLosPacientesAtendidos(
+            @PathVariable Long idHospital,
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        return ResponseEntity.ok(medicoService.findAllPacientesAtendidos(idHospital, jwt.getSubject()));
     }
-     */
 
 
 }

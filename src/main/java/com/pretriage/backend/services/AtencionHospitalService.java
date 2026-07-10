@@ -124,5 +124,4 @@ public class AtencionHospitalService {
         return opPaciente.get();
     }
 
-
 }

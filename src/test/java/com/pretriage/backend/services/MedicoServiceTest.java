@@ -19,7 +19,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.security.core.parameters.P;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -211,4 +210,97 @@ public class MedicoServiceTest {
         );
     }
 
+    @Test
+    void sePuedeObtenerTodosLosPacientesAtendidos() {
+        String auth0IdMedico = "auth0IdMedico";
+        Medico medico = mock(Medico.class);
+        Hospital hospital = mock(Hospital.class);
+        Long idHospital = 1L;
+
+        Paciente paciente1 = new Paciente();
+        paciente1.setId(1L);
+        paciente1.setUsuarioAuth(mock(UsuarioAuth.class));
+        Paciente paciente2 = new Paciente();
+        paciente2.setId(2L);
+        paciente2.setUsuarioAuth(mock(UsuarioAuth.class));
+        Paciente paciente3 = new Paciente();
+        paciente3.setId(3L);
+        paciente3.setUsuarioAuth(mock(UsuarioAuth.class));
+
+        ConsultaMedica consultaMedica1 = new ConsultaMedica();
+        consultaMedica1.setNivelDeGravedadBot(NivelDeGravedad.NORMAL);
+        consultaMedica1.setFechaHoraCreacion(LocalDateTime.now().minusMinutes(10));
+        consultaMedica1.setPaciente(paciente1);
+        consultaMedica1.setEstadoConsulta(EstadoConsulta.FINALIZADA);
+        consultaMedica1.setMedico(medico);
+        consultaMedica1.setHospital(hospital);
+
+        ConsultaMedica consultaMedica2 = new ConsultaMedica();
+        consultaMedica2.setNivelDeGravedadBot(NivelDeGravedad.NORMAL);
+        consultaMedica2.setFechaHoraCreacion(LocalDateTime.now().minusMinutes(20));
+        consultaMedica2.setPaciente(paciente2);
+        consultaMedica2.setEstadoConsulta(EstadoConsulta.FINALIZADA);
+        consultaMedica2.setMedico(medico);
+        consultaMedica2.setHospital(hospital);
+
+        ConsultaMedica consultaMedica3 = new ConsultaMedica();
+        consultaMedica3.setNivelDeGravedadBot(NivelDeGravedad.NORMAL);
+        consultaMedica3.setFechaHoraCreacion(LocalDateTime.now().minusMinutes(30));
+        consultaMedica3.setPaciente(paciente3);
+        consultaMedica3.setEstadoConsulta(EstadoConsulta.PACIENTE_NO_ASISTIO);
+        consultaMedica3.setMedico(medico);
+        consultaMedica3.setHospital(hospital);
+
+        when(repoMedico.findByUsuarioAuth0Id(auth0IdMedico))
+                .thenReturn(Optional.of(medico));
+
+        when(repoHospitales.findById(idHospital))
+                .thenReturn(Optional.of(hospital));
+
+        when(repoConsultasMedicas.findAllByHospitalIdAndMedicoId(hospital.getId(), medico.getId()))
+                .thenReturn(List.of(consultaMedica1, consultaMedica2, consultaMedica3));
+
+        List<PacienteDTO> pacientesResult = medicoService.findAllPacientesAtendidos(idHospital, auth0IdMedico);
+
+        assertEquals(3, pacientesResult.size());
+        PacienteDTO pacienteDTO = pacientesResult.getFirst();
+
+        assertEquals(paciente1.getId(), pacienteDTO.getIdPaciente());
+        assertEquals(consultaMedica1.getNivelDeGravedadBot(), pacienteDTO.getNivelDeGravedadBot());
+        assertEquals(consultaMedica1.getFechaHoraCreacion(), pacienteDTO.getFechaHoraIngresoAColaEspera());
+        assertEquals(consultaMedica1.getEstadoConsulta(), pacienteDTO.getEstadoConsulta());
+
+        pacienteDTO = pacientesResult.get(1);
+        assertEquals(paciente2.getId(), pacienteDTO.getIdPaciente());
+        assertEquals(consultaMedica2.getNivelDeGravedadBot(), pacienteDTO.getNivelDeGravedadBot());
+        assertEquals(consultaMedica2.getFechaHoraCreacion(), pacienteDTO.getFechaHoraIngresoAColaEspera());
+        assertEquals(consultaMedica2.getEstadoConsulta(), pacienteDTO.getEstadoConsulta());
+
+        pacienteDTO = pacientesResult.get(2);
+        assertEquals(paciente3.getId(), pacienteDTO.getIdPaciente());
+        assertEquals(consultaMedica3.getNivelDeGravedadBot(), pacienteDTO.getNivelDeGravedadBot());
+        assertEquals(consultaMedica3.getFechaHoraCreacion(), pacienteDTO.getFechaHoraIngresoAColaEspera());
+        assertEquals(consultaMedica3.getEstadoConsulta(), pacienteDTO.getEstadoConsulta());
+    }
+
+    @Test
+    void seDevuelveListaVaciaSiNoExistenConsultasMedicasAtendidas() {
+        String auth0IdMedico = "auth0IdMedico";
+        Medico medico = mock(Medico.class);
+        Hospital hospital = mock(Hospital.class);
+        Long idHospital = 1L;
+
+        when(repoMedico.findByUsuarioAuth0Id(auth0IdMedico))
+                .thenReturn(Optional.of(medico));
+
+        when(repoHospitales.findById(idHospital))
+                .thenReturn(Optional.of(hospital));
+
+        when(repoConsultasMedicas.findAllByHospitalIdAndMedicoId(hospital.getId(), medico.getId()))
+                .thenReturn(List.of());
+
+        List<PacienteDTO> pacientesResult = medicoService.findAllPacientesAtendidos(idHospital, auth0IdMedico);
+
+        assertEquals(0, pacientesResult.size());
+    }
 }

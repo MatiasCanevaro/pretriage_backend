@@ -46,6 +46,26 @@ public class MedicoService {
                 .toList();
     }
 
+    @Transactional
+    public List<PacienteDTO> findAllPacientesAtendidos(Long idHospital, String auth0IdMedico) {
+        Medico medico = this.obtenerMedico(auth0IdMedico);
+        Hospital hospital = this.obtenerHospital(idHospital);
+        List<ConsultaMedica> consultasMedicas = this.obtenerConsultasMedicasEnHospitalYDeMedico(hospital, medico);
+
+        return consultasMedicas.stream()
+                .map( consultaMedica -> {
+                    Paciente paciente = consultaMedica.getPaciente();
+
+                    return MapperPaciente.toPacienteDTO(paciente, consultaMedica);
+                })
+                .toList();
+    }
+
+    @Transactional
+    private List<ConsultaMedica> obtenerConsultasMedicasEnHospitalYDeMedico(Hospital hospital, Medico medico){
+        return this.repoConsultasMedicas.findAllByHospitalIdAndMedicoId(hospital.getId(), medico.getId());
+    }
+
     private ConsultaMedica obtenerConsultaMedicaDe(Paciente paciente) {
        return repoConsultasMedicas.findByPacienteId(paciente.getId())
                .orElseThrow(() -> new NoSuchElementException(
@@ -61,7 +81,5 @@ public class MedicoService {
         return this.repoMedico.findByUsuarioAuth0Id(auth0IdMedico)
                 .orElseThrow(() -> new MedicoNoEncontradoException(auth0IdMedico));
     }
-
-
 
 }
