@@ -21,7 +21,10 @@ public class ObraSocial {
     @OneToMany(mappedBy = "obraSocial")
     private List<Credencial> credenciales;
 
+    private boolean virgente;
+
     public ObraSocial(){
         this.credenciales = new ArrayList<>();
+        this.virgente = true;
     }
 }

@@ -2,6 +2,8 @@ package com.pretriage.backend.controllers;
 
 import com.pretriage.backend.controllers.dtos.CredencialRequest;
 import com.pretriage.backend.controllers.dtos.CredencialResponse;
+import com.pretriage.backend.controllers.dtos.ObraSocialDTO;
+import com.pretriage.backend.model.hospitales.ObraSocial;
 import com.pretriage.backend.services.CredencialService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -39,17 +41,6 @@ public class ObraSocialController {
         return ResponseEntity.ok(Map.of("mensaje", "credencial cargada con éxito"));
     }
 
-    @PostMapping("/pacientes/{idPaciente}/obrasocial/credencial")
-    public ResponseEntity<Map<String, String>> cargarCredencialRecepcionista(
-            @AuthenticationPrincipal Jwt jwt,
-            @PathVariable("idPaciente") Long idPaciente,
-            @Valid @RequestBody CredencialRequest request
-    ){
-
-        credencialService.cargarCredencialRecepcionista(jwt.getSubject(), idPaciente, request);
-
-        return ResponseEntity.ok(Map.of("mensaje", "credencial cargada con éxito"));
-    }
 
     @DeleteMapping("/obrasocial/credenciales/{idCredencial}")
     public ResponseEntity<Map<String, String>> eliminarCredencialPaciente(
@@ -62,17 +53,6 @@ public class ObraSocialController {
         return ResponseEntity.ok(Map.of("mensaje", "credencial eliminada con éxito"));
     }
 
-    @DeleteMapping("/pacientes/{idPaciente}/obrasocial/credenciales/{idCredencial}")
-    public ResponseEntity<Map<String, String>> eliminarCredencialRecepcionista(
-            @AuthenticationPrincipal Jwt jwt,
-            @PathVariable("idPaciente") Long idPaciente,
-            @PathVariable("idCredencial") Long idCredencial
-    ){
-
-        credencialService.eliminarCredencialRecepcionista(idCredencial, idPaciente, jwt.getSubject());
-
-        return ResponseEntity.ok(Map.of("mensaje", "credencial eliminada con éxito"));
-    }
 
     @PutMapping("/obrasocial/credenciales/{idCredencial}")
     public ResponseEntity<Map<String, String>> editarCredencialPaciente(
@@ -86,17 +66,29 @@ public class ObraSocialController {
         return ResponseEntity.ok(Map.of("mensaje", "credencial actualizada con éxito"));
     }
 
-    @PutMapping("/pacientes/{idPaciente}/obrasocial/credenciales/{idCredencial}")
-    public ResponseEntity<Map<String, String>> editarCredencialRecepcionista(
+
+    //obras sociales admin
+
+    @PostMapping("/obrasocial")
+    public ResponseEntity<ObraSocial> cargarObraSocialAdmin(
             @AuthenticationPrincipal Jwt jwt,
-            @PathVariable("idPaciente") Long idPaciente,
-            @PathVariable("idCredencial") Long idCredencial,
-            @Valid @RequestBody CredencialRequest request
+            @Valid @RequestBody ObraSocialDTO request
     ){
 
-        credencialService.editarCredencialRecepcionista(idCredencial, idPaciente, jwt.getSubject(), request);
+        ObraSocial obraSocial = credencialService.cargarObraSocialAdmin(jwt.getSubject(), request);
 
-        return ResponseEntity.ok(Map.of("mensaje", "credencial actualizada con éxito"));
+        return ResponseEntity.ok(obraSocial);
+    }
+
+    @DeleteMapping("/obrasocial/{idObraSocial}")
+    public ResponseEntity<Map<String, String>> eliminarObraSocialAdmin(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable("idObraSocial") Long idObraSocial
+    ){
+
+        credencialService.eliminarObraSocial(jwt.getSubject(), idObraSocial);
+
+        return ResponseEntity.ok(Map.of("mensaje", "obra social eliminada con éxito"));
     }
 
 }

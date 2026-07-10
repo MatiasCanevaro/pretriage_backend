@@ -2,19 +2,23 @@ package com.pretriage.backend.services;
 
 import com.pretriage.backend.controllers.dtos.CredencialRequest;
 import com.pretriage.backend.controllers.dtos.CredencialResponse;
-import com.pretriage.backend.exceptions.CredencialValidaYaExisteException;
+import com.pretriage.backend.controllers.dtos.ObraSocialDTO;
+import com.pretriage.backend.exceptions.ObraSocialNoExisteException;
+import com.pretriage.backend.exceptions.ObraSocialYaExisteException;
 import com.pretriage.backend.mappers.MapperCredencial;
 import com.pretriage.backend.model.hospitales.Credencial;
 import com.pretriage.backend.model.hospitales.ObraSocial;
 import com.pretriage.backend.model.personas.Paciente;
+import com.pretriage.backend.model.personas.RolSistema;
+import com.pretriage.backend.model.personas.UsuarioAuth;
 import com.pretriage.backend.repositories.*;
 import jakarta.transaction.Transactional;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.NonNull;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -33,17 +37,29 @@ public class CredencialService {
             String auth0IdPaciente,
             CredencialRequest request) {
 
-        Paciente paciente = obtenerPaciente(auth0IdPaciente);
+        Paciente paciente = this.obtenerPaciente(auth0IdPaciente);
 
-        cargarCredencial(request, paciente);
+        this.cargarCredencial(request, paciente);
     }
 
+    @Transactional
     public List<CredencialResponse> obtenerCredencialesPaciente(String auth0IdPaciente) {
 
         Paciente paciente = obtenerPaciente(auth0IdPaciente);
 
+        return this.obtenerCredencialesDePaciente(paciente.getId());
+    }
+
+
+    public List<CredencialResponse> obtenerCredencialesPacienteRecepcionista(String authoIdRecepcionista, Long idPaciente){
+        this.verificarSiEsRecepcionista(authoIdRecepcionista);
+
+        return this.obtenerCredencialesDePaciente(idPaciente);
+    }
+
+    private List<CredencialResponse> obtenerCredencialesDePaciente(Long idPaciente){
         return repoCredenciales
-                .findByPacienteId(paciente.getId())
+                .findByPacienteId(idPaciente)
                 .stream()
                 .map(MapperCredencial::toDTOResponse)
                 .toList();
@@ -82,22 +98,16 @@ public class CredencialService {
         }
     }
 
-    private ObraSocial obtenerOCrearObraSocial(String nombre) {
+    private ObraSocial obtenerObraSocial(String nombre) {
 
         return repoObraSociales
-                .findByNombreEqualsIgnoreCase(nombre)
-                .orElseGet(() -> {
-
-                    ObraSocial obraSocial = new ObraSocial();
-                    obraSocial.setNombre(nombre);
-                    repoObraSociales.save(obraSocial);
-                    return obraSocial;
-                });
+                .findByNombreEqualsIgnoreCaseAndVirgenteTrue(nombre)
+                .orElseThrow(ObraSocialNoExisteException::new);
     }
 
 
     private void cargarCredencial(CredencialRequest request, Paciente paciente){
-        ObraSocial obraSocial = obtenerOCrearObraSocial(
+        ObraSocial obraSocial = obtenerObraSocial(
                 request.getNombreObraSocial());
 
         Credencial credencial = new Credencial();
@@ -140,7 +150,7 @@ public class CredencialService {
 
         Credencial credencial = this.obtenerCredencialYVerificarPermiso(paciente.getId(),idCredencial);
 
-        ObraSocial obraSocial = obtenerOCrearObraSocial(
+        ObraSocial obraSocial = obtenerObraSocial(
                 request.getNombreObraSocial());
 
         credencial.setObraSocial(obraSocial);
@@ -161,7 +171,7 @@ public class CredencialService {
 
         Credencial credencial = this.obtenerCredencialYVerificarPermisoRecepcionista(auth0IdRecepcionista, idPaciente, idCredencial);
 
-        ObraSocial obraSocial = this.obtenerOCrearObraSocial(
+        ObraSocial obraSocial = this.obtenerObraSocial(
                 request.getNombreObraSocial());
 
         credencial.setObraSocial(obraSocial);
@@ -170,6 +180,30 @@ public class CredencialService {
         credencial.setFechaVencimiento(request.getFechaVencimiento());
 
         repoCredenciales.save(credencial);
+    }
+
+    @Transactional
+    public ObraSocial cargarObraSocialAdmin(String auth0id, @NonNull ObraSocialDTO request){
+        this.verificarSiEsAdmin(auth0id);
+
+        if(this.repoObraSociales.findByNombreEqualsIgnoreCaseAndVirgenteTrue(request.getNombre()).isPresent()){
+            throw new ObraSocialYaExisteException();
+        } else {
+            ObraSocial obraSocial = new ObraSocial();
+            obraSocial.setNombre(request.getNombre());
+           return repoObraSociales.save(obraSocial);
+        }
+    }
+
+    @Transactional
+    public void eliminarObraSocial(String auth0Id, Long idObraSocial){
+        this.verificarSiEsAdmin(auth0Id);
+
+        ObraSocial obraSocial = repoObraSociales.findById(idObraSocial)
+                .orElseThrow(ObraSocialNoExisteException::new);
+
+        obraSocial.setVirgente(false); //borrado lógico
+        repoObraSociales.save(obraSocial);
     }
 
     @Transactional
@@ -203,5 +237,15 @@ public class CredencialService {
         }
 
         return credencial;
+    }
+
+    @Transactional
+    private void verificarSiEsAdmin(String auth0Id){ // asumo que los admins son recepcionistas
+        UsuarioAuth recepcionistaUser = recepcionistaService
+                .obtenerUsuarioAuth(auth0Id);
+        if(!recepcionistaUser.getRol().equals(RolSistema.ADMIN)){
+            throw new AccessDeniedException(
+                    "No tiene permisos para cargar la credencial");
+        }
     }
 }
