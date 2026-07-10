@@ -41,17 +41,6 @@ public class ObraSocialController {
         return ResponseEntity.ok(Map.of("mensaje", "credencial cargada con éxito"));
     }
 
-    @PostMapping("/pacientes/{idPaciente}/obrasocial/credencial")
-    public ResponseEntity<Map<String, String>> cargarCredencialRecepcionista(
-            @AuthenticationPrincipal Jwt jwt,
-            @PathVariable("idPaciente") Long idPaciente,
-            @Valid @RequestBody CredencialRequest request
-    ){
-
-        credencialService.cargarCredencialRecepcionista(jwt.getSubject(), idPaciente, request);
-
-        return ResponseEntity.ok(Map.of("mensaje", "credencial cargada con éxito"));
-    }
 
     @DeleteMapping("/obrasocial/credenciales/{idCredencial}")
     public ResponseEntity<Map<String, String>> eliminarCredencialPaciente(
@@ -64,17 +53,6 @@ public class ObraSocialController {
         return ResponseEntity.ok(Map.of("mensaje", "credencial eliminada con éxito"));
     }
 
-    @DeleteMapping("/pacientes/{idPaciente}/obrasocial/credenciales/{idCredencial}")
-    public ResponseEntity<Map<String, String>> eliminarCredencialRecepcionista(
-            @AuthenticationPrincipal Jwt jwt,
-            @PathVariable("idPaciente") Long idPaciente,
-            @PathVariable("idCredencial") Long idCredencial
-    ){
-
-        credencialService.eliminarCredencialRecepcionista(idCredencial, idPaciente, jwt.getSubject());
-
-        return ResponseEntity.ok(Map.of("mensaje", "credencial eliminada con éxito"));
-    }
 
     @PutMapping("/obrasocial/credenciales/{idCredencial}")
     public ResponseEntity<Map<String, String>> editarCredencialPaciente(
@@ -88,18 +66,6 @@ public class ObraSocialController {
         return ResponseEntity.ok(Map.of("mensaje", "credencial actualizada con éxito"));
     }
 
-    @PutMapping("/pacientes/{idPaciente}/obrasocial/credenciales/{idCredencial}")
-    public ResponseEntity<Map<String, String>> editarCredencialRecepcionista(
-            @AuthenticationPrincipal Jwt jwt,
-            @PathVariable("idPaciente") Long idPaciente,
-            @PathVariable("idCredencial") Long idCredencial,
-            @Valid @RequestBody CredencialRequest request
-    ){
-
-        credencialService.editarCredencialRecepcionista(idCredencial, idPaciente, jwt.getSubject(), request);
-
-        return ResponseEntity.ok(Map.of("mensaje", "credencial actualizada con éxito"));
-    }
 
     //obras sociales admin
 

@@ -15,6 +15,7 @@ import com.pretriage.backend.repositories.*;
 import jakarta.transaction.Transactional;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.NonNull;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
@@ -40,12 +41,24 @@ public class CredencialService {
         this.cargarCredencial(request, paciente);
     }
 
+    @Transactional
     public List<CredencialResponse> obtenerCredencialesPaciente(String auth0IdPaciente) {
 
         Paciente paciente = obtenerPaciente(auth0IdPaciente);
 
+        return this.obtenerCredencialesDePaciente(paciente.getId());
+    }
+
+
+    public List<CredencialResponse> obtenerCredencialesPacienteRecepcionista(String authoIdRecepcionista, Long idPaciente){
+        this.verificarSiEsRecepcionista(authoIdRecepcionista);
+
+        return this.obtenerCredencialesDePaciente(idPaciente);
+    }
+
+    private List<CredencialResponse> obtenerCredencialesDePaciente(Long idPaciente){
         return repoCredenciales
-                .findByPacienteId(paciente.getId())
+                .findByPacienteId(idPaciente)
                 .stream()
                 .map(MapperCredencial::toDTOResponse)
                 .toList();
@@ -167,7 +180,8 @@ public class CredencialService {
         repoCredenciales.save(credencial);
     }
 
-    public ObraSocial cargarObraSocialAdmin(String auth0id, ObraSocialDTO request){
+    @Transactional
+    public ObraSocial cargarObraSocialAdmin(String auth0id, @NonNull ObraSocialDTO request){
         this.verificarSiEsAdmin(auth0id);
 
         if(this.repoObraSociales.findByNombreEqualsIgnoreCaseAndVirgenteTrue(request.getNombre()).isPresent()){
@@ -179,6 +193,7 @@ public class CredencialService {
         }
     }
 
+    @Transactional
     public void eliminarObraSocial(String auth0Id, Long idObraSocial){
         this.verificarSiEsAdmin(auth0Id);
 
@@ -222,6 +237,7 @@ public class CredencialService {
         return credencial;
     }
 
+    @Transactional
     private void verificarSiEsAdmin(String auth0Id){ // asumo que los admins son recepcionistas
         UsuarioAuth recepcionistaUser = recepcionistaService
                 .obtenerUsuarioAuth(auth0Id);
