@@ -50,6 +50,8 @@ public class ConsultaMedica {
     @Enumerated(EnumType.STRING)
     private EstadoConsulta estadoConsulta;
 
+    private LocalDateTime fechaHoraPuestaEnEspera;//necesario para determinar si eliminarlo o no
+
     @OneToMany
     @JoinColumn(name = "id_consulta_medica", referencedColumnName = "id")
     private List<Mensaje> chat;

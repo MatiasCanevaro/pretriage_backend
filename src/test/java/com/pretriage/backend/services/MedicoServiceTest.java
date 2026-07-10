@@ -368,5 +368,101 @@ public class MedicoServiceTest {
         assertNotEquals(EstadoConsulta.FINALIZADA, consultaMedica1.getEstadoConsulta());
     }
 
+    @Test
+    void sePuedePonerEnEsperaAUnPaciente(){
+        String auth0IdMedico = "auth0IdMedico";
+        Medico medico = mock(Medico.class);
+        Hospital hospital = new Hospital();
+        Long idHospital = 1L;
+        Long idPaciente = 1L;
+        hospital.setId(idHospital);
+
+        ConsultaMedica consultaMedica1 = new ConsultaMedica();
+        consultaMedica1.setNivelDeGravedadBot(NivelDeGravedad.URGENTE);
+        consultaMedica1.setFechaHoraCreacion(LocalDateTime.now().minusMinutes(10));
+        consultaMedica1.setEstadoConsulta(EstadoConsulta.HOSPITAL_SELECCIONADO);
+        consultaMedica1.setHospital(hospital);
+
+        when(repoMedico.findByUsuarioAuthId(auth0IdMedico))
+                .thenReturn(Optional.of(medico));
+
+        when(repoHospitales.findById(idHospital))
+                .thenReturn(Optional.of(hospital));
+
+        when(repoConsultasMedicas.findByPacienteId(idPaciente))
+                .thenReturn(Optional.of(consultaMedica1));
+
+        medicoService.ponerEnEsperaAPaciente(idPaciente, idHospital, auth0IdMedico);
+
+        assertEquals(EstadoConsulta.EN_ESPERA, consultaMedica1.getEstadoConsulta());
+        assertNotNull(consultaMedica1.getFechaHoraPuestaEnEspera());
+
+        verify(repoConsultasMedicas).save(consultaMedica1);
+        verify(colaService).sacarDeLaColaDelHospital(consultaMedica1);
+    }
+
+    @Test
+    void lanzaAccessDeniedExceptionSiNoPerteneceAlMismoHospital(){
+        String auth0IdMedico = "auth0IdMedico";
+        Medico medico = mock(Medico.class);
+        Hospital hospital = new Hospital();
+        Long idHospital = 1L;
+        Long idPaciente = 1L;
+        hospital.setId(idHospital);
+        Hospital hospital2 = new Hospital();
+        hospital2.setId(2L);
+
+        ConsultaMedica consultaMedica1 = new ConsultaMedica();
+        consultaMedica1.setNivelDeGravedadBot(NivelDeGravedad.URGENTE);
+        consultaMedica1.setFechaHoraCreacion(LocalDateTime.now().minusMinutes(10));
+        consultaMedica1.setEstadoConsulta(EstadoConsulta.HOSPITAL_SELECCIONADO);
+        consultaMedica1.setHospital(hospital2);
+
+        when(repoMedico.findByUsuarioAuthId(auth0IdMedico))
+                .thenReturn(Optional.of(medico));
+
+        when(repoHospitales.findById(idHospital))
+                .thenReturn(Optional.of(hospital));
+
+        when(repoConsultasMedicas.findByPacienteId(idPaciente))
+                .thenReturn(Optional.of(consultaMedica1));
+
+        assertThrows(AccessDeniedException.class,
+                ()-> medicoService.ponerEnEsperaAPaciente(idPaciente, idHospital, auth0IdMedico));
+
+        assertNotEquals(EstadoConsulta.EN_ESPERA, consultaMedica1.getEstadoConsulta());
+    }
+
+    @Test
+    void lanzaAccessDeniedExceptionSiConsultaMedicaNoEstabaEnEstadoHospitalSeleccionadoPreviamente(){
+        String auth0IdMedico = "auth0IdMedico";
+        Medico medico = mock(Medico.class);
+        Hospital hospital = new Hospital();
+        Long idHospital = 1L;
+        Long idPaciente = 1L;
+        hospital.setId(idHospital);
+        Hospital hospital2 = new Hospital();
+        hospital2.setId(2L);
+
+        ConsultaMedica consultaMedica1 = new ConsultaMedica();
+        consultaMedica1.setNivelDeGravedadBot(NivelDeGravedad.URGENTE);
+        consultaMedica1.setFechaHoraCreacion(LocalDateTime.now().minusMinutes(10));
+        consultaMedica1.setEstadoConsulta(EstadoConsulta.PACIENTE_NO_ASISTIO);
+        consultaMedica1.setHospital(hospital2);
+
+        when(repoMedico.findByUsuarioAuthId(auth0IdMedico))
+                .thenReturn(Optional.of(medico));
+
+        when(repoHospitales.findById(idHospital))
+                .thenReturn(Optional.of(hospital));
+
+        when(repoConsultasMedicas.findByPacienteId(idPaciente))
+                .thenReturn(Optional.of(consultaMedica1));
+
+        assertThrows(AccessDeniedException.class,
+                ()-> medicoService.ponerEnEsperaAPaciente(idPaciente, idHospital, auth0IdMedico));
+
+        assertNotEquals(EstadoConsulta.EN_ESPERA, consultaMedica1.getEstadoConsulta());
+    }
 
 }

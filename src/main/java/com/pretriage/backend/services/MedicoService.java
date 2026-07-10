@@ -18,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.NoSuchElementException;
 
@@ -63,10 +64,15 @@ public class MedicoService {
                 .toList();
     }
 
+    @Transactional
     public void seleccionarAPaciente(Long idPaciente, Long idHospital, String auth0IdMedico){
         Medico medico = this.obtenerMedico(auth0IdMedico);
         Hospital hospital = this.obtenerHospital(idHospital);
         ConsultaMedica consultaMedica = this.obtenerConsultaMedicaDe(idPaciente);
+
+        if(!consultaMedica.getHospital().getId().equals(hospital.getId())){
+            throw new AccessDeniedException("No se puede seleccionar a un paciente de otro hospital");
+        }
 
         EstadoConsulta estadoConsultaPrevio = consultaMedica.getEstadoConsulta();
         if(!estadoConsultaPrevio.equals(EstadoConsulta.EN_ESPERA) &&
@@ -81,8 +87,31 @@ public class MedicoService {
         this.repoConsultasMedicas.save(consultaMedica);
 
         if(!estadoConsultaPrevio.equals(EstadoConsulta.EN_ESPERA)){
+            consultaMedica.setFechaHoraPuestaEnEspera(null);
             this.colaService.sacarDeLaColaDelHospital(consultaMedica);// lo saco de la cola
         }// si no estaba en espera, no se hace nada porque no esta en la cola
+    }
+
+    @Transactional
+    public void ponerEnEsperaAPaciente(Long idPaciente, Long idHospital, String auth0IdMedico){
+        Medico medico = this.obtenerMedico(auth0IdMedico);
+        Hospital hospital = this.obtenerHospital(idHospital);
+        ConsultaMedica consultaMedica = this.obtenerConsultaMedicaDe(idPaciente);
+
+        if(!consultaMedica.getHospital().getId().equals(hospital.getId())){
+            throw new AccessDeniedException("No se puede poner en espera a un paciente de otro hospital");
+        }
+
+        EstadoConsulta estadoConsultaPrevio = consultaMedica.getEstadoConsulta();
+        if(!estadoConsultaPrevio.equals(EstadoConsulta.HOSPITAL_SELECCIONADO)){
+            throw new AccessDeniedException("No se puede poner en espera a un paciente que no haya seleccionado el hospital");
+        }
+
+        consultaMedica.setFechaHoraPuestaEnEspera(LocalDateTime.now());
+        consultaMedica.setEstadoConsulta(EstadoConsulta.EN_ESPERA);
+        this.repoConsultasMedicas.save(consultaMedica);
+
+        this.colaService.sacarDeLaColaDelHospital(consultaMedica);
     }
 
     @Transactional

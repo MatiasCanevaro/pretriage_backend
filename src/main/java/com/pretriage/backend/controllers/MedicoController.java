@@ -47,5 +47,16 @@ public class MedicoController {
         return ResponseEntity.ok(Map.of("message", "Paciente seleccionado con éxito"));
     }
 
+
+    @PostMapping("/hospitales/{idHospital}/pacientes/espera/{idPaciente}")
+    public ResponseEntity<Map<String, String>> ponerEnEsperaAPaciente(
+            @PathVariable("idHospital") Long idHospital,
+            @PathVariable("idPaciente") Long idPaciente,
+            @AuthenticationPrincipal Jwt jwt
+    ){
+        medicoService.ponerEnEsperaAPaciente(idPaciente, idHospital, jwt.getSubject());
+
+        return ResponseEntity.ok(Map.of("message", "Paciente seleccionado con éxito"));
+    }
 }
 
