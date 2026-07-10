@@ -99,10 +99,9 @@ public class TiempoEstimadoNotifier {
     }
 
     @Scheduled(fixedRate = 30000)
-    public void enviarHeartbeat(){//TODO probar heartbear si anda
+    public void enviarHeartbeat(){
 
-        Iterator<Map.Entry<Long, List<SseEmitter>>> iterator =
-                conexiones.entrySet().iterator();
+        Iterator<Map.Entry<Long, List<SseEmitter>>> iterator = conexiones.entrySet().iterator();
 
         while(iterator.hasNext()) {
 
@@ -110,19 +109,26 @@ public class TiempoEstimadoNotifier {
                     iterator.next();
 
             List<SseEmitter> emitters = entry.getValue();
-            emitters.forEach((emitter -> {
-                        try {
-                            emitter.send(
-                                    SseEmitter.event()
-                                            .name("heartbeat")
-                                            .comment("keep-alive")
-                            );
-                        } catch (Exception ex) {
-                            emitter.complete();
-                            emitters.remove(emitter);
-                        }
-                    }));
+            Long idConsulta = entry.getKey();
+
+            Iterator<SseEmitter> iteratorEmitters = emitters.iterator();
+            while(iteratorEmitters.hasNext()){
+                SseEmitter emitter = iteratorEmitters.next();
+
+                try {
+                    emitter.send(
+                            SseEmitter.event()
+                                    .name("heartbeat")
+                                    .comment("keep-alive")
+                    );
+                } catch (IOException ex) {
+                    log.warn("se perdió una conexión para consulta con id: {}", idConsulta);
+                    emitter.complete();
+                    iteratorEmitters.remove();
+                }
+            }
             if(emitters.isEmpty()){
+                log.warn("se perdió todas las conexiónes con consulta con id: {}", idConsulta);
                 iterator.remove();
             }
         }
