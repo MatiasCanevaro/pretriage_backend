@@ -19,16 +19,15 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.access.AccessDeniedException;
 
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 public class MedicoServiceTest {
@@ -81,7 +80,7 @@ public class MedicoServiceTest {
         consultaMedica3.setPaciente(paciente3);
         consultaMedica3.setEstadoConsulta(EstadoConsulta.HOSPITAL_SELECCIONADO);
 
-        when(repoMedico.findByUsuarioAuth0Id(auth0IdMedico))
+        when(repoMedico.findByUsuarioAuthId(auth0IdMedico))
                 .thenReturn(Optional.of(medico));
 
         when(repoHospitales.findById(idHospital))
@@ -129,7 +128,7 @@ public class MedicoServiceTest {
         Medico medico = mock(Medico.class);
         Long idHospital = 1L;
 
-        when(repoMedico.findByUsuarioAuth0Id(auth0IdMedico))
+        when(repoMedico.findByUsuarioAuthId(auth0IdMedico))
                 .thenReturn(Optional.of(medico));
 
         when(repoHospitales.findById(idHospital))
@@ -145,7 +144,7 @@ public class MedicoServiceTest {
         String auth0IdMedico = "auth0IdMedico";
         Long idHospital = 1L;
 
-        when(repoMedico.findByUsuarioAuth0Id(auth0IdMedico))
+        when(repoMedico.findByUsuarioAuthId(auth0IdMedico))
                 .thenReturn(Optional.empty());
 
         assertThrows(MedicoNoEncontradoException.class, ()->
@@ -161,7 +160,7 @@ public class MedicoServiceTest {
         Long idHospital = 1L;
         GestorDeCola gestorDeCola = mock(GestorDeCola.class);
 
-        when(repoMedico.findByUsuarioAuth0Id(auth0IdMedico))
+        when(repoMedico.findByUsuarioAuthId(auth0IdMedico))
                 .thenReturn(Optional.of(medico));
 
         when(repoHospitales.findById(idHospital))
@@ -190,7 +189,7 @@ public class MedicoServiceTest {
         paciente1.setId(1L);
         paciente1.setUsuarioAuth(mock(UsuarioAuth.class));
 
-        when(repoMedico.findByUsuarioAuth0Id(auth0IdMedico))
+        when(repoMedico.findByUsuarioAuthId(auth0IdMedico))
                 .thenReturn(Optional.of(medico));
 
         when(repoHospitales.findById(idHospital))
@@ -251,7 +250,7 @@ public class MedicoServiceTest {
         consultaMedica3.setMedico(medico);
         consultaMedica3.setHospital(hospital);
 
-        when(repoMedico.findByUsuarioAuth0Id(auth0IdMedico))
+        when(repoMedico.findByUsuarioAuthId(auth0IdMedico))
                 .thenReturn(Optional.of(medico));
 
         when(repoHospitales.findById(idHospital))
@@ -290,7 +289,7 @@ public class MedicoServiceTest {
         Hospital hospital = mock(Hospital.class);
         Long idHospital = 1L;
 
-        when(repoMedico.findByUsuarioAuth0Id(auth0IdMedico))
+        when(repoMedico.findByUsuarioAuthId(auth0IdMedico))
                 .thenReturn(Optional.of(medico));
 
         when(repoHospitales.findById(idHospital))
@@ -303,4 +302,71 @@ public class MedicoServiceTest {
 
         assertEquals(0, pacientesResult.size());
     }
+
+    @Test
+    void sePuedeSeleccionarUnPacienteParaAtenderlo() {
+        String auth0IdMedico = "auth0IdMedico";
+        Medico medico = mock(Medico.class);
+        Hospital hospital = mock(Hospital.class);
+        Long idHospital = 1L;
+        Long idPaciente = 1L;
+
+        ConsultaMedica consultaMedica1 = new ConsultaMedica();
+        consultaMedica1.setNivelDeGravedadBot(NivelDeGravedad.URGENTE);
+        consultaMedica1.setFechaHoraCreacion(LocalDateTime.now().minusMinutes(10));
+        consultaMedica1.setEstadoConsulta(EstadoConsulta.HOSPITAL_SELECCIONADO);
+        consultaMedica1.setHospital(hospital);
+
+        when(repoMedico.findByUsuarioAuthId(auth0IdMedico))
+                .thenReturn(Optional.of(medico));
+
+        when(repoHospitales.findById(idHospital))
+                .thenReturn(Optional.of(hospital));
+
+        when(repoConsultasMedicas.findByPacienteId(idPaciente))
+                .thenReturn(Optional.of(consultaMedica1));
+
+        medicoService.seleccionarAPaciente(idHospital, idPaciente, auth0IdMedico);
+
+        assertEquals(medico, consultaMedica1.getMedico());
+        assertEquals(hospital, consultaMedica1.getHospital());
+        assertEquals(EstadoConsulta.FINALIZADA, consultaMedica1.getEstadoConsulta());
+
+        verify(repoConsultasMedicas).save(consultaMedica1);
+        verify(colaService).sacarDeLaColaDelHospital(consultaMedica1);
+    }
+
+    @Test
+    void seLanzaAccessDeniedExceptionSiLaConsultaMedicaNoEstabaEnEsperaONoSeleccionoHospital(){
+        String auth0IdMedico = "auth0IdMedico";
+        Medico medico = mock(Medico.class);
+        Hospital hospital = mock(Hospital.class);
+        Long idHospital = 1L;
+        Long idPaciente = 1L;
+
+        ConsultaMedica consultaMedica1 = new ConsultaMedica();
+        consultaMedica1.setNivelDeGravedadBot(NivelDeGravedad.URGENTE);
+        consultaMedica1.setFechaHoraCreacion(LocalDateTime.now().minusMinutes(10));
+        consultaMedica1.setEstadoConsulta(EstadoConsulta.PENDIENTE);
+        consultaMedica1.setHospital(hospital);
+
+        when(repoMedico.findByUsuarioAuthId(auth0IdMedico))
+                .thenReturn(Optional.of(medico));
+
+        when(repoHospitales.findById(idHospital))
+                .thenReturn(Optional.of(hospital));
+
+        when(repoConsultasMedicas.findByPacienteId(idPaciente))
+                .thenReturn(Optional.of(consultaMedica1));
+
+
+        assertThrows(AccessDeniedException.class,
+                ()-> medicoService.seleccionarAPaciente(idHospital, idPaciente, auth0IdMedico)
+        );
+
+        assertNotEquals(medico, consultaMedica1.getMedico());
+        assertNotEquals(EstadoConsulta.FINALIZADA, consultaMedica1.getEstadoConsulta());
+    }
+
+
 }

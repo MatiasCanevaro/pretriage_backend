@@ -6,12 +6,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/medico")
@@ -23,7 +21,7 @@ public class MedicoController {
 
     @GetMapping("/hospitales/{idHospital}/pacientes/atender")
     public ResponseEntity<List<PacienteDTO>> obtenerTodosLosPacientesPosiblesAAtender(
-            @PathVariable Long idHospital,
+            @PathVariable("idHospital") Long idHospital,
             @AuthenticationPrincipal Jwt jwt
     ) {
         return ResponseEntity.ok(medicoService.obtenerTodosPacientesParaAtender(idHospital, jwt.getSubject()));
@@ -32,12 +30,22 @@ public class MedicoController {
 
     @GetMapping("/hospitales/{idHospital}/pacientes")
     public ResponseEntity<List<PacienteDTO>> obtenerTodosLosPacientesAtendidos(
-            @PathVariable Long idHospital,
+            @PathVariable("idHospital") Long idHospital,
             @AuthenticationPrincipal Jwt jwt
     ) {
         return ResponseEntity.ok(medicoService.findAllPacientesAtendidos(idHospital, jwt.getSubject()));
     }
 
+    @PostMapping("/hospitales/{idHospital}/pacientes/atender/{idPaciente}")
+    public ResponseEntity<Map<String, String>> seleccionarPaciente(
+            @PathVariable("idHospital") Long idHospital,
+            @PathVariable("idPaciente") Long idPaciente,
+            @AuthenticationPrincipal Jwt jwt
+    ){
+        medicoService.seleccionarAPaciente(idPaciente, idHospital, jwt.getSubject());
+
+        return ResponseEntity.ok(Map.of("message", "Paciente seleccionado con éxito"));
+    }
 
 }
 
