@@ -1,15 +1,20 @@
 package com.pretriage.backend.services;
 
+import com.pretriage.backend.controllers.dtos.HospitalCercanoDTO;
 import com.pretriage.backend.controllers.dtos.TiempoEstimadoAtencionResponse;
 import com.pretriage.backend.exceptions.AtencionEnCursoException;
 import com.pretriage.backend.exceptions.NoSePudoEstimarElHorarioDeAtencion;
 import com.pretriage.backend.model.consultas.ConsultaMedica;
+import com.pretriage.backend.model.consultas.EntradaCola;
 import com.pretriage.backend.model.consultas.EstadoConsulta;
 import com.pretriage.backend.model.consultas.GestorDeCola;
 import com.pretriage.backend.model.consultas.NivelDeGravedad;
+import com.pretriage.backend.model.hospitales.EspecialidadMedica;
 import com.pretriage.backend.model.hospitales.Hospital;
 import com.pretriage.backend.model.personas.Paciente;
 import com.pretriage.backend.repositories.RepoConsultasMedicas;
+import com.pretriage.backend.repositories.RepoEntradasCola;
+import com.pretriage.backend.repositories.RepoEspecialidadesMedicas;
 import com.pretriage.backend.repositories.RepoGestoresDeColas;
 import com.pretriage.backend.repositories.RepoHospitales;
 import org.junit.jupiter.api.Test;
@@ -22,7 +27,6 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
-import java.util.Collection;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
@@ -40,6 +44,12 @@ public class AtencionHospitalServiceTest {
     @Mock
     private RepoGestoresDeColas repoGestorDeCola;
     @Mock
+    private RepoEntradasCola repoEntradasCola;
+    @Mock
+    private RepoEspecialidadesMedicas repoEspecialidadesMedicas;
+    @Mock
+    private EstimacionAtencionService estimacionAtencionService;
+    @Mock
     private PacienteService pacienteService;
     @Mock
     private GooglePlacesService googlePlacesService;
@@ -47,37 +57,24 @@ public class AtencionHospitalServiceTest {
     @InjectMocks
     private AtencionHospitalService service;
 
-
     @Test
-    void sePuedeSeleccionarUnHospital(){
+    void sePuedeSeleccionarUnHospitalConEspecialidad(){
         String auth0Id = "auth0|123";
         String placeId = "place_1";
+        String codigoEspecialidad = "PEDIATRIA";
 
-        Paciente paciente = new Paciente();
-        paciente.setId(10L);
+        Paciente paciente = crearPaciente(10L);
+        EspecialidadMedica especialidad = crearEspecialidad(30L, codigoEspecialidad);
+        Hospital hospital = crearHospital(20L, placeId, especialidad);
+        ConsultaMedica consultaMedica = crearConsultaPendiente(paciente);
 
-        ConsultaMedica consultaMedica = new ConsultaMedica();
-        consultaMedica.setPaciente(paciente);
-        consultaMedica.setEstadoConsulta(EstadoConsulta.PENDIENTE);
-        consultaMedica.setFechaHoraCreacion(LocalDateTime.now().minusHours(1));
-
-        Hospital hospital = new Hospital();
-        hospital.setPlaceId(placeId);
-
-        GestorDeCola gestorDeCola = new GestorDeCola();
-        gestorDeCola.setHospital(hospital);
-
-        when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id))
-                .thenReturn(Optional.of(paciente));
-
+        when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id)).thenReturn(Optional.of(paciente));
+        when(repoEspecialidadesMedicas.findByCodigo(codigoEspecialidad)).thenReturn(Optional.of(especialidad));
         when(repoConsultasMedicas.findFirstByPacienteIdAndEstadoConsultaIn(eq(paciente.getId()), any()))
                 .thenReturn(Optional.of(consultaMedica));
+        when(repoHospitales.findByPlaceId(placeId)).thenReturn(Optional.of(hospital));
 
-        when(repoHospitales.findByPlaceId(placeId))
-                .thenReturn(Optional.of(hospital));
-
-        service.seleccionarHospital(auth0Id, placeId);
-
+        service.seleccionarHospital(auth0Id, placeId, codigoEspecialidad);
 
         ArgumentCaptor<ConsultaMedica> consultaCaptor = ArgumentCaptor.forClass(ConsultaMedica.class);
         verify(repoConsultasMedicas).save(consultaCaptor.capture());
@@ -85,119 +82,160 @@ public class AtencionHospitalServiceTest {
         ConsultaMedica consultaGuardada = consultaCaptor.getValue();
         assertSame(consultaMedica, consultaGuardada);
         assertSame(hospital, consultaGuardada.getHospital());
+        assertSame(especialidad, consultaGuardada.getEspecialidad());
         assertEquals(EstadoConsulta.HOSPITAL_SELECCIONADO, consultaGuardada.getEstadoConsulta());
-
-        verify(googlePlacesService, never()).obtenerHospitalDesdeGoogle(anyString());
-        verify(repoHospitales, never()).save(any());
         verifyNoInteractions(repoGestorDeCola);
     }
+
     @Test
-    void seleccionarHospitalLuegoFinalizarTriageAgregaPacienteALaColaYDevuelveTiempoEstimado() {
+    void noSePuedeSeleccionarHospitalSiNoAtiendeLaEspecialidad(){
         String auth0Id = "auth0|123";
         String placeId = "place_1";
+        String codigoEspecialidad = "PEDIATRIA";
 
-        Paciente paciente = new Paciente();
-        paciente.setId(10L);
+        Paciente paciente = crearPaciente(10L);
+        EspecialidadMedica especialidad = crearEspecialidad(30L, codigoEspecialidad);
+        Hospital hospital = crearHospital(20L, placeId, crearEspecialidad(31L, "CARDIOLOGIA"));
+        ConsultaMedica consultaMedica = crearConsultaPendiente(paciente);
 
-        Hospital hospital = new Hospital();
-        hospital.setId(20L);
-        hospital.setPlaceId(placeId);
+        when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id)).thenReturn(Optional.of(paciente));
+        when(repoEspecialidadesMedicas.findByCodigo(codigoEspecialidad)).thenReturn(Optional.of(especialidad));
+        when(repoConsultasMedicas.findFirstByPacienteIdAndEstadoConsultaIn(eq(paciente.getId()), any()))
+                .thenReturn(Optional.of(consultaMedica));
+        when(repoHospitales.findByPlaceId(placeId)).thenReturn(Optional.of(hospital));
 
-        ConsultaMedica consultaPaciente = new ConsultaMedica();
-        consultaPaciente.setPaciente(paciente);
-        consultaPaciente.setEstadoConsulta(EstadoConsulta.PENDIENTE);
+        assertThrows(NoSuchElementException.class,
+                () -> service.seleccionarHospital(auth0Id, placeId, codigoEspecialidad));
+
+        verify(repoConsultasMedicas, never()).save(any());
+    }
+
+    @Test
+    void seleccionarHospitalLuegoFinalizarTriageAgregaPacienteALaColaDeLaEspecialidadYDevuelveTiempoEstimado() {
+        String auth0Id = "auth0|123";
+        String placeId = "place_1";
+        String codigoEspecialidad = "PEDIATRIA";
+
+        Paciente paciente = crearPaciente(10L);
+        EspecialidadMedica especialidad = crearEspecialidad(30L, codigoEspecialidad);
+        Hospital hospital = crearHospital(20L, placeId, especialidad);
+        ConsultaMedica consultaPaciente = crearConsultaPendiente(paciente);
         consultaPaciente.setFechaHoraCreacion(LocalDateTime.of(2026, 6, 29, 10, 5));
 
         ConsultaMedica consultaCriticaPrevia = new ConsultaMedica();
         consultaCriticaPrevia.setHospital(hospital);
+        consultaCriticaPrevia.setEspecialidad(especialidad);
         consultaCriticaPrevia.setEstadoConsulta(EstadoConsulta.PENDIENTE);
         consultaCriticaPrevia.setFechaHoraCreacion(LocalDateTime.of(2026, 6, 29, 10, 0));
         consultaCriticaPrevia.setNivelDeGravedadBot(NivelDeGravedad.RIESGO_VITAL_INMEDIATO);
 
         GestorDeCola gestorDeCola = new GestorDeCola();
+        gestorDeCola.setId(40L);
         gestorDeCola.setHospital(hospital);
+        gestorDeCola.setEspecialidad(especialidad);
         ReflectionTestUtils.setField(gestorDeCola, "TIEMPO_ESTIMADO_DE_ATENCION_TRIAGE", 600L);
         gestorDeCola.agregarConsultaMedicaALaCola(consultaCriticaPrevia);
 
-        when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id))
-                .thenReturn(Optional.of(paciente));
+        when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id)).thenReturn(Optional.of(paciente));
+        when(repoEspecialidadesMedicas.findByCodigo(codigoEspecialidad)).thenReturn(Optional.of(especialidad));
         when(repoConsultasMedicas.findFirstByPacienteIdAndEstadoConsultaIn(eq(paciente.getId()), any()))
                 .thenReturn(Optional.of(consultaPaciente));
-        when(repoHospitales.findByPlaceId(placeId))
-                .thenReturn(Optional.of(hospital));
-        when(repoGestorDeCola.findByHospitalId(hospital.getId()))
+        when(repoHospitales.findByPlaceId(placeId)).thenReturn(Optional.of(hospital));
+        when(repoGestorDeCola.findByHospitalIdAndEspecialidadId(hospital.getId(), especialidad.getId()))
                 .thenReturn(Optional.of(gestorDeCola));
+        when(repoEntradasCola.findByConsultaMedicaId(consultaPaciente.getId()))
+                .thenReturn(Optional.empty());
+        when(repoEntradasCola.findFirstByGestorDeColaIdOrderByOrdenRelativoDesc(gestorDeCola.getId()))
+                .thenReturn(Optional.empty());
 
-        service.seleccionarHospital(auth0Id, placeId);
+        TiempoEstimadoAtencionResponse responseEsperada = new TiempoEstimadoAtencionResponse();
+        responseEsperada.setPosicionEnCola(2);
+        responseEsperada.setPacientesAntes(1);
+        when(estimacionAtencionService.calcularPara(consultaPaciente)).thenReturn(responseEsperada);
 
-        LocalDateTime antesDeFinalizarTriage = LocalDateTime.now();
+        service.seleccionarHospital(auth0Id, placeId, codigoEspecialidad);
+
         TiempoEstimadoAtencionResponse response =
                 service.finalizarTriageEIngresarACola(auth0Id, NivelDeGravedad.URGENTE);
-        LocalDateTime despuesDeFinalizarTriage = LocalDateTime.now();
 
         assertSame(hospital, consultaPaciente.getHospital());
-        assertEquals(EstadoConsulta.PRETRIAGE_FINALIZADO, consultaPaciente.getEstadoConsulta());
+        assertSame(especialidad, consultaPaciente.getEspecialidad());
+        assertEquals(EstadoConsulta.EN_COLA, consultaPaciente.getEstadoConsulta());
         assertEquals(NivelDeGravedad.URGENTE, consultaPaciente.getNivelDeGravedadBot());
         assertEquals(List.of(consultaCriticaPrevia, consultaPaciente), gestorDeCola.getConsultasEnEspera());
-        assertFalse(response.getFechaHoraAtencionEstimada().isBefore(antesDeFinalizarTriage.plusSeconds(600)));
-        assertFalse(response.getFechaHoraAtencionEstimada().isAfter(despuesDeFinalizarTriage.plusSeconds(600)));
-        verify(repoConsultasMedicas, atLeastOnce()).save(consultaPaciente);
+        assertSame(responseEsperada, response);
+        verify(estimacionAtencionService).calcularPara(consultaPaciente);
+        verify(repoGestorDeCola, atLeastOnce()).findByHospitalIdAndEspecialidadId(hospital.getId(), especialidad.getId());
         verify(repoGestorDeCola, atLeastOnce()).save(gestorDeCola);
+        verify(repoEntradasCola).save(any(EntradaCola.class));
+    }
+
+    @Test
+    void hospitalesCercanosSeFiltranPorEspecialidadManteniendoElOrdenDeDistancia(){
+        String codigoEspecialidad = "PEDIATRIA";
+        EspecialidadMedica especialidad = crearEspecialidad(30L, codigoEspecialidad);
+        Hospital hospitalDisponible = crearHospital(20L, "hospital2", especialidad);
+
+        HospitalCercanoDTO hospital1 = crearHospitalCercano("hospital1");
+        HospitalCercanoDTO hospital2 = crearHospitalCercano("hospital2");
+
+        when(repoEspecialidadesMedicas.findByCodigo(codigoEspecialidad)).thenReturn(Optional.of(especialidad));
+        when(googlePlacesService.buscarHospitales(-34.6, -58.4)).thenReturn(List.of(hospital1, hospital2));
+        when(repoHospitales.findByPlaceIdInAndEspecialidadesCodigo(List.of("hospital1", "hospital2"), codigoEspecialidad))
+                .thenReturn(List.of(hospitalDisponible));
+
+        List<HospitalCercanoDTO> hospitales = service.buscarHospitalesCercanos(-34.6, -58.4, codigoEspecialidad);
+
+        assertEquals(1, hospitales.size());
+        assertEquals("hospital2", hospitales.getFirst().getPlaceId());
+        assertEquals(codigoEspecialidad, hospitales.getFirst().getEspecialidades().getFirst().getCodigo());
     }
 
     @Test
     void noSePuedeSeleccionarUnHospitalQueNoExiste(){
         String auth0Id = "auth0|123";
         String placeId = "place_inexistente";
+        String codigoEspecialidad = "PEDIATRIA";
 
-        Paciente paciente = new Paciente();
-        paciente.setId(10L);
+        Paciente paciente = crearPaciente(10L);
+        EspecialidadMedica especialidad = crearEspecialidad(30L, codigoEspecialidad);
+        ConsultaMedica consultaMedica = crearConsultaPendiente(paciente);
 
-        ConsultaMedica consultaMedica = new ConsultaMedica();
-        consultaMedica.setPaciente(paciente);
-        consultaMedica.setEstadoConsulta(EstadoConsulta.PENDIENTE);
-        consultaMedica.setFechaHoraCreacion(LocalDateTime.now().minusHours(1));
-
-        when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id))
-                .thenReturn(Optional.of(paciente));
-
+        when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id)).thenReturn(Optional.of(paciente));
+        when(repoEspecialidadesMedicas.findByCodigo(codigoEspecialidad)).thenReturn(Optional.of(especialidad));
         when(repoConsultasMedicas.findFirstByPacienteIdAndEstadoConsultaIn(eq(paciente.getId()), any()))
                 .thenReturn(Optional.of(consultaMedica));
-
-        when(repoHospitales.findByPlaceId(placeId))
-                .thenReturn(Optional.empty());
-
-        // Asumimos que el servicio externo falla si no encuentra el hospital.
+        when(repoHospitales.findByPlaceId(placeId)).thenReturn(Optional.empty());
         when(googlePlacesService.obtenerHospitalDesdeGoogle(placeId))
                 .thenThrow(new NoSuchElementException("Hospital inexistente"));
 
         assertThrows(NoSuchElementException.class,
-                () -> service.seleccionarHospital(auth0Id, placeId));
+                () -> service.seleccionarHospital(auth0Id, placeId, codigoEspecialidad));
 
-        verify(googlePlacesService).obtenerHospitalDesdeGoogle(placeId);
         verify(repoHospitales, never()).save(any());
         verifyNoInteractions(repoGestorDeCola);
         verify(repoConsultasMedicas, never()).save(any());
     }
+
     @Test
     void noSePuedeSeleccionarHospitalSiYaTieneUnaAtencionEnCurso() {
         String auth0Id = "auth0|123";
         String placeId = "place_1";
+        String codigoEspecialidad = "PEDIATRIA";
 
-        Paciente paciente = new Paciente();
-        paciente.setId(10L);
-
+        Paciente paciente = crearPaciente(10L);
+        EspecialidadMedica especialidad = crearEspecialidad(30L, codigoEspecialidad);
         ConsultaMedica consultaEnCurso = new ConsultaMedica();
         consultaEnCurso.setPaciente(paciente);
         consultaEnCurso.setEstadoConsulta(EstadoConsulta.HOSPITAL_SELECCIONADO);
 
-        when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id))
-                .thenReturn(Optional.of(paciente));
+        when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id)).thenReturn(Optional.of(paciente));
+        when(repoEspecialidadesMedicas.findByCodigo(codigoEspecialidad)).thenReturn(Optional.of(especialidad));
         when(repoConsultasMedicas.findFirstByPacienteIdAndEstadoConsultaIn(eq(paciente.getId()), any()))
                 .thenReturn(Optional.of(consultaEnCurso));
 
         assertThrows(AtencionEnCursoException.class,
-                () -> service.seleccionarHospital(auth0Id, placeId));
+                () -> service.seleccionarHospital(auth0Id, placeId, codigoEspecialidad));
 
         verifyNoInteractions(repoHospitales, googlePlacesService, repoGestorDeCola);
         verify(repoConsultasMedicas, never()).save(any());
@@ -207,131 +245,114 @@ public class AtencionHospitalServiceTest {
     void noSePuedeSeleccionarUnHospitalSinotienePermisos(){
         String auth0Id = "auth0|sin-permiso";
         String placeId = "place_1";
+        String codigoEspecialidad = "PEDIATRIA";
 
-        when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id))
-                .thenReturn(Optional.empty());
+        when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id)).thenReturn(Optional.empty());
 
         assertThrows(AccessDeniedException.class,
-                () -> service.seleccionarHospital(auth0Id, placeId));
+                () -> service.seleccionarHospital(auth0Id, placeId, codigoEspecialidad));
 
-        verifyNoInteractions(repoConsultasMedicas, repoHospitales, googlePlacesService);
+        verifyNoInteractions(repoConsultasMedicas, repoHospitales, googlePlacesService, repoEspecialidadesMedicas);
     }
-
 
     @Test
     void sePuedeObtenerTiempoEstimadoDeAtencion() {
-
         String auth0Id = "auth0|123";
-
-        Paciente paciente = new Paciente();
-        paciente.setId(1L);
-
-        Hospital hospital = new Hospital();
-        hospital.setId(10L);
-
+        Paciente paciente = crearPaciente(1L);
+        EspecialidadMedica especialidad = crearEspecialidad(30L, "PEDIATRIA");
+        Hospital hospital = crearHospital(10L, "place_1", especialidad);
         ConsultaMedica consulta = new ConsultaMedica();
         consulta.setHospital(hospital);
+        consulta.setEspecialidad(especialidad);
 
-        GestorDeCola gestorDeCola = mock(GestorDeCola.class);
+        TiempoEstimadoAtencionResponse responseEsperada = new TiempoEstimadoAtencionResponse();
+        responseEsperada.setFechaHoraAtencionEstimada(LocalDateTime.of(2026, 6, 20, 15, 30));
 
-        LocalDateTime fechaEsperada =
-                LocalDateTime.of(2026, 6, 20, 15, 30);
-
-        when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id))
-                .thenReturn(Optional.of(paciente));
-
+        when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id)).thenReturn(Optional.of(paciente));
         when(repoConsultasMedicas.findFirstByPacienteIdAndEstadoConsultaIn(eq(paciente.getId()), any()))
                 .thenReturn(Optional.of(consulta));
+        when(estimacionAtencionService.calcularPara(consulta)).thenReturn(responseEsperada);
 
-        when(repoGestorDeCola.findByHospitalId(hospital.getId()))
-                .thenReturn(Optional.of(gestorDeCola));
+        TiempoEstimadoAtencionResponse response = service.obtenerTiempoEstimadoDeAtencion(auth0Id);
 
-        when(gestorDeCola.calcularTiempoDeAtencionPara(consulta))
-                .thenReturn(Optional.of(fechaEsperada));
-
-        TiempoEstimadoAtencionResponse response =
-                service.obtenerTiempoEstimadoDeAtencion(auth0Id);
-
-        assertEquals(
-                fechaEsperada,
-                response.getFechaHoraAtencionEstimada()
-        );
+        assertSame(responseEsperada, response);
     }
-
     @Test
     void noSePuedeObtenerTiempoEstimadoSinPermisos() {
-
         String auth0Id = "auth0|123";
+        when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id)).thenReturn(Optional.empty());
 
-        when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id))
-                .thenReturn(Optional.empty());
-
-        assertThrows(
-                AccessDeniedException.class,
-                () -> service.obtenerTiempoEstimadoDeAtencion(auth0Id)
-        );
+        assertThrows(AccessDeniedException.class, () -> service.obtenerTiempoEstimadoDeAtencion(auth0Id));
 
         verifyNoInteractions(repoConsultasMedicas);
     }
 
     @Test
     void noSePuedeObtenerTiempoEstimadoSinHospitalSeleccionado() {
-
         String auth0Id = "auth0|123";
+        Paciente paciente = crearPaciente(1L);
 
-        Paciente paciente = new Paciente();
-        paciente.setId(1L);
-
-        when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id))
-                .thenReturn(Optional.of(paciente));
-
+        when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id)).thenReturn(Optional.of(paciente));
         when(repoConsultasMedicas.findFirstByPacienteIdAndEstadoConsultaIn(eq(paciente.getId()), any()))
                 .thenReturn(Optional.empty());
 
-        assertThrows(
-                NoSuchElementException.class,
-                () -> service.obtenerTiempoEstimadoDeAtencion(auth0Id)
-        );
+        assertThrows(NoSuchElementException.class, () -> service.obtenerTiempoEstimadoDeAtencion(auth0Id));
     }
 
     @Test
     void lanzaExcepcionSiNoSePuedeEstimarElHorario() {
-
         String auth0Id = "auth0|123";
-
-        Paciente paciente = new Paciente();
-        paciente.setId(1L);
-
-        Hospital hospital = new Hospital();
-        hospital.setId(10L);
-
+        Paciente paciente = crearPaciente(1L);
+        EspecialidadMedica especialidad = crearEspecialidad(30L, "PEDIATRIA");
+        Hospital hospital = crearHospital(10L, "place_1", especialidad);
         ConsultaMedica consulta = new ConsultaMedica();
         consulta.setHospital(hospital);
+        consulta.setEspecialidad(especialidad);
 
-        GestorDeCola gestorDeCola = mock(GestorDeCola.class);
-
-        when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id))
-                .thenReturn(Optional.of(paciente));
-
+        when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id)).thenReturn(Optional.of(paciente));
         when(repoConsultasMedicas.findFirstByPacienteIdAndEstadoConsultaIn(eq(paciente.getId()), any()))
                 .thenReturn(Optional.of(consulta));
+        when(estimacionAtencionService.calcularPara(consulta)).thenThrow(new NoSePudoEstimarElHorarioDeAtencion());
 
-        when(repoGestorDeCola.findByHospitalId(hospital.getId()))
-                .thenReturn(Optional.of(gestorDeCola));
-
-        when(gestorDeCola.calcularTiempoDeAtencionPara(consulta))
-                .thenReturn(Optional.empty());
-
-        assertThrows(
-                NoSePudoEstimarElHorarioDeAtencion.class,
-                () -> service.obtenerTiempoEstimadoDeAtencion(auth0Id)
-        );
+        assertThrows(NoSePudoEstimarElHorarioDeAtencion.class,
+                () -> service.obtenerTiempoEstimadoDeAtencion(auth0Id));
+    }
+    private Paciente crearPaciente(Long id) {
+        Paciente paciente = new Paciente();
+        paciente.setId(id);
+        return paciente;
     }
 
-    private boolean contieneEstadosParaConsultarTiempo(Collection<EstadoConsulta> estados) {
-        return estados.contains(EstadoConsulta.HOSPITAL_SELECCIONADO)
-                && estados.contains(EstadoConsulta.PRETRIAGE_EN_PROCESO)
-                && estados.contains(EstadoConsulta.PRETRIAGE_FINALIZADO);
+    private ConsultaMedica crearConsultaPendiente(Paciente paciente) {
+        ConsultaMedica consultaMedica = new ConsultaMedica();
+        consultaMedica.setPaciente(paciente);
+        consultaMedica.setEstadoConsulta(EstadoConsulta.PENDIENTE);
+        consultaMedica.setFechaHoraCreacion(LocalDateTime.now().minusHours(1));
+        return consultaMedica;
+    }
+
+    private Hospital crearHospital(Long id, String placeId, EspecialidadMedica especialidad) {
+        Hospital hospital = new Hospital();
+        hospital.setId(id);
+        hospital.setPlaceId(placeId);
+        hospital.getEspecialidades().add(especialidad);
+        return hospital;
+    }
+
+    private EspecialidadMedica crearEspecialidad(Long id, String codigo) {
+        EspecialidadMedica especialidad = new EspecialidadMedica();
+        especialidad.setId(id);
+        especialidad.setCodigo(codigo);
+        especialidad.setNombre(codigo);
+        return especialidad;
+    }
+
+    private HospitalCercanoDTO crearHospitalCercano(String placeId) {
+        HospitalCercanoDTO hospital = new HospitalCercanoDTO();
+        hospital.setPlaceId(placeId);
+        hospital.setNombre(placeId);
+        hospital.setDireccion("direccion " + placeId);
+        return hospital;
     }
 }
 

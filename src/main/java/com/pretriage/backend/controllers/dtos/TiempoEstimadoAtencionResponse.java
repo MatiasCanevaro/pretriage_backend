@@ -11,5 +11,17 @@ public class TiempoEstimadoAtencionResponse {
 
     private LocalDateTime fechaHoraAtencionEstimada;
 
+    private boolean hayMedicosActivos;
 
+    private int medicosActivos;
+
+    private int medicosParaEstimacion;
+
+    private int posicionEnCola;
+
+    private int pacientesAntes;
+
+    private int minutosPromedioAtencion;
+
+    private String mensaje;
 }

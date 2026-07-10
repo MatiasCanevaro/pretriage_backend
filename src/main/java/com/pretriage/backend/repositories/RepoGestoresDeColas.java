@@ -9,4 +9,6 @@ import java.util.Optional;
 @Repository
 public interface RepoGestoresDeColas extends JpaRepository<GestorDeCola, Long> {
     Optional<GestorDeCola> findByHospitalId(Long idHospital);
+
+    Optional<GestorDeCola> findByHospitalIdAndEspecialidadId(Long idHospital, Long idEspecialidad);
 }

@@ -6,10 +6,10 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
+import com.pretriage.backend.model.hospitales.EspecialidadMedica;
 import com.pretriage.backend.model.hospitales.Hospital;
 
 import jakarta.persistence.*;
-import jakarta.transaction.Transactional;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.beans.factory.annotation.Value;
@@ -17,6 +17,7 @@ import org.springframework.beans.factory.annotation.Value;
 @Getter
 @Setter
 @Entity
+@Table(uniqueConstraints = @UniqueConstraint(columnNames = {"id_hospital", "id_especialidad_medica"}))
 public class GestorDeCola {
 
     @Id
@@ -24,19 +25,27 @@ public class GestorDeCola {
     private Long id;
 
 
-    @OneToOne
+    @ManyToOne
     @JoinColumn(name = "id_hospital", referencedColumnName = "id")
     private Hospital hospital;
+
+    @ManyToOne
+    @JoinColumn(name = "id_especialidad_medica", referencedColumnName = "id")
+    private EspecialidadMedica especialidad;
 
     @OneToMany
     @JoinColumn(name = "id_gestor_de_cola", referencedColumnName = "id")
     private List<ConsultaMedica> consultasEnEspera;
+
+    @OneToMany(mappedBy = "gestorDeCola")
+    private List<EntradaCola> entradas;
 
     @Value("${tiempo.estimado.atencion-triage.segundos}")
     private long TIEMPO_ESTIMADO_DE_ATENCION_TRIAGE; //en segundos
 
     public GestorDeCola (){
         this.consultasEnEspera = new ArrayList<>();
+        this.entradas = new ArrayList<>();
     }
 
 
@@ -71,7 +80,7 @@ public class GestorDeCola {
         );
     }
 
-    private int obtenerPrioridad(NivelDeGravedad nivel) {
+    public int obtenerPrioridad(NivelDeGravedad nivel) {
         if (nivel == null) {
             return 2;
         }
@@ -94,8 +103,7 @@ public class GestorDeCola {
 
     private void eliminarAtendidosDeLaCola(){
         this.consultasEnEspera.removeIf(consultaMedica ->
-                consultaMedica.getEstadoConsulta().equals(EstadoConsulta.FINALIZADA));
+                consultaMedica.getEstadoConsulta().equals(EstadoConsulta.FINALIZADA)
+                        || consultaMedica.getEstadoConsulta().equals(EstadoConsulta.CANCELADA));
     }
 }
-
-

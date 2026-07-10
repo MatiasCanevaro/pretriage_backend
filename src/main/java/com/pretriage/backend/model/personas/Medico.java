@@ -4,6 +4,9 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Getter
 @Setter
 @Entity
@@ -18,4 +21,11 @@ public class Medico {
     private UsuarioAuth usuarioAuth;
 
     private String matricula;
+
+    @OneToMany(mappedBy = "medico")
+    private List<AsignacionMedicoHospital> asignaciones;
+
+    public Medico() {
+        this.asignaciones = new ArrayList<>();
+    }
 }

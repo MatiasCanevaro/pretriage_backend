@@ -4,7 +4,6 @@ import com.pretriage.backend.controllers.dtos.HospitalCercanoDTO;
 import com.pretriage.backend.controllers.dtos.SeleccionHospitalRequest;
 import com.pretriage.backend.controllers.dtos.TiempoEstimadoAtencionResponse;
 import com.pretriage.backend.services.AtencionHospitalService;
-import com.pretriage.backend.services.GooglePlacesService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -22,18 +21,15 @@ import java.util.List;
 @RequiredArgsConstructor
 public class HospitalController {
 
-
-    private final GooglePlacesService googlePlacesService;
-
     private final AtencionHospitalService atencionHospitalService;
-
 
     @GetMapping("/api/hospitales/cercanos")
     public ResponseEntity<List<HospitalCercanoDTO>> obtenerHospitalesCercanos(
             @RequestParam Double latitud,
-            @RequestParam Double longitud
+            @RequestParam Double longitud,
+            @RequestParam String codigoEspecialidad
     ){
-        return ResponseEntity.ok(googlePlacesService.buscarHospitales(latitud, longitud));
+        return ResponseEntity.ok(atencionHospitalService.buscarHospitalesCercanos(latitud, longitud, codigoEspecialidad));
     }
 
     @PostMapping("/api/atencion/hospital")
@@ -45,7 +41,8 @@ public class HospitalController {
 
         atencionHospitalService.seleccionarHospital(
                 auth0Id,
-                request.getPlaceId());
+                request.getPlaceId(),
+                request.getCodigoEspecialidad());
         return ResponseEntity.noContent().build();
     }
 
@@ -57,4 +54,3 @@ public class HospitalController {
         return ResponseEntity.ok(atencionHospitalService.obtenerTiempoEstimadoDeAtencion(auth0Id));
     }
 }
-

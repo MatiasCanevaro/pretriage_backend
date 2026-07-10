@@ -1,10 +1,6 @@
 package com.pretriage.backend.model.consultas;
 
-public enum EstadoConsulta {
-    PENDIENTE,
-    HOSPITAL_SELECCIONADO,
-    PRETRIAGE_FINALIZADO,
-    PRETRIAGE_EN_PROCESO,
+public enum EstadoEntradaCola {
     EN_COLA,
     LLAMADO,
     EN_ESPERA,

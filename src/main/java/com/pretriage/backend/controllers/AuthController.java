@@ -25,11 +25,11 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class AuthController {
 
-    private AuthService authService;
+    private final AuthService authService;
 
-    private RepoRecepcionistas repoRecepcionistas;
-    private RepoMedico repoMedico;
-    private RepoPacientes repoPacientes;
+    private final RepoRecepcionistas repoRecepcionistas;
+    private final RepoMedico repoMedico;
+    private final RepoPacientes repoPacientes;
 
     @PostMapping("/register")
     public ResponseEntity<Map<String, String>> register(
@@ -46,7 +46,7 @@ public class AuthController {
             case Recepcionista -> this.crearRecepcionista(request, email, auth0Id);
         }
 
-        return ResponseEntity.ok(Map.of("message", "usuario creado con éxito"));
+        return ResponseEntity.ok(Map.of("message", "usuario creado con Ã©xito"));
     }
 
     @PostMapping("/login")

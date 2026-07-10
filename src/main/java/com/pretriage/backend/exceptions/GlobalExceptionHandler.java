@@ -8,12 +8,14 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.NoSuchElementException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
     @ExceptionHandler({CredencialValidaYaExisteException.class, PacienteNoExisteException.class,
-            NoSePudoCrearUsuario.class, NoSePudoEstimarElHorarioDeAtencion.class, ChatFinalizadoException.class})
+            NoSePudoCrearUsuario.class, NoSePudoEstimarElHorarioDeAtencion.class, ChatFinalizadoException.class,
+            NoSuchElementException.class, IllegalStateException.class})
     public ResponseEntity<Map<String, String>> handleExceptions(
             RuntimeException e) {
 
@@ -40,4 +42,3 @@ public class GlobalExceptionHandler {
     }
 
 }
-
