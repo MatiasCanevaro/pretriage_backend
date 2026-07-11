@@ -43,7 +43,7 @@ public class AuthController {
             case Recepcionista -> this.crearRecepcionista(request, email, auth0Id, request.getRol());//solo el recepcionista puede ser o no admin
         }
 
-        return ResponseEntity.ok(Map.of("message", "usuario creado con éxito"));
+        return ResponseEntity.ok(Map.of("message", "usuario creado con Ã©xito"));
     }
 
     @PostMapping("/login")

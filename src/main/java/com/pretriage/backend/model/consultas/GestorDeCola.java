@@ -6,10 +6,10 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
+import com.pretriage.backend.model.hospitales.EspecialidadMedica;
 import com.pretriage.backend.model.hospitales.Hospital;
 
 import jakarta.persistence.*;
-import jakarta.transaction.Transactional;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.beans.factory.annotation.Value;
@@ -17,6 +17,7 @@ import org.springframework.beans.factory.annotation.Value;
 @Getter
 @Setter
 @Entity
+@Table(uniqueConstraints = @UniqueConstraint(columnNames = {"id_hospital", "id_especialidad_medica"}))
 public class GestorDeCola {
 
     @Id
@@ -24,40 +25,44 @@ public class GestorDeCola {
     private Long id;
 
 
-    @OneToOne
+    @ManyToOne
     @JoinColumn(name = "id_hospital", referencedColumnName = "id")
     private Hospital hospital;
+
+    @ManyToOne
+    @JoinColumn(name = "id_especialidad_medica", referencedColumnName = "id")
+    private EspecialidadMedica especialidad;
 
     @OneToMany
     @JoinColumn(name = "id_gestor_de_cola", referencedColumnName = "id")
     private List<ConsultaMedica> consultasEnEspera;
+
+    @OneToMany(mappedBy = "gestorDeCola")
+    private List<EntradaCola> entradas;
 
     @Value("${tiempo.estimado.atencion-triage.segundos}")
     private long TIEMPO_ESTIMADO_DE_ATENCION_TRIAGE; //en segundos
 
     public GestorDeCola (){
         this.consultasEnEspera = new ArrayList<>();
+        this.entradas = new ArrayList<>();
     }
 
 
-    public List<LocalDateTime> calcularTiempoDeAtencionPara(ConsultaMedica consultaMedica) {
+    public Optional<LocalDateTime> calcularTiempoDeAtencionPara(ConsultaMedica consultaMedica) {
 
         reordenarColaPorPrioridad();
 
         int posicion = consultasEnEspera.indexOf(consultaMedica);
 
         if (posicion == -1) {
-            return List.of(); //empty list
+            return Optional.empty();
         }
 
-        LocalDateTime tiempoEstimado = LocalDateTime.now()
-                .plusSeconds(posicion * TIEMPO_ESTIMADO_DE_ATENCION_TRIAGE);// asumiendo que las cosultas son siempre a futuro
-
-        List<LocalDateTime> rangoDeTiempoEstimadoDeAtencion = new ArrayList<>();
-        rangoDeTiempoEstimadoDeAtencion.add(tiempoEstimado.minusMinutes(10));
-        rangoDeTiempoEstimadoDeAtencion.add(tiempoEstimado.plusMinutes(10));
-
-        return rangoDeTiempoEstimadoDeAtencion;
+        return Optional.of(
+                LocalDateTime.now()
+                        .plusSeconds(posicion * TIEMPO_ESTIMADO_DE_ATENCION_TRIAGE)// asumiendo que las cosultas son siempre a futuro
+        );
     }
 
     private void reordenarColaPorPrioridad() {
@@ -75,7 +80,10 @@ public class GestorDeCola {
         );
     }
 
-    private int obtenerPrioridad(NivelDeGravedad nivel) {
+    public int obtenerPrioridad(NivelDeGravedad nivel) {
+        if (nivel == null) {
+            return 2;
+        }
 
         return switch (nivel) {
             case RIESGO_VITAL_INMEDIATO -> 5;
@@ -83,17 +91,19 @@ public class GestorDeCola {
             case URGENTE -> 3;
             case NORMAL -> 2;
             case NO_URGENTE -> 1;
-            case null -> 0; //aun el bot no hizo el triage
         };
     }
 
     public void agregarConsultaMedicaALaCola(ConsultaMedica consultaMedica) {
-        this.consultasEnEspera.add(consultaMedica);
+        if (!this.consultasEnEspera.contains(consultaMedica)) {
+            this.consultasEnEspera.add(consultaMedica);
+        }
         reordenarColaPorPrioridad();
     }
 
     private void eliminarAtendidosDeLaCola(){
-        this.consultasEnEspera.removeIf(consultaMedica -> consultaMedica.getEstadoConsulta().equals(EstadoConsulta.PACIENTE_NO_ASISTIO) ||
-                consultaMedica.getEstadoConsulta().equals(EstadoConsulta.FINALIZADA));
+        this.consultasEnEspera.removeIf(consultaMedica ->
+                consultaMedica.getEstadoConsulta().equals(EstadoConsulta.FINALIZADA)
+                        || consultaMedica.getEstadoConsulta().equals(EstadoConsulta.CANCELADA));
     }
 }

@@ -1,5 +1,6 @@
 package com.pretriage.backend.exceptions;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -8,17 +9,25 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.NoSuchElementException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
     @ExceptionHandler({CredencialValidaYaExisteException.class, PacienteNoExisteException.class,
-            NoSePudoCrearUsuario.class, NoSePudoEstimarElHorarioDeAtencion.class, NoSePudoObtenerHospital.class, AccessDeniedException.class,
-            ObraSocialYaExisteException.class, ObraSocialNoExisteException.class, RecepcionistaNoExisteException.class})
+            NoSePudoCrearUsuario.class, NoSePudoEstimarElHorarioDeAtencion.class, ChatFinalizadoException.class,
+            NoSePudoObtenerHospital.class, ObraSocialYaExisteException.class, ObraSocialNoExisteException.class,
+            RecepcionistaNoExisteException.class, AccessDeniedException.class,
+            NoSuchElementException.class, IllegalStateException.class})
     public ResponseEntity<Map<String, String>> handleExceptions(
             RuntimeException e) {
 
         return ResponseEntity.badRequest()
+                .body(Map.of("error", e.getMessage()));
+    }
+    @ExceptionHandler(AtencionEnCursoException.class)
+    public ResponseEntity<Map<String, String>> handleConflict(RuntimeException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(Map.of("error", e.getMessage()));
     }
 

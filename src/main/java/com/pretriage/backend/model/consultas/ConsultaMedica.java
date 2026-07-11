@@ -5,7 +5,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.pretriage.backend.model.chat.Mensaje;
+import com.pretriage.backend.model.hospitales.EspecialidadMedica;
 import com.pretriage.backend.model.hospitales.Hospital;
+import com.pretriage.backend.model.hospitales.Sala;
 import com.pretriage.backend.model.personas.Medico;
 import com.pretriage.backend.model.personas.Paciente;
 
@@ -29,8 +31,16 @@ public class ConsultaMedica {
     private Hospital hospital;
 
     @ManyToOne
+    @JoinColumn(name="id_especialidad_medica", referencedColumnName = "id")
+    private EspecialidadMedica especialidad;
+
+    @ManyToOne
     @JoinColumn(name="id_medico", referencedColumnName = "id")
     private Medico medico;
+
+    @ManyToOne
+    @JoinColumn(name="id_sala", referencedColumnName = "id")
+    private Sala sala;
 
     @ManyToOne
     @JoinColumn(name="id_paciente", referencedColumnName = "id")

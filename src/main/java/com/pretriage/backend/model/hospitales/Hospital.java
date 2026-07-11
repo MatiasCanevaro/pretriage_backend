@@ -26,11 +26,23 @@ public class Hospital {
     @JoinColumn(name = "id_hospital", referencedColumnName = "id")
     private List<Recepcionista> recepcionistas;
 
+    @ManyToMany
+    @JoinTable(
+            name = "hospital_especialidad_medica",
+            joinColumns = @JoinColumn(name = "id_hospital"),
+            inverseJoinColumns = @JoinColumn(name = "id_especialidad_medica"))
+    private List<EspecialidadMedica> especialidades;
+
+    @OneToMany(mappedBy = "hospital")
+    private List<Sala> salas;
+
     @OneToOne
     @JoinColumn(name="id_direccion", referencedColumnName = "id")
     private Direccion direccion;
 
     public Hospital(){
         this.recepcionistas = new ArrayList<>();
+        this.especialidades = new ArrayList<>();
+        this.salas = new ArrayList<>();
     }
 }

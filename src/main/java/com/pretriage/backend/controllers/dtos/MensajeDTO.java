@@ -1,4 +1,6 @@
 package com.pretriage.backend.controllers.dtos;
 
-public record MensajeDTO(String contenido, String autor) {
+import java.time.LocalDateTime;
+
+public record MensajeDTO(String contenido, String autor, LocalDateTime fechaHoraEnvio) {
 }
