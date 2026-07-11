@@ -2,9 +2,12 @@ package com.pretriage.backend.services;
 
 import com.pretriage.backend.controllers.dtos.*;
 import com.pretriage.backend.exceptions.AtencionEnCursoException;
+import com.pretriage.backend.exceptions.ConflictoDeEstadoException;
 import com.pretriage.backend.exceptions.ProveedorIaException;
+import com.pretriage.backend.exceptions.RecursoNoEncontradoException;
 import com.pretriage.backend.model.consultas.*;
 import com.pretriage.backend.model.hospitales.EspecialidadMedica;
+import com.pretriage.backend.model.hospitales.Direccion;
 import com.pretriage.backend.model.hospitales.Hospital;
 import com.pretriage.backend.model.personas.*;
 import com.pretriage.backend.model.recepcion.*;
@@ -16,7 +19,6 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.NoSuchElementException;
 import java.util.UUID;
 
 @Service
@@ -34,8 +36,10 @@ public class AdmisionRecepcionService {
     private final RepoPacientes repoPacientes;
     private final RepoConsultasMedicas repoConsultasMedicas;
     private final RepoEspecialidadesMedicas repoEspecialidadesMedicas;
+    private final RepoDirecciones repoDirecciones;
     private final TriageFormularioService triageFormularioService;
     private final IngresoColaService ingresoColaService;
+    private final EstimacionAtencionService estimacionAtencionService;
     private final ObjectMapper objectMapper;
 
     
@@ -57,17 +61,23 @@ public class AdmisionRecepcionService {
         obtenerSesionActiva(auth0Id, sesionId);
         String dni = dniIngresado.replaceAll("\\D", "");
         return repoPacientes.findByNumeroDocumentoOrUsuarioAuthNumeroDocumento(dni, dni)
-                .map(p -> new PacienteRecepcionDTO(p.getId(), dni,
-                        p.getNombre() != null ? p.getNombre() : p.getUsuarioAuth().getNombre(),
-                        p.getApellido() != null ? p.getApellido() : p.getUsuarioAuth().getApellido(),
-                        p.getFechaNacimiento(), p.getGeneroBiologico(), p.getUsuarioAuth() != null))
+                .map(p -> {
+                    Direccion d = p.getDireccion();
+                    return new PacienteRecepcionDTO(p.getId(), dni,
+                            p.getNombre() != null ? p.getNombre() : p.getUsuarioAuth().getNombre(),
+                            p.getApellido() != null ? p.getApellido() : p.getUsuarioAuth().getApellido(),
+                            p.getFechaNacimiento(), p.getGeneroBiologico(), p.getTelefono(),
+                            p.getCorreoElectronico(), d != null ? d.getCalle() : null,
+                            d != null ? d.getAltura() : null, d != null ? d.getPiso() : null,
+                            d != null ? d.getCodigoPostal() : null, p.getUsuarioAuth() != null);
+                })
                 .orElse(null);
     }
 @Transactional
     public SesionRecepcionDTO iniciarSesion(String auth0Id, Long hospitalId) {
         Recepcionista recepcionista = obtenerRecepcionista(auth0Id);
         if (repoSesionesRecepcion.existsByRecepcionistaIdAndEstado(recepcionista.getId(), EstadoSesionRecepcion.ACTIVA)) {
-            throw new IllegalStateException("El recepcionista ya tiene una sesion activa");
+            throw new ConflictoDeEstadoException("El recepcionista ya tiene una sesion activa");
         }
         Hospital hospital = repoHospitales.findByIdAndRecepcionistasId(hospitalId, recepcionista.getId())
                 .orElseThrow(() -> new org.springframework.security.access.AccessDeniedException("El recepcionista no esta asignado al hospital"));
@@ -82,10 +92,10 @@ public class AdmisionRecepcionService {
     @Transactional
     public SesionRecepcionDTO cerrarSesion(String auth0Id, Long sesionId) {
         SesionRecepcion sesion = obtenerSesion(auth0Id, sesionId);
-        if (sesion.getEstado() != EstadoSesionRecepcion.ACTIVA) throw new IllegalStateException("La sesion no esta activa");
+        if (sesion.getEstado() != EstadoSesionRecepcion.ACTIVA) throw new ConflictoDeEstadoException("La sesion no esta activa");
         if (repoAdmisionesRecepcion.existsBySesionRecepcionIdAndEstadoIn(sesionId,
                 List.of(EstadoAdmisionRecepcion.INICIADA, EstadoAdmisionRecepcion.FORMULARIO_COMPLETO))) {
-            throw new IllegalStateException("Debe finalizar o cancelar las admisiones abiertas");
+            throw new ConflictoDeEstadoException("Debe finalizar o cancelar las admisiones abiertas");
         }
         sesion.setEstado(EstadoSesionRecepcion.FINALIZADA);
         sesion.setFechaHoraFin(LocalDateTime.now());
@@ -102,10 +112,10 @@ public class AdmisionRecepcionService {
             throw new AtencionEnCursoException();
         }
         EspecialidadMedica especialidad = repoEspecialidadesMedicas.findByCodigo(request.codigoEspecialidad())
-                .orElseThrow(() -> new NoSuchElementException("Especialidad inexistente"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Especialidad inexistente"));
         boolean disponible = sesion.getHospital().getEspecialidades().stream()
                 .anyMatch(actual -> actual.getId().equals(especialidad.getId()));
-        if (!disponible) throw new NoSuchElementException("El hospital no atiende la especialidad");
+        if (!disponible) throw new RecursoNoEncontradoException("El hospital no atiende la especialidad");
         ConsultaMedica consulta = new ConsultaMedica();
         consulta.setPaciente(paciente);
         consulta.setHospital(sesion.getHospital());
@@ -125,11 +135,12 @@ public class AdmisionRecepcionService {
     @Transactional
     public AdmisionRecepcionDTO finalizar(String auth0Id, Long admisionId, FormularioTriageRecepcionRequest formulario) {
         AdmisionRecepcion admision = obtenerAdmision(auth0Id, admisionId);
-        if (admision.getEstado() == EstadoAdmisionRecepcion.FINALIZADA) {
-            throw new IllegalStateException("La admision ya fue finalizada");
+        if (admision.getEstado() != EstadoAdmisionRecepcion.INICIADA
+                && admision.getEstado() != EstadoAdmisionRecepcion.FORMULARIO_COMPLETO) {
+            throw new ConflictoDeEstadoException("La admision ya esta finalizada o cancelada");
         }
         if (admision.getSesionRecepcion().getEstado() != EstadoSesionRecepcion.ACTIVA) {
-            throw new IllegalStateException("La sesion de recepcion no esta activa");
+            throw new ConflictoDeEstadoException("La sesion de recepcion no esta activa");
         }
         admision.setFormularioJson(escribir(formulario));
         admision.setEstado(EstadoAdmisionRecepcion.FORMULARIO_COMPLETO);
@@ -145,11 +156,50 @@ public class AdmisionRecepcionService {
         return mapear(admision, estimacion);
     }
 
+    public AdmisionRecepcionDetalleDTO obtenerDetalle(String auth0Id, Long admisionId) {
+        AdmisionRecepcion admision = obtenerAdmision(auth0Id, admisionId);
+        return mapearDetalle(admision, estimacionActual(admision));
+    }
+
+    public List<AdmisionRecepcionDetalleDTO> listarAbiertas(String auth0Id, Long sesionId) {
+        obtenerSesionActiva(auth0Id, sesionId);
+        return repoAdmisionesRecepcion
+                .findBySesionRecepcionIdAndEstadoInOrderByFechaHoraInicioAsc(sesionId,
+                        List.of(EstadoAdmisionRecepcion.INICIADA, EstadoAdmisionRecepcion.FORMULARIO_COMPLETO))
+                .stream()
+                .map(admision -> mapearDetalle(admision, null))
+                .toList();
+    }
+
+    @Transactional
+    public AdmisionRecepcionDetalleDTO cancelar(String auth0Id, Long admisionId) {
+        AdmisionRecepcion admision = obtenerAdmision(auth0Id, admisionId);
+        obtenerSesionActiva(auth0Id, admision.getSesionRecepcion().getId());
+        if (admision.getEstado() != EstadoAdmisionRecepcion.INICIADA
+                && admision.getEstado() != EstadoAdmisionRecepcion.FORMULARIO_COMPLETO) {
+            throw new ConflictoDeEstadoException("Solo se puede cancelar una admision abierta");
+        }
+        admision.setEstado(EstadoAdmisionRecepcion.CANCELADA);
+        admision.setFechaHoraCancelacion(LocalDateTime.now());
+        admision.getConsultaMedica().setEstadoConsulta(EstadoConsulta.CANCELADA);
+        repoConsultasMedicas.save(admision.getConsultaMedica());
+        repoAdmisionesRecepcion.save(admision);
+        return mapearDetalle(admision, null);
+    }
+
     private Paciente crearPacientePresencial(CrearAdmisionRecepcionRequest r, String dni) {
         Paciente paciente = new Paciente();
         paciente.setNombre(r.nombre().trim()); paciente.setApellido(r.apellido().trim());
         paciente.setNumeroDocumento(dni); paciente.setTipoDocumento(TipoDocumento.DNI);
         paciente.setFechaNacimiento(r.fechaNacimiento()); paciente.setGeneroBiologico(r.generoBiologico());
+        paciente.setTelefono(r.telefono().trim());
+        paciente.setCorreoElectronico(r.correoElectronico() == null || r.correoElectronico().isBlank()
+                ? null : r.correoElectronico().trim());
+        Direccion direccion = new Direccion();
+        direccion.setCalle(r.calle().trim()); direccion.setAltura(r.alturaDomicilio().trim());
+        direccion.setPiso(r.piso() == null || r.piso().isBlank() ? null : r.piso().trim());
+        direccion.setCodigoPostal(r.codigoPostal().trim());
+        paciente.setDireccion(repoDirecciones.save(direccion));
         paciente.setOrigenRegistro(OrigenRegistroPaciente.RECEPCION);
         return repoPacientes.save(paciente);
     }
@@ -163,10 +213,13 @@ public class AdmisionRecepcionService {
     }
     private SesionRecepcion obtenerSesionActiva(String auth0Id, Long id) {
         SesionRecepcion s = obtenerSesion(auth0Id, id);
-        if (s.getEstado() != EstadoSesionRecepcion.ACTIVA) throw new IllegalStateException("La sesion no esta activa");
+        if (s.getEstado() != EstadoSesionRecepcion.ACTIVA) throw new ConflictoDeEstadoException("La sesion no esta activa");
         return s;
     }
     private AdmisionRecepcion obtenerAdmision(String auth0Id, Long id) {
+        if (!repoAdmisionesRecepcion.existsById(id)) {
+            throw new RecursoNoEncontradoException("Admision inexistente");
+        }
         return repoAdmisionesRecepcion.findByIdAndSesionRecepcionRecepcionistaUsuarioAuthId(id, auth0Id)
                 .orElseThrow(() -> new org.springframework.security.access.AccessDeniedException("No tiene permisos sobre la admision"));
     }
@@ -175,4 +228,34 @@ public class AdmisionRecepcionService {
     private NivelDeGravedad prioridad(int valor) { return switch (valor) { case 5 -> NivelDeGravedad.RIESGO_VITAL_INMEDIATO; case 4 -> NivelDeGravedad.MUY_URGENTE; case 3 -> NivelDeGravedad.URGENTE; case 2 -> NivelDeGravedad.NORMAL; default -> NivelDeGravedad.NO_URGENTE; }; }
     private SesionRecepcionDTO mapear(SesionRecepcion s) { return new SesionRecepcionDTO(s.getId(), s.getHospital().getId(), s.getHospital().getNombre(), s.getEstado(), s.getFechaHoraInicio(), s.getFechaHoraFin()); }
     private AdmisionRecepcionDTO mapear(AdmisionRecepcion a, TiempoEstimadoAtencionResponse e) { ConsultaMedica c=a.getConsultaMedica(); return new AdmisionRecepcionDTO(a.getId(), c.getId(), c.getPaciente().getId(), c.getCodigoLlamado(), a.getEstado(), c.getNivelDeGravedadBot(), e); }
+
+    private TiempoEstimadoAtencionResponse estimacionActual(AdmisionRecepcion admision) {
+        ConsultaMedica consulta = admision.getConsultaMedica();
+        return consulta.getEstadoConsulta() == EstadoConsulta.EN_COLA
+                ? estimacionAtencionService.calcularPara(consulta)
+                : null;
+    }
+
+    private AdmisionRecepcionDetalleDTO mapearDetalle(
+            AdmisionRecepcion admision, TiempoEstimadoAtencionResponse estimacion) {
+        ConsultaMedica consulta = admision.getConsultaMedica();
+        Paciente paciente = consulta.getPaciente();
+        Hospital hospital = consulta.getHospital();
+        EspecialidadMedica especialidad = consulta.getEspecialidad();
+        String dni = paciente.getNumeroDocumento() != null
+                ? paciente.getNumeroDocumento()
+                : paciente.getUsuarioAuth() != null ? paciente.getUsuarioAuth().getNumeroDocumento() : null;
+        String nombre = paciente.getNombre() != null
+                ? paciente.getNombre()
+                : paciente.getUsuarioAuth() != null ? paciente.getUsuarioAuth().getNombre() : null;
+        String apellido = paciente.getApellido() != null
+                ? paciente.getApellido()
+                : paciente.getUsuarioAuth() != null ? paciente.getUsuarioAuth().getApellido() : null;
+        return new AdmisionRecepcionDetalleDTO(
+                admision.getId(), consulta.getId(), admision.getSesionRecepcion().getId(), paciente.getId(),
+                dni, nombre, apellido, hospital.getId(), hospital.getNombre(),
+                especialidad.getCodigo(), especialidad.getNombre(), consulta.getCodigoLlamado(),
+                admision.getEstado(), consulta.getNivelDeGravedadBot(), admision.getFechaHoraInicio(),
+                admision.getFechaHoraFinalizacion(), admision.getFechaHoraCancelacion(), estimacion);
+    }
 }

@@ -149,6 +149,8 @@ erDiagram
         TipoDocumento tipoDocumento
         OrigenRegistroPaciente origenRegistro
         LocalDate fechaNacimiento
+        String telefono
+        String correoElectronico
         Double peso
         Integer altura
     }
@@ -171,6 +173,7 @@ erDiagram
         String resultadoTriageJson
         LocalDateTime fechaHoraInicio
         LocalDateTime fechaHoraFinalizacion
+        LocalDateTime fechaHoraCancelacion
     }
     SESION_RECEPCION {
         Long id
@@ -216,6 +219,7 @@ erDiagram
     MEDICO ||--o{ ASIGNACION_MEDICO_HOSPITAL : asignaciones
     PACIENTE ||--|| USUARIO_AUTH : usuarioAuth
     PACIENTE ||--|| COORDENADA : coordenadaActual
+    PACIENTE ||--|| DIRECCION : direccion
     RECEPCIONISTA ||--|| USUARIO_AUTH : usuarioAuth
     ADMISION_RECEPCION ||--|| CONSULTA_MEDICA : consultaMedica
     ADMISION_RECEPCION }o--|| SESION_RECEPCION : sesionRecepcion

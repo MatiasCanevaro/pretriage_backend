@@ -17,13 +17,27 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({CredencialValidaYaExisteException.class, PacienteNoExisteException.class,
             NoSePudoCrearUsuario.class, NoSePudoEstimarElHorarioDeAtencion.class, ChatFinalizadoException.class,
             NoSePudoObtenerHospital.class, ObraSocialYaExisteException.class, ObraSocialNoExisteException.class,
-            RecepcionistaNoExisteException.class, AccessDeniedException.class,
+            RecepcionistaNoExisteException.class,
             NoSuchElementException.class, IllegalStateException.class})
     public ResponseEntity<Map<String, String>> handleExceptions(
             RuntimeException e) {
 
         return ResponseEntity.badRequest()
                 .body(Map.of("error", e.getMessage()));
+    }
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<Map<String, String>> handleAccessDenied(RuntimeException e) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
+    }
+
+    @ExceptionHandler(RecursoNoEncontradoException.class)
+    public ResponseEntity<Map<String, String>> handleNotFound(RuntimeException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", e.getMessage()));
+    }
+
+    @ExceptionHandler(ConflictoDeEstadoException.class)
+    public ResponseEntity<Map<String, String>> handleStateConflict(RuntimeException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", e.getMessage()));
     }
     @ExceptionHandler(AtencionEnCursoException.class)
     public ResponseEntity<Map<String, String>> handleConflict(RuntimeException e) {

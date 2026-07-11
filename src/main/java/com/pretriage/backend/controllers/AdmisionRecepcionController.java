@@ -51,4 +51,22 @@ public class AdmisionRecepcionController {
             @RequestBody @Valid FormularioTriageRecepcionRequest formulario) {
         return ResponseEntity.ok(service.finalizar(jwt.getSubject(), admisionId, formulario));
     }
+
+    @GetMapping("/admisiones/{admisionId}")
+    public ResponseEntity<AdmisionRecepcionDetalleDTO> obtenerAdmision(@AuthenticationPrincipal Jwt jwt,
+            @PathVariable Long admisionId) {
+        return ResponseEntity.ok(service.obtenerDetalle(jwt.getSubject(), admisionId));
+    }
+
+    @GetMapping("/admisiones")
+    public ResponseEntity<java.util.List<AdmisionRecepcionDetalleDTO>> listarAdmisionesAbiertas(
+            @AuthenticationPrincipal Jwt jwt, @RequestParam Long sesionId) {
+        return ResponseEntity.ok(service.listarAbiertas(jwt.getSubject(), sesionId));
+    }
+
+    @PostMapping("/admisiones/{admisionId}/cancelar")
+    public ResponseEntity<AdmisionRecepcionDetalleDTO> cancelar(@AuthenticationPrincipal Jwt jwt,
+            @PathVariable Long admisionId) {
+        return ResponseEntity.ok(service.cancelar(jwt.getSubject(), admisionId));
+    }
 }

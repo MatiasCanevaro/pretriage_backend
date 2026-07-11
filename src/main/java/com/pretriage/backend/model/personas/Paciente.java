@@ -6,6 +6,7 @@ import java.util.List;
 
 import com.pretriage.backend.model.hospitales.Coordenada;
 import com.pretriage.backend.model.hospitales.Credencial;
+import com.pretriage.backend.model.hospitales.Direccion;
 
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -49,6 +50,13 @@ public class Paciente {
     private OrigenRegistroPaciente origenRegistro;
 
     private LocalDate fechaNacimiento;
+
+    private String telefono;
+    private String correoElectronico;
+
+    @OneToOne
+    @JoinColumn(name = "id_direccion")
+    private Direccion direccion;
 
     private Double peso;
 

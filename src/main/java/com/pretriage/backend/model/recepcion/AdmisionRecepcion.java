@@ -23,4 +23,5 @@ public class AdmisionRecepcion {
     private String resultadoTriageJson;
     private LocalDateTime fechaHoraInicio;
     private LocalDateTime fechaHoraFinalizacion;
+    private LocalDateTime fechaHoraCancelacion;
 }

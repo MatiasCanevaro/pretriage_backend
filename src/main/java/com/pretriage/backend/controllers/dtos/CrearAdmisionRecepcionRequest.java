@@ -2,6 +2,7 @@ package com.pretriage.backend.controllers.dtos;
 
 import com.pretriage.backend.model.personas.Genero;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Past;
 import jakarta.validation.constraints.Pattern;
@@ -14,4 +15,10 @@ public record CrearAdmisionRecepcionRequest(
         @NotBlank String apellido,
         @NotNull @Past LocalDate fechaNacimiento,
         @NotNull Genero generoBiologico,
+        @NotBlank @Pattern(regexp = "^[+0-9 ()-]{6,25}$") String telefono,
+        @Email String correoElectronico,
+        @NotBlank String calle,
+        @NotBlank String alturaDomicilio,
+        String piso,
+        @NotBlank String codigoPostal,
         @NotBlank String codigoEspecialidad) {}

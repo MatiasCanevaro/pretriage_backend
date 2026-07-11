@@ -83,3 +83,17 @@ Override with:
 ```powershell
 python scripts\e2e_chat.py --backend-url http://localhost:8081
 ```
+
+## Reception HTTP E2E
+
+With the backend running, provide a valid Auth0 access token for a receptionist:
+
+```powershell
+$env:E2E_RECEPCION_TOKEN="<token>"
+python scripts/e2e_recepcion.py --mode finalize
+python scripts/e2e_recepcion.py --mode cancel
+```
+
+Use `--hospital-id` when the receptionist is assigned to several hospitals. The script reuses an
+active reception session or starts one, creates a unique patient/admission, verifies open-admission
+recovery, performs the requested terminal action, and reads the final detail back.
