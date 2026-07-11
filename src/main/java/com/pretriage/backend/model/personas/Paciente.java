@@ -39,6 +39,15 @@ public class Paciente {
     @Enumerated(EnumType.STRING)
     private Genero generoConElQueSeIdentifica;
 
+    private String nombre;
+    private String apellido;
+    @Column(unique = true)
+    private String numeroDocumento;
+    @Enumerated(EnumType.STRING)
+    private TipoDocumento tipoDocumento;
+    @Enumerated(EnumType.STRING)
+    private OrigenRegistroPaciente origenRegistro;
+
     private LocalDate fechaNacimiento;
 
     private Double peso;

@@ -52,6 +52,8 @@ public class AtencionHospitalServiceTest {
     @Mock
     private PacienteService pacienteService;
     @Mock
+    private IngresoColaService ingresoColaService;
+    @Mock
     private GooglePlacesService googlePlacesService;
 
     @InjectMocks
@@ -141,17 +143,15 @@ public class AtencionHospitalServiceTest {
         when(repoConsultasMedicas.findFirstByPacienteIdAndEstadoConsultaIn(eq(paciente.getId()), any()))
                 .thenReturn(Optional.of(consultaPaciente));
         when(repoHospitales.findByPlaceId(placeId)).thenReturn(Optional.of(hospital));
-        when(repoGestorDeCola.findByHospitalIdAndEspecialidadId(hospital.getId(), especialidad.getId()))
-                .thenReturn(Optional.of(gestorDeCola));
-        when(repoEntradasCola.findByConsultaMedicaId(consultaPaciente.getId()))
-                .thenReturn(Optional.empty());
-        when(repoEntradasCola.findFirstByGestorDeColaIdOrderByOrdenRelativoDesc(gestorDeCola.getId()))
-                .thenReturn(Optional.empty());
 
         TiempoEstimadoAtencionResponse responseEsperada = new TiempoEstimadoAtencionResponse();
         responseEsperada.setPosicionEnCola(2);
         responseEsperada.setPacientesAntes(1);
-        when(estimacionAtencionService.calcularPara(consultaPaciente)).thenReturn(responseEsperada);
+        when(ingresoColaService.ingresar(consultaPaciente, NivelDeGravedad.URGENTE)).thenAnswer(inv -> {
+            consultaPaciente.setNivelDeGravedadBot(NivelDeGravedad.URGENTE);
+            consultaPaciente.setEstadoConsulta(EstadoConsulta.EN_COLA);
+            return responseEsperada;
+        });
 
         service.seleccionarHospital(auth0Id, placeId, codigoEspecialidad);
 
@@ -162,12 +162,8 @@ public class AtencionHospitalServiceTest {
         assertSame(especialidad, consultaPaciente.getEspecialidad());
         assertEquals(EstadoConsulta.EN_COLA, consultaPaciente.getEstadoConsulta());
         assertEquals(NivelDeGravedad.URGENTE, consultaPaciente.getNivelDeGravedadBot());
-        assertEquals(List.of(consultaCriticaPrevia, consultaPaciente), gestorDeCola.getConsultasEnEspera());
         assertSame(responseEsperada, response);
-        verify(estimacionAtencionService).calcularPara(consultaPaciente);
-        verify(repoGestorDeCola, atLeastOnce()).findByHospitalIdAndEspecialidadId(hospital.getId(), especialidad.getId());
-        verify(repoGestorDeCola, atLeastOnce()).save(gestorDeCola);
-        verify(repoEntradasCola).save(any(EntradaCola.class));
+        verify(ingresoColaService).ingresar(consultaPaciente, NivelDeGravedad.URGENTE);
     }
 
     @Test

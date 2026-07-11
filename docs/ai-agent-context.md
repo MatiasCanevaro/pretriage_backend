@@ -146,3 +146,12 @@ Documentation updates are required in the same change as code updates. When chan
 2. Regenerate the domain diagram with `python scripts/generate_domain_diagram.py` after JPA entity changes.
 3. Verify API paths and state transitions against controllers and services.
 4. Do not consider the task complete while documentation is stale.
+## Reception-Assisted Admission
+
+- Reception admission uses `AdmisionRecepcion`, `SesionRecepcion`, `TriageFormularioService`, and `IngresoColaService`.
+- It does not create or use `Chat`.
+- DNI is required; patients without Auth0 are valid domain patients.
+- Receptionists may be assigned to multiple hospitals but can have only one active reception session.
+- Reception cannot set or edit priority.
+- Both digital and reception flows must enter the queue through `IngresoColaService`.
+- Keep `docs/09-reception-admission.md` and `docs/10-nextjs-reception-plan.md` synchronized with backend contracts.

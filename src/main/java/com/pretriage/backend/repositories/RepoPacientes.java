@@ -9,4 +9,5 @@ import java.util.Optional;
 @Repository
 public interface RepoPacientes extends JpaRepository<Paciente, Long> {
     Optional<Paciente> findByUsuarioAuthId(String auth0Id);
+    Optional<Paciente> findByNumeroDocumentoOrUsuarioAuthNumeroDocumento(String numeroDocumento, String numeroDocumentoAuth);
 }

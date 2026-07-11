@@ -12,6 +12,8 @@ import java.util.Optional;
 public interface RepoHospitales extends JpaRepository<Hospital, Long> {
 
     Optional<Hospital> findByPlaceId(String placeId);
+    Optional<Hospital> findByIdAndRecepcionistasId(Long id, Long recepcionistaId);
+    List<Hospital> findByRecepcionistasUsuarioAuthId(String auth0Id);
 
     List<Hospital> findByPlaceIdInAndEspecialidadesCodigo(Collection<String> placeIds, String codigoEspecialidad);
 }

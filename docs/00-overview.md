@@ -20,7 +20,8 @@ The current focus is first attention only. The system does not model referral, d
 - Medical specialties: represented by `EspecialidadMedica`.
 - AI triage chat: creates a chat, stores patient and bot messages, stores structured triage JSON.
 - Queue management: uses `EntradaCola` as queue state per hospital/specialty.
-- Doctor attention: uses `SesionAtencionMedica`, rooms, assignments, and historical `AtencionMedica` records.
+- Doctor attention: uses SesionAtencionMedica, rooms, assignments, and historical AtencionMedica records.
+- Reception admission: supports DNI-based in-person registration, structured form triage, and entry into the same dynamic queue without using chat.
 - Estimated attention time: recalculated dynamically using queue state and active doctor sessions.
 - Real-time estimation: authenticated SSE subscriptions support periodic updates, heartbeat, and multiple connections per consultation.
 

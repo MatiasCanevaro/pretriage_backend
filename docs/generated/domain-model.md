@@ -14,6 +14,7 @@ python scripts\generate_domain_diagram.py
 
 ## Entities
 
+- `AdmisionRecepcion`: `src/main/java/com/pretriage/backend/model/recepcion/AdmisionRecepcion.java`
 - `AsignacionMedicoHospital`: `src/main/java/com/pretriage/backend/model/personas/AsignacionMedicoHospital.java`
 - `AtencionMedica`: `src/main/java/com/pretriage/backend/model/consultas/AtencionMedica.java`
 - `Chat`: `src/main/java/com/pretriage/backend/model/chat/Chat.java`
@@ -32,6 +33,7 @@ python scripts\generate_domain_diagram.py
 - `Recepcionista`: `src/main/java/com/pretriage/backend/model/personas/Recepcionista.java`
 - `Sala`: `src/main/java/com/pretriage/backend/model/hospitales/Sala.java`
 - `SesionAtencionMedica`: `src/main/java/com/pretriage/backend/model/consultas/SesionAtencionMedica.java`
+- `SesionRecepcion`: `src/main/java/com/pretriage/backend/model/recepcion/SesionRecepcion.java`
 - `Sintoma`: `src/main/java/com/pretriage/backend/model/consultas/Sintoma.java`
 - `UsuarioAuth`: `src/main/java/com/pretriage/backend/model/personas/UsuarioAuth.java`
 
@@ -60,6 +62,7 @@ erDiagram
     CONSULTA_MEDICA {
         Long id
         LocalDateTime fechaHoraCreacion
+        String codigoLlamado
         NivelDeGravedad nivelDeGravedadBot
         NivelDeGravedad nivelDeGravedadMedico
         EstadoConsulta estadoConsulta
@@ -140,6 +143,11 @@ erDiagram
         Long id
         Genero generoBiologico
         Genero generoConElQueSeIdentifica
+        String nombre
+        String apellido
+        String numeroDocumento
+        TipoDocumento tipoDocumento
+        OrigenRegistroPaciente origenRegistro
         LocalDate fechaNacimiento
         Double peso
         Integer altura
@@ -155,6 +163,20 @@ erDiagram
         TipoDocumento tipoDocumento
         String correoElectronico
         RolSistema rol
+    }
+    ADMISION_RECEPCION {
+        Long id
+        EstadoAdmisionRecepcion estado
+        String formularioJson
+        String resultadoTriageJson
+        LocalDateTime fechaHoraInicio
+        LocalDateTime fechaHoraFinalizacion
+    }
+    SESION_RECEPCION {
+        Long id
+        EstadoSesionRecepcion estado
+        LocalDateTime fechaHoraInicio
+        LocalDateTime fechaHoraFin
     }
     CHAT ||--o{ MENSAJE : mensajes
     CHAT ||--|| PACIENTE : paciente
@@ -195,4 +217,8 @@ erDiagram
     PACIENTE ||--|| USUARIO_AUTH : usuarioAuth
     PACIENTE ||--|| COORDENADA : coordenadaActual
     RECEPCIONISTA ||--|| USUARIO_AUTH : usuarioAuth
+    ADMISION_RECEPCION ||--|| CONSULTA_MEDICA : consultaMedica
+    ADMISION_RECEPCION }o--|| SESION_RECEPCION : sesionRecepcion
+    SESION_RECEPCION }o--|| RECEPCIONISTA : recepcionista
+    SESION_RECEPCION }o--|| HOSPITAL : hospital
 ```
