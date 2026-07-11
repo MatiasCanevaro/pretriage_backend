@@ -108,3 +108,19 @@ The estimate can change whenever:
 - A delayed patient arrives.
 - A patient is called or enters attention.
 - A consultation is finalized or cancelled.
+
+## Real-Time Updates
+
+Patients can subscribe through authenticated SSE:
+
+```http
+GET /api/atencion/tiempos/suscribirse/{consultaId}
+Accept: text/event-stream
+```
+
+- The authenticated patient must own the consultation.
+- An initial `tiempo-estimado` event is sent when the connection opens.
+- Estimates are recalculated from `EntradaCola` and `EstimacionAtencionService` every 15 seconds while connected.
+- A `heartbeat` event is sent every 30 seconds.
+- Multiple simultaneous emitters are supported for the same consultation.
+- Connections are completed when the consultation no longer has an active `EN_COLA` estimate.

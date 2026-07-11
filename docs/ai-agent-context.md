@@ -58,6 +58,10 @@ The system manages the first medical attention workflow:
 - `Sala`
 - `AsignacionMedicoHospital`
 - `RepoSesionesAtencionMedica`
+- `AtencionMedica`
+- `EstadoAtencionMedica`
+- `RepoAtencionesMedicas`
+- `TiempoEstimadoNotifier`
 
 ### Patient Waiting State
 
@@ -78,6 +82,12 @@ The system manages the first medical attention workflow:
 - A room cannot have two active or paused sessions at the same time.
 - A doctor cannot have two active or paused sessions at the same time.
 - A patient delayed after absence is not reinserted into queue until marking arrival.
+- A paused session reserves doctor and room but does not count as active capacity.
+- A session cannot be paused or closed while its doctor has a called or in-attention consultation.
+- A doctor cannot call another patient while one is called or in attention.
+- `AtencionMedica` is created on presence confirmation and finalized with the consultation.
+- `EN_ESPERA` entries are cancelled after one hour measured from `fechaHoraSalidaTemporal`.
+- SSE subscriptions validate that the authenticated patient owns the consultation.
 
 ## Estimation Contract
 
@@ -127,3 +137,12 @@ Full tests need Docker Desktop access.
 - Do not count delayed or manually waiting patients as in queue.
 - Do not add admin module assumptions yet; admin is planned but not in scope.
 - Do not expose raw `.env` values in logs or docs.
+
+## Documentation Maintenance
+
+Documentation updates are required in the same change as code updates. When changing entities, states, flows, endpoints, DTOs, configuration, or verification commands:
+
+1. Update the relevant narrative files under `docs/`.
+2. Regenerate the domain diagram with `python scripts/generate_domain_diagram.py` after JPA entity changes.
+3. Verify API paths and state transitions against controllers and services.
+4. Do not consider the task complete while documentation is stale.

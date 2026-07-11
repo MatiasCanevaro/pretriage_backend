@@ -43,6 +43,12 @@ Use grep/rg only for configs, scripts, literals, or when graph results are insuf
 - Full suite needs Docker Desktop access: `./mvnw.cmd test`
 - Real chat E2E: `python scripts/e2e_chat.py --messages-file scripts/chat_case_example.txt`
 
+## Documentation Maintenance
+- Documentation is part of the definition of done.
+- Any change to domain entities, relationships, states, business rules, flows, endpoints, DTO contracts, configuration, or verification commands must update the corresponding files under `docs/` in the same change.
+- Regenerate `docs/generated/domain-model.md` and `docs/generated/domain-model.mmd` after changing JPA entities by running `python scripts/generate_domain_diagram.py`.
+- Before finishing, verify documented endpoint paths and state transitions against the implementation.
+- Do not leave documentation updates for a later task.
 ## Useful Docs
 - Human overview: `docs/00-overview.md`
 - Agent deep context: `docs/ai-agent-context.md`

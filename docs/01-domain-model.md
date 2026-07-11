@@ -85,6 +85,22 @@ Session states:
 - `ACTIVA`: counts as active doctor capacity.
 - `PAUSADA`: does not count as active capacity.
 - `FINALIZADA`: closed session.
+## Historical Attention
+
+`AtencionMedica` is the historical record of one effective patient attention. It is created when a called patient confirms presence and enters `EN_ATENCION`, and finalized together with the consultation. Important fields:
+
+- `consultaMedica`
+- `sesionAtencionMedica`
+- `estado`
+- `fechaHoraInicio`
+- `fechaHoraFin`
+
+One `SesionAtencionMedica` can contain many attention records. One `ConsultaMedica` has at most one `AtencionMedica` in the current first-attention flow. Doctor, hospital, specialty, and room historical context is obtained from the linked session.
+
+Attention states:
+
+- `EN_CURSO`
+- `FINALIZADA`
 ## Generated Diagram
 
 A Mermaid ER diagram can be generated from the JPA entity classes:

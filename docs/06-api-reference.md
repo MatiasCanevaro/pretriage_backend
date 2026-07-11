@@ -163,5 +163,46 @@ POST /api/medico/sesiones/{id}/llamar-proximo
 ### Mark Patient Absent
 
 ```http
-POST /api/medico/sesiones/{id}/marcar-ausente
+POST /api/medico/sesiones/{sesionId}/consultas/{consultaId}/ausente
 ```
+
+### List Available Patients
+
+```http
+GET /api/medico/sesiones/{sesionId}/pacientes-disponibles
+```
+
+Returns ordered `EntradaCola.EN_COLA` consultations for the session hospital and specialty.
+
+### Attention History
+
+```http
+GET /api/medico/atenciones
+```
+
+### Confirm Patient Present
+
+```http
+POST /api/medico/sesiones/{sesionId}/consultas/{consultaId}/presente
+```
+
+Creates an `AtencionMedica.EN_CURSO` historical record.
+
+### Finish Attention
+
+```http
+POST /api/medico/sesiones/{sesionId}/consultas/{consultaId}/finalizar
+```
+
+Finalizes the consultation, queue entry, and historical attention in one operation.
+
+Pause, close, and call-next operations are rejected while the doctor has a patient `LLAMADO` or `EN_ATENCION`.
+
+## Real-Time Estimated Attention
+
+```http
+GET /api/atencion/tiempos/suscribirse/{consultaId}
+Accept: text/event-stream
+```
+
+Authenticated SSE stream with `tiempo-estimado` and `heartbeat` events. The patient must own the consultation.

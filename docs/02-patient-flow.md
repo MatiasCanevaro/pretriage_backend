@@ -41,6 +41,7 @@ If doctor calls patient and patient is absent:
 - Doctor marks them absent manually.
 - Patient becomes `EN_ESPERA` with `AUSENTE_AL_LLAMADO`.
 - Patient can confirm they are delayed.
+- The one-hour waiting deadline starts when the doctor marks the called patient absent.
 
 If patient confirms delayed:
 
@@ -52,3 +53,11 @@ If patient confirms delayed:
 If delayed patient arrives:
 
 - They return to first place within their priority level.
+
+## Waiting Expiration
+
+Both manual waiting and absence-after-call entries are automatically cancelled after one hour in `EN_ESPERA`:
+
+- `EntradaCola.estado = CANCELADA`
+- `ConsultaMedica.estadoConsulta = CANCELADA`
+- Persisted records remain as history but no longer belong to the active queue.

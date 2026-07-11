@@ -23,6 +23,9 @@ flowchart TD
 - To change specialty, close the current session and start another.
 - A room can be used by one doctor at a time.
 - A doctor can have one active or paused session at a time.
+- A paused session continues reserving the doctor and room, although it does not count as estimation capacity.
+- A doctor cannot pause or close a session while a consultation is LLAMADO or EN_ATENCION.
+- A doctor cannot call another patient while a previous patient is still LLAMADO or EN_ATENCION.
 
 ## Session States
 
@@ -44,6 +47,7 @@ If patient appears:
 - Entry becomes `EN_ATENCION`.
 - Consultation becomes `EN_ATENCION`.
 - Doctor, room, and session context are assigned.
+- An `AtencionMedica.EN_CURSO` historical record is created and linked to the consultation and session.
 
 If patient does not respond:
 
@@ -51,3 +55,15 @@ If patient does not respond:
 - Entry becomes `EN_ESPERA`.
 - `tipoPausa = AUSENTE_AL_LLAMADO`.
 - Patient decides whether they are delayed or returning.
+
+## Completing Attention
+
+When attention finishes:
+
+- `EntradaCola` and `ConsultaMedica` become `FINALIZADA`.
+- The linked `AtencionMedica` becomes `FINALIZADA` and stores its end time.
+
+## Queue Visibility And History
+
+- `GET /api/medico/sesiones/{sesionId}/pacientes-disponibles` lists ordered `EN_COLA` patients for the session hospital and specialty.
+- `GET /api/medico/atenciones` returns the authenticated doctor's historical attention records.
