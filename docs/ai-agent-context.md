@@ -154,4 +154,4 @@ Documentation updates are required in the same change as code updates. When chan
 - Receptionists may be assigned to multiple hospitals but can have only one active reception session.
 - Reception cannot set or edit priority.
 - Both digital and reception flows must enter the queue through `IngresoColaService`.
-- Keep `docs/09-reception-admission.md` and `docs/10-nextjs-reception-plan.md` synchronized with backend contracts.
+- Keep `docs/09-reception-admission.md` synchronized with backend contracts.

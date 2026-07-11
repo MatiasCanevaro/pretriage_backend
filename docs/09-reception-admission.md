@@ -68,5 +68,3 @@ that remains `EN_COLA`, detail retrieval recalculates the current dynamic estima
 
 Reception endpoints use `400` for validation, `403` for ownership/role violations, `404`
 for missing reception resources, and `409` for active-consultation or invalid-state conflicts.
-
-See `docs/10-nextjs-reception-plan.md` for payloads and frontend state.

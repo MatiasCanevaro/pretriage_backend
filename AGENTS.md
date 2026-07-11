@@ -54,7 +54,6 @@ Use grep/rg only for configs, scripts, literals, or when graph results are insuf
 ## Useful Docs
 - Human overview: `docs/00-overview.md`
 - Reception-assisted admission: `docs/09-reception-admission.md`
-- Next.js reception plan: `docs/10-nextjs-reception-plan.md`
 - Agent deep context: `docs/ai-agent-context.md`
 - Queue and estimation: `docs/04-queue-and-estimation.md`
 - E2E chat debugging: `docs/08-e2e-chat-debugging.md`
