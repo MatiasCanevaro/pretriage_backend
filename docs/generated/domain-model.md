@@ -15,6 +15,7 @@ python scripts\generate_domain_diagram.py
 ## Entities
 
 - `AsignacionMedicoHospital`: `src/main/java/com/pretriage/backend/model/personas/AsignacionMedicoHospital.java`
+- `AtencionMedica`: `src/main/java/com/pretriage/backend/model/consultas/AtencionMedica.java`
 - `Chat`: `src/main/java/com/pretriage/backend/model/chat/Chat.java`
 - `ConsultaMedica`: `src/main/java/com/pretriage/backend/model/consultas/ConsultaMedica.java`
 - `Coordenada`: `src/main/java/com/pretriage/backend/model/hospitales/Coordenada.java`
@@ -49,6 +50,12 @@ erDiagram
         String contenido
         AutorMensaje autor
         LocalDateTime fechaHoraEnvio
+    }
+    ATENCION_MEDICA {
+        Long id
+        EstadoAtencionMedica estado
+        LocalDateTime fechaHoraInicio
+        LocalDateTime fechaHoraFin
     }
     CONSULTA_MEDICA {
         Long id
@@ -115,6 +122,7 @@ erDiagram
     OBRA_SOCIAL {
         Long id
         String nombre
+        boolean virgente
     }
     SALA {
         Long id
@@ -146,10 +154,13 @@ erDiagram
         String numeroDocumento
         TipoDocumento tipoDocumento
         String correoElectronico
+        RolSistema rol
     }
     CHAT ||--o{ MENSAJE : mensajes
     CHAT ||--|| PACIENTE : paciente
     MENSAJE }o--|| PACIENTE : pacienteAutor
+    ATENCION_MEDICA ||--|| CONSULTA_MEDICA : consultaMedica
+    ATENCION_MEDICA }o--|| SESION_ATENCION_MEDICA : sesionAtencionMedica
     CONSULTA_MEDICA }o--|| HOSPITAL : hospital
     CONSULTA_MEDICA }o--|| ESPECIALIDAD_MEDICA : especialidad
     CONSULTA_MEDICA }o--|| MEDICO : medico

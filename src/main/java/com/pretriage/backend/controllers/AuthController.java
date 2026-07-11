@@ -2,10 +2,7 @@ package com.pretriage.backend.controllers;
 
 import com.pretriage.backend.controllers.dtos.LoginRequest;
 import com.pretriage.backend.controllers.dtos.RegisterRequest;
-import com.pretriage.backend.model.personas.Medico;
-import com.pretriage.backend.model.personas.Paciente;
-import com.pretriage.backend.model.personas.Recepcionista;
-import com.pretriage.backend.model.personas.UsuarioAuth;
+import com.pretriage.backend.model.personas.*;
 import com.pretriage.backend.repositories.RepoMedico;
 import com.pretriage.backend.repositories.RepoPacientes;
 import com.pretriage.backend.repositories.RepoRecepcionistas;
@@ -43,7 +40,7 @@ public class AuthController {
         switch (request.getTipoUsuario()){
             case Medico -> this.crearMedico(request, email, auth0Id);
             case Paciente -> this.crearPaciente(request, email, auth0Id);
-            case Recepcionista -> this.crearRecepcionista(request, email, auth0Id);
+            case Recepcionista -> this.crearRecepcionista(request, email, auth0Id, request.getRol());//solo el recepcionista puede ser o no admin
         }
 
         return ResponseEntity.ok(Map.of("message", "usuario creado con Ã©xito"));
@@ -53,12 +50,12 @@ public class AuthController {
     public ResponseEntity<Map<String, String>> login(
             @Valid @RequestBody LoginRequest request){
 
-        String JwtToken = authService.obtenerTokenParaLogearUsuario(request.getEmail(), request.getPassword());
+        String idToken = authService.obtenerTokenParaLogearUsuario(request.getEmail(), request.getPassword());
 
-        return ResponseEntity.ok(Map.of("token", JwtToken));
+        return ResponseEntity.ok(Map.of("token", idToken));
     }
 
-    private UsuarioAuth crearUsuario(RegisterRequest request, String email, String auth0Id){
+    private UsuarioAuth crearUsuario(RegisterRequest request, String email, String auth0Id, RolSistema rol){
         UsuarioAuth usuarioAuth = new UsuarioAuth();
 
         usuarioAuth.setNombre(request.getNombre());
@@ -73,13 +70,15 @@ public class AuthController {
 
         usuarioAuth.setId(auth0Id);
 
+        usuarioAuth.setRol(rol);
+
         return usuarioAuth;
     }
 
-    private void crearRecepcionista(RegisterRequest request, String email, String auth0Id) {
+    private void crearRecepcionista(RegisterRequest request, String email, String auth0Id, RolSistema rol) {
         Recepcionista recepcionista = new Recepcionista();
 
-        UsuarioAuth usuarioAuth = this.crearUsuario(request, email, auth0Id);
+        UsuarioAuth usuarioAuth = this.crearUsuario(request, email, auth0Id, rol);
 
         recepcionista.setUsuarioAuth(usuarioAuth);
 
@@ -89,7 +88,7 @@ public class AuthController {
     private void crearPaciente(RegisterRequest request, String email, String auth0Id) {
         Paciente paciente = new Paciente();
 
-        UsuarioAuth usuarioAuth = this.crearUsuario(request, email, auth0Id);
+        UsuarioAuth usuarioAuth = this.crearUsuario(request, email, auth0Id, RolSistema.USER);
 
         paciente.setUsuarioAuth(usuarioAuth);
 
@@ -99,7 +98,7 @@ public class AuthController {
     private void crearMedico(RegisterRequest request, String email, String auth0Id){
         Medico medico = new Medico();
 
-        UsuarioAuth usuarioAuth = this.crearUsuario(request, email, auth0Id);
+        UsuarioAuth usuarioAuth = this.crearUsuario(request, email, auth0Id, RolSistema.USER);
 
         medico.setMatricula(
                 request.getMatricula());

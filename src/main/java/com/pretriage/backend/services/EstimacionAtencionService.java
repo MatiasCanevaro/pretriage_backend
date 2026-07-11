@@ -51,6 +51,7 @@ public class EstimacionAtencionService {
         int bloquesEspera = posicionBaseCero / medicosParaEstimacion;
 
         TiempoEstimadoAtencionResponse response = new TiempoEstimadoAtencionResponse();
+        response.setConsultaId(consultaMedica.getId());
         response.setFechaHoraAtencionEstimada(LocalDateTime.now().plusMinutes((long) bloquesEspera * minutosPromedioAtencion));
         response.setHayMedicosActivos(medicosActivos > 0);
         response.setMedicosActivos(medicosActivos);

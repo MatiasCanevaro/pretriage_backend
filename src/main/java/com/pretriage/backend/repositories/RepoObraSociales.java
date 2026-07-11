@@ -9,6 +9,6 @@ import java.util.Optional;
 @Repository
 public interface RepoObraSociales extends JpaRepository<ObraSocial, Long> {
 
-    Optional<ObraSocial> findByNombreEqualsIgnoreCase(String nombre);
+    Optional<ObraSocial> findByNombreEqualsIgnoreCaseAndVirgenteTrue(String nombre);
 
 }

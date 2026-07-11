@@ -11,6 +11,12 @@ erDiagram
         AutorMensaje autor
         LocalDateTime fechaHoraEnvio
     }
+    ATENCION_MEDICA {
+        Long id
+        EstadoAtencionMedica estado
+        LocalDateTime fechaHoraInicio
+        LocalDateTime fechaHoraFin
+    }
     CONSULTA_MEDICA {
         Long id
         LocalDateTime fechaHoraCreacion
@@ -76,6 +82,7 @@ erDiagram
     OBRA_SOCIAL {
         Long id
         String nombre
+        boolean virgente
     }
     SALA {
         Long id
@@ -107,10 +114,13 @@ erDiagram
         String numeroDocumento
         TipoDocumento tipoDocumento
         String correoElectronico
+        RolSistema rol
     }
     CHAT ||--o{ MENSAJE : mensajes
     CHAT ||--|| PACIENTE : paciente
     MENSAJE }o--|| PACIENTE : pacienteAutor
+    ATENCION_MEDICA ||--|| CONSULTA_MEDICA : consultaMedica
+    ATENCION_MEDICA }o--|| SESION_ATENCION_MEDICA : sesionAtencionMedica
     CONSULTA_MEDICA }o--|| HOSPITAL : hospital
     CONSULTA_MEDICA }o--|| ESPECIALIDAD_MEDICA : especialidad
     CONSULTA_MEDICA }o--|| MEDICO : medico

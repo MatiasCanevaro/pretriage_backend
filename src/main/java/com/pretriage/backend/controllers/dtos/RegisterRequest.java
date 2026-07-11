@@ -1,5 +1,6 @@
 package com.pretriage.backend.controllers.dtos;
 
+import com.pretriage.backend.model.personas.RolSistema;
 import com.pretriage.backend.model.personas.TipoDocumento;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -34,4 +35,7 @@ public class RegisterRequest {
 
     @NotBlank(message = "Es obligatorio ingresar la contraseña")
     private String password;
+
+    @NotBlank(message = "Es obligatorio ingresar el rol del usuario")
+    private RolSistema rol;
 }

@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
+import java.util.List;
 
 @Repository
 public interface RepoCredenciales extends JpaRepository<Credencial, Long> {
@@ -13,5 +14,6 @@ public interface RepoCredenciales extends JpaRepository<Credencial, Long> {
             Long pacienteId,
             LocalDate fecha);
 
+    List<Credencial> findByPacienteId(Long pacienteId);
 
 }

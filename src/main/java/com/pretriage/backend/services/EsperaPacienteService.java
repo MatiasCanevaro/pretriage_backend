@@ -24,6 +24,7 @@ import java.util.NoSuchElementException;
 public class EsperaPacienteService {
 
     private static final int MINUTOS_REPREGUNTA_ATRASADO = 30;
+    private static final int MINUTOS_MAXIMOS_EN_ESPERA = 60;
 
     private final PacienteService pacienteService;
     private final RepoEntradasCola repoEntradasCola;
@@ -122,6 +123,25 @@ public class EsperaPacienteService {
         });
     }
 
+
+    @Scheduled(fixedDelay = 60000)
+    @Transactional
+    public void cancelarEsperasVencidas() {
+        List<EntradaCola> vencidas = repoEntradasCola.findByEstadoAndFechaHoraSalidaTemporalBefore(
+                EstadoEntradaCola.EN_ESPERA,
+                LocalDateTime.now().minusMinutes(MINUTOS_MAXIMOS_EN_ESPERA));
+        cancelarEntradas(vencidas);
+    }
+
+    private void cancelarEntradas(List<EntradaCola> entradas) {
+        entradas.forEach(entrada -> {
+            entrada.setEstado(EstadoEntradaCola.CANCELADA);
+            ConsultaMedica consulta = entrada.getConsultaMedica();
+            consulta.setEstadoConsulta(EstadoConsulta.CANCELADA);
+            repoConsultasMedicas.save(consulta);
+            repoEntradasCola.save(entrada);
+        });
+    }
     private Paciente obtenerPaciente(String auth0Id) {
         return pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id)
                 .orElseThrow(() -> new AccessDeniedException("No tiene permisos de paciente"));
