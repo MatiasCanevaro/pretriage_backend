@@ -67,3 +67,12 @@ When attention finishes:
 
 - `GET /api/medico/sesiones/{sesionId}/pacientes-disponibles` lists ordered `EN_COLA` patients for the session hospital and specialty.
 - `GET /api/medico/atenciones` returns the authenticated doctor's historical attention records.
+
+## Clinical History Access
+
+When attending patients, doctors can access their medical records:
+
+- `GET /api/medico/pacientes/{pacienteId}/historial-clinico` retrieves all medical records (PDFs, images) for a specific patient.
+- `GET /api/medico/pacientes/{pacienteId}/historial-clinico/{historialId}/archivo` downloads or previews a specific medical record file.
+- `GET /api/medico/pacientes/{pacienteId}/historial-clinico/{historialId}/reporte` retrieves structured information about a specific medical record.
+- `GET /api/medico/pacientes/{pacienteId}/ultimos-reportes` gets the most recent medical records (typically last 5-10).

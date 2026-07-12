@@ -196,6 +196,42 @@ POST /api/medico/sesiones/{sesionId}/consultas/{consultaId}/finalizar
 
 Finalizes the consultation, queue entry, and historical attention in one operation.
 
+### Clinical History Access
+
+During attention, doctors can view patient's previous medical records:
+
+#### Get All Medical Records
+
+```http
+GET /api/medico/pacientes/{pacienteId}/historial-clinico
+```
+
+Retrieves all medical records (PDFs, images) for a specific patient. Returns list of medical histories with metadata.
+
+#### Download Specific Record
+
+```http
+GET /api/medico/pacientes/{pacienteId}/historial-clinico/{historialId}/archivo
+```
+
+Downloads or previews a specific medical record file (e.g., radiology scans, previous reports).
+
+#### Get Record Metadata
+
+```http
+GET /api/medico/pacientes/{pacienteId}/historial-clinico/{historialId}/reporte
+```
+
+Retrieves structured information about a specific medical record (type, date, description).
+
+#### Get Recent Records
+
+```http
+GET /api/medico/pacientes/{pacienteId}/ultimos-reportes?limit=10
+```
+
+Gets the most recent medical records for quick triage reference.
+
 Pause, close, and call-next operations are rejected while the doctor has a patient `LLAMADO` or `EN_ATENCION`.
 
 ## Real-Time Estimated Attention
