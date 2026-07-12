@@ -4,6 +4,9 @@ import com.pretriage.backend.controllers.dtos.*;
 import com.pretriage.backend.services.AtencionMedicoService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -102,6 +105,30 @@ public class MedicoController {
     ){
         return ResponseEntity.ok(atencionMedicoService.obtenerUltimosEstudiosClinicos(jwt.getSubject(), pacienteId));
     }
+
+    @GetMapping("/api/medico/pacientes/{pacienteId}/historial-clinico/{estudioId}/archivo")
+    public ResponseEntity<byte[]> descargarArchivoEstudioClinico(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable Long pacienteId,
+            @PathVariable Long estudioId
+    ){
+
+        // 1. Delegar la lógica de negocio y descarga al servicio
+        byte[] archivoBytes = atencionMedicoService.descargarArchivo(jwt.getSubject(), pacienteId, estudioId);
+
+        // 2. Configurar las cabeceras HTTP de la respuesta
+        HttpHeaders headers = new HttpHeaders();
+
+        // 'attachment' permite la descarga automática del archivo (ej. PDFs o imágenes).
+        headers.add(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"estudio_medico_" + estudioId + "\"");
+
+        // Define el tipo de contenido. APPLICATION_OCTET_STREAM es un genérico de bytes binarios.
+        headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
+
+        // 3. Retornar la respuesta con los bytes, las cabeceras y el estado HTTP 200 OK
+        return new ResponseEntity<>(archivoBytes, headers, HttpStatus.OK);
+    }
+
 
     @PostMapping("/api/medico/sesiones/{sesionId}/llamar-proximo")
     public ResponseEntity<ConsultaLlamadaDTO> llamarProximo(

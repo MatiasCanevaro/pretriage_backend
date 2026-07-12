@@ -6,6 +6,7 @@ import com.pretriage.backend.controllers.dtos.ConsultaLlamadaDTO;
 import com.pretriage.backend.controllers.dtos.EstudioClinicoDTO;
 import com.pretriage.backend.controllers.dtos.SalaDTO;
 import com.pretriage.backend.controllers.dtos.SesionAtencionMedicaDTO;
+import com.pretriage.backend.exceptions.ArchivoS3Exception;
 import com.pretriage.backend.model.consultas.*;
 import com.pretriage.backend.model.hospitales.EspecialidadMedica;
 import com.pretriage.backend.model.hospitales.Hospital;
@@ -16,9 +17,11 @@ import com.pretriage.backend.model.personas.Paciente;
 import com.pretriage.backend.repositories.*;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.Value;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -44,6 +47,7 @@ public class AtencionMedicoService {
     private final RepoEstudiosClinicos repoEstudiosClinicos;
 
     private final PacienteService pacienteService;
+    private final GestionDeArchivosService gestionDeArchivosService;
 
     public List<AsignacionMedicoDTO> obtenerAsignaciones(String auth0Id) {
         Medico medico = obtenerMedico(auth0Id);
@@ -91,6 +95,15 @@ public class AtencionMedicoService {
     public List<EstudioClinicoDTO> obtenerUltimosEstudiosClinicos(String auth0Id, Long pacienteId) {
         this.obtenerMedico(auth0Id);
         return this.obtenerUltimosEstudiosClinicosDe(pacienteId);
+    }
+
+    public byte[] descargarArchivo(String auth0Id, Long pacienteId, Long estudioId){
+        this.obtenerMedico(auth0Id);
+        Paciente paciente = pacienteService.obtenerPaciente(pacienteId);
+        EstudioClinico estudioClinico = repoEstudiosClinicos.findByIdAndIdPaciente(estudioId, pacienteId)
+                .orElseThrow(() -> new NoSuchElementException("Estudio clinico inexistente"));
+
+        return gestionDeArchivosService.descargarArchivoDesdeS3(estudioClinico.getRutaArchivo());
     }
 
     @Transactional
