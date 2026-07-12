@@ -41,6 +41,8 @@ public class AtencionMedicoService {
     private final RepoEntradasCola repoEntradasCola;
     private final RepoConsultasMedicas repoConsultasMedicas;
     private final RepoAtencionesMedicas repoAtencionesMedicas;
+    private final RepoEstudiosClinicos repoEstudiosClinicos;
+
     private final PacienteService pacienteService;
 
     public List<AsignacionMedicoDTO> obtenerAsignaciones(String auth0Id) {
@@ -78,7 +80,12 @@ public class AtencionMedicoService {
 
     public List<EstudioClinicoDTO> obtenerHistorialClinico(String auth0Id, Long pacienteId) {
         this.obtenerMedico(auth0Id);
-        return this.obtenerHistorialClinico(pacienteId);
+        return this.obtenerHistorialClinicoDe(pacienteId);
+    }
+
+    public EstudioClinicoDTO obtenerEstudioClinico(String auth0Id, Long pacienteId, Long estudioId){
+        this.obtenerMedico(auth0Id);
+        return this.obtenerEstudioClinicoDe(pacienteId, estudioId);
     }
 
     @Transactional
@@ -358,12 +365,24 @@ public class AtencionMedicoService {
     }
 
     @Transactional
-    public List<EstudioClinicoDTO> obtenerHistorialClinico(Long pacienteId) {
+    public List<EstudioClinicoDTO> obtenerHistorialClinicoDe(Long pacienteId) {
         Paciente paciente = pacienteService.obtenerPaciente(pacienteId);
 
         return paciente.getHistorialClinico().stream()
                 .map(this::mapearEstudioClinico)
                 .toList();
+    }
+
+    private EstudioClinicoDTO obtenerEstudioClinicoDe(Long pacienteId, Long estudioId){
+        Paciente paciente = pacienteService.obtenerPaciente(pacienteId);
+        EstudioClinico estudio = repoEstudiosClinicos.findByIdAndIdPaciente(estudioId, pacienteId)
+                .orElseThrow(() -> new NoSuchElementException("Estudio clinico inexistente"));
+
+        if(!estudio.getPaciente().getId().equals(pacienteId)){
+            throw new NoSuchElementException("No existe el estudio para el paciente "+ pacienteId);
+        }
+
+        return mapearEstudioClinico(estudio);
     }
 
     private EstudioClinicoDTO mapearEstudioClinico(EstudioClinico estudio) {

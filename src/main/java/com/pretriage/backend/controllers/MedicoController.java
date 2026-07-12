@@ -85,6 +85,16 @@ public class MedicoController {
             @PathVariable Long pacienteId) {
         return ResponseEntity.ok(atencionMedicoService.obtenerHistorialClinico(jwt.getSubject(), pacienteId));
     }
+
+    @GetMapping("/api/medico/pacientes/{pacienteId}/historial-clinico/{estudioId}/reporte")
+    public ResponseEntity<EstudioClinicoDTO> obtenerMetadataDeUnEstudioClinico(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable Long pacienteId,
+            @PathVariable Long estudioId
+    ){
+        return ResponseEntity.ok(atencionMedicoService.obtenerEstudioClinico(jwt.getSubject(), pacienteId, estudioId));
+    }
+
     @PostMapping("/api/medico/sesiones/{sesionId}/llamar-proximo")
     public ResponseEntity<ConsultaLlamadaDTO> llamarProximo(
             @AuthenticationPrincipal Jwt jwt,
