@@ -3,33 +3,17 @@ package com.pretriage.backend.services;
 import com.pretriage.backend.controllers.dtos.AtencionMedicaDTO;
 import com.pretriage.backend.controllers.dtos.AsignacionMedicoDTO;
 import com.pretriage.backend.controllers.dtos.ConsultaLlamadaDTO;
+import com.pretriage.backend.controllers.dtos.EstudioClinicoDTO;
 import com.pretriage.backend.controllers.dtos.SalaDTO;
 import com.pretriage.backend.controllers.dtos.SesionAtencionMedicaDTO;
-import com.pretriage.backend.model.consultas.AtencionMedica;
-import com.pretriage.backend.model.consultas.ConsultaMedica;
-import com.pretriage.backend.model.consultas.EntradaCola;
-import com.pretriage.backend.model.consultas.EstadoAtencionMedica;
-import com.pretriage.backend.model.consultas.EstadoConsulta;
-import com.pretriage.backend.model.consultas.EstadoEntradaCola;
-import com.pretriage.backend.model.consultas.EstadoSesionMedica;
-import com.pretriage.backend.model.consultas.GestorDeCola;
-import com.pretriage.backend.model.consultas.SesionAtencionMedica;
-import com.pretriage.backend.model.consultas.TipoPausaCola;
+import com.pretriage.backend.model.consultas.*;
 import com.pretriage.backend.model.hospitales.EspecialidadMedica;
 import com.pretriage.backend.model.hospitales.Hospital;
 import com.pretriage.backend.model.hospitales.Sala;
 import com.pretriage.backend.model.personas.AsignacionMedicoHospital;
 import com.pretriage.backend.model.personas.Medico;
-import com.pretriage.backend.repositories.RepoAsignacionesMedicoHospital;
-import com.pretriage.backend.repositories.RepoAtencionesMedicas;
-import com.pretriage.backend.repositories.RepoConsultasMedicas;
-import com.pretriage.backend.repositories.RepoEntradasCola;
-import com.pretriage.backend.repositories.RepoEspecialidadesMedicas;
-import com.pretriage.backend.repositories.RepoGestoresDeColas;
-import com.pretriage.backend.repositories.RepoHospitales;
-import com.pretriage.backend.repositories.RepoMedico;
-import com.pretriage.backend.repositories.RepoSalas;
-import com.pretriage.backend.repositories.RepoSesionesAtencionMedica;
+import com.pretriage.backend.model.personas.Paciente;
+import com.pretriage.backend.repositories.*;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.AccessDeniedException;
@@ -57,6 +41,7 @@ public class AtencionMedicoService {
     private final RepoEntradasCola repoEntradasCola;
     private final RepoConsultasMedicas repoConsultasMedicas;
     private final RepoAtencionesMedicas repoAtencionesMedicas;
+    private final PacienteService pacienteService;
 
     public List<AsignacionMedicoDTO> obtenerAsignaciones(String auth0Id) {
         Medico medico = obtenerMedico(auth0Id);
@@ -89,6 +74,11 @@ public class AtencionMedicoService {
                 .stream()
                 .map(this::mapearAtencion)
                 .toList();
+    }
+
+    public List<EstudioClinicoDTO> obtenerHistorialClinico(String auth0Id, Long pacienteId) {
+        this.obtenerMedico(auth0Id);
+        return this.obtenerHistorialClinico(pacienteId);
     }
 
     @Transactional
@@ -364,6 +354,29 @@ public class AtencionMedicoService {
         dto.setSalaId(consulta.getSala().getId());
         dto.setNombreSala(consulta.getSala().getNombre());
         dto.setEstadoConsulta(consulta.getEstadoConsulta());
+        return dto;
+    }
+
+    @Transactional
+    public List<EstudioClinicoDTO> obtenerHistorialClinico(Long pacienteId) {
+        Paciente paciente = pacienteService.obtenerPaciente(pacienteId);
+
+        return paciente.getHistorialClinico().stream()
+                .map(this::mapearEstudioClinico)
+                .toList();
+    }
+
+    private EstudioClinicoDTO mapearEstudioClinico(EstudioClinico estudio) {
+        EstudioClinicoDTO dto = new EstudioClinicoDTO();
+        dto.setId(estudio.getId());
+        dto.setPacienteId(estudio.getPaciente().getId());
+        dto.setNombreArchivo(estudio.getNombreArchivo());
+        dto.setTipoArchivo(estudio.getTipoArchivo());
+        dto.setExtensionArchivo(estudio.getExtensionArchivo());
+        dto.setDescripcion(estudio.getDescripcion());
+        dto.setFechaSubida(estudio.getFechaSubida());
+        dto.setTamanoArchivo(estudio.getTamanoArchivo());
+        dto.setRutaArchivo(estudio.getRutaArchivo());
         return dto;
     }
 }

@@ -6,6 +6,7 @@ import java.util.List;
 
 import com.pretriage.backend.model.hospitales.Coordenada;
 import com.pretriage.backend.model.hospitales.Credencial;
+import com.pretriage.backend.model.consultas.EstudioClinico;
 
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -34,6 +35,12 @@ public class Paciente {
     @JoinColumn(name="id_coordenada", referencedColumnName = "id")
     private Coordenada coordenadaActual;
 
+    @OneToMany(
+            mappedBy = "paciente",
+            cascade = CascadeType.ALL,
+            orphanRemoval = true)
+    private List<EstudioClinico> historialClinico;
+
     private Genero generoBiologico;
 
     @Enumerated(EnumType.STRING)
@@ -47,5 +54,10 @@ public class Paciente {
 
     public Paciente() {
         this.credenciales = new ArrayList<>();
+        this.historialClinico = new ArrayList<>();
+    }
+
+    public void agregarEstudioClinico(EstudioClinico estudio) {
+        this.historialClinico.add(estudio);
     }
 }

@@ -1,12 +1,6 @@
 package com.pretriage.backend.controllers;
 
-import com.pretriage.backend.controllers.dtos.AtencionMedicaDTO;
-import com.pretriage.backend.controllers.dtos.AsignacionMedicoDTO;
-import com.pretriage.backend.controllers.dtos.ConsultaLlamadaDTO;
-import com.pretriage.backend.controllers.dtos.IniciarSesionMedicaRequest;
-import com.pretriage.backend.controllers.dtos.SalaDTO;
-import com.pretriage.backend.controllers.dtos.SesionAtencionMedicaDTO;
-import com.pretriage.backend.model.personas.AsignacionMedicoHospital;
+import com.pretriage.backend.controllers.dtos.*;
 import com.pretriage.backend.services.AtencionMedicoService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -83,6 +77,13 @@ public class MedicoController {
     @GetMapping("/api/medico/atenciones")
     public ResponseEntity<List<AtencionMedicaDTO>> obtenerHistorial(@AuthenticationPrincipal Jwt jwt) {
         return ResponseEntity.ok(atencionMedicoService.obtenerHistorial(jwt.getSubject()));
+    }
+
+    @GetMapping("/api/medico/pacientes/{pacienteId}/historial-clinico")
+    public ResponseEntity<List<EstudioClinicoDTO>> obtenerHistorialClinico(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable Long pacienteId) {
+        return ResponseEntity.ok(atencionMedicoService.obtenerHistorialClinico(jwt.getSubject(), pacienteId));
     }
     @PostMapping("/api/medico/sesiones/{sesionId}/llamar-proximo")
     public ResponseEntity<ConsultaLlamadaDTO> llamarProximo(

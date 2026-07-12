@@ -23,6 +23,7 @@ python scripts\generate_domain_diagram.py
 - `Direccion`: `src/main/java/com/pretriage/backend/model/hospitales/Direccion.java`
 - `EntradaCola`: `src/main/java/com/pretriage/backend/model/consultas/EntradaCola.java`
 - `EspecialidadMedica`: `src/main/java/com/pretriage/backend/model/hospitales/EspecialidadMedica.java`
+- `EstudioClinico`: `src/main/java/com/pretriage/backend/model/consultas/EstudioClinico.java`
 - `GestorDeCola`: `src/main/java/com/pretriage/backend/model/consultas/GestorDeCola.java`
 - `Hospital`: `src/main/java/com/pretriage/backend/model/hospitales/Hospital.java`
 - `Medico`: `src/main/java/com/pretriage/backend/model/personas/Medico.java`
@@ -75,6 +76,16 @@ erDiagram
         LocalDateTime fechaHoraSalidaTemporal
         LocalDateTime fechaHoraUltimaRepregunta
         LocalDateTime fechaHoraLimiteRespuesta
+    }
+    ESTUDIO_CLINICO {
+        Long id
+        String nombreArchivo
+        String tipoArchivo
+        String extensionArchivo
+        String descripcion
+        LocalDateTime fechaSubida
+        Long tamanoArchivo
+        String rutaArchivo
     }
     GESTOR_DE_COLA {
         Long id
@@ -170,6 +181,7 @@ erDiagram
     CONSULTA_MEDICA ||--o{ MENSAJE : chat
     ENTRADA_COLA }o--|| GESTOR_DE_COLA : gestorDeCola
     ENTRADA_COLA ||--|| CONSULTA_MEDICA : consultaMedica
+    ESTUDIO_CLINICO }o--|| PACIENTE : paciente
     GESTOR_DE_COLA }o--|| HOSPITAL : hospital
     GESTOR_DE_COLA }o--|| ESPECIALIDAD_MEDICA : especialidad
     GESTOR_DE_COLA ||--o{ CONSULTA_MEDICA : consultasEnEspera
