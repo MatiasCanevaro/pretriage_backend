@@ -88,6 +88,11 @@ public class AtencionMedicoService {
         return this.obtenerEstudioClinicoDe(pacienteId, estudioId);
     }
 
+    public List<EstudioClinicoDTO> obtenerUltimosEstudiosClinicos(String auth0Id, Long pacienteId) {
+        this.obtenerMedico(auth0Id);
+        return this.obtenerUltimosEstudiosClinicosDe(pacienteId);
+    }
+
     @Transactional
     public SesionAtencionMedicaDTO iniciarSesion(String auth0Id, Long hospitalId, String codigoEspecialidad, Long salaId) {
         Medico medico = obtenerMedico(auth0Id);
@@ -383,6 +388,15 @@ public class AtencionMedicoService {
         }
 
         return mapearEstudioClinico(estudio);
+    }
+
+    private List<EstudioClinicoDTO> obtenerUltimosEstudiosClinicosDe(Long pacienteId){
+        Paciente paciente = pacienteService.obtenerPaciente(pacienteId);
+
+        return paciente.getHistorialClinico().stream()
+                .filter(estudioClinico -> estudioClinico.getFechaSubida().isAfter(LocalDateTime.now()))
+                .map(this::mapearEstudioClinico)
+                .toList();
     }
 
     private EstudioClinicoDTO mapearEstudioClinico(EstudioClinico estudio) {
