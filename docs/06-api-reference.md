@@ -211,7 +211,7 @@ Retrieves all medical records (PDFs, images) for a specific patient. Returns lis
 #### Download Specific Record
 
 ```http
-GET /api/medico/pacientes/{pacienteId}/historial-clinico/{historialId}/archivo
+GET /api/medico/pacientes/{pacienteId}/historial-clinico/{estudioId}/archivo
 ```
 
 Downloads or previews a specific medical record file (e.g., radiology scans, previous reports).
@@ -219,7 +219,7 @@ Downloads or previews a specific medical record file (e.g., radiology scans, pre
 #### Get Record Metadata
 
 ```http
-GET /api/medico/pacientes/{pacienteId}/historial-clinico/{historialId}/reporte
+GET /api/medico/pacientes/{pacienteId}/historial-clinico/{estudioId}/reporte
 ```
 
 Retrieves structured information about a specific medical record (type, date, description).

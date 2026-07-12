@@ -129,7 +129,6 @@ public class MedicoController {
         return new ResponseEntity<>(archivoBytes, headers, HttpStatus.OK);
     }
 
-
     @PostMapping("/api/medico/sesiones/{sesionId}/llamar-proximo")
     public ResponseEntity<ConsultaLlamadaDTO> llamarProximo(
             @AuthenticationPrincipal Jwt jwt,

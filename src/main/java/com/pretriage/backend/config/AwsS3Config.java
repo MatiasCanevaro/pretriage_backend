@@ -13,7 +13,7 @@ import software.amazon.awssdk.services.s3.S3Client;
 
 @Configuration
 public class AwsS3Config {
-    @Value("${aws.region}")
+    @Value("${aws.s3.region}")
     private String region;
 
     @Value("${aws.accessKeyId}")
@@ -22,9 +22,12 @@ public class AwsS3Config {
     @Value("${aws.secretAccessKey}")
     private String secretKey;
 
+    /**
+     * Configura el cliente S3 para interactuar con AWS.
+     * @return Instancia de S3Client
+     */
     @Bean
     public S3Client amazonS3Client() {
-
         Region region = Region.of(this.region);
         AwsCredentials credentials = AwsBasicCredentials.create(accessKey, secretKey);
 
