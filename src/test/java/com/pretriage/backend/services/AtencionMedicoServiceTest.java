@@ -1,5 +1,6 @@
 package com.pretriage.backend.services;
 
+import com.pretriage.backend.controllers.dtos.EstudioClinicoDTO;
 import com.pretriage.backend.model.consultas.*;
 import com.pretriage.backend.model.hospitales.Sala;
 import com.pretriage.backend.model.personas.Medico;
@@ -11,13 +12,13 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class AtencionMedicoServiceTest {
@@ -31,7 +32,9 @@ class AtencionMedicoServiceTest {
     @Mock RepoEntradasCola repoEntradasCola;
     @Mock RepoConsultasMedicas repoConsultasMedicas;
     @Mock RepoAtencionesMedicas repoAtencionesMedicas;
+    @Mock PacienteService pacienteService;
     @InjectMocks AtencionMedicoService service;
+
 
     @Test
     void noPermitePausarUnaSesionConConsultaTomada() {
@@ -71,5 +74,51 @@ class AtencionMedicoServiceTest {
         assertEquals(EstadoAtencionMedica.EN_CURSO, captor.getValue().getEstado());
         assertEquals(sesion, captor.getValue().getSesionAtencionMedica());
         assertEquals(consulta, captor.getValue().getConsultaMedica());
+    }
+
+    @Test
+    void obtenerHistorialClinicoRetornaListaDeEstudioClinicoDTO() {
+        Medico medico = mock(Medico.class);
+        Long pacienteId = 1L;
+
+        EstudioClinico estudioClinico1 = new EstudioClinico();
+        estudioClinico1.setId(100L);
+        estudioClinico1.setNombreArchivo("radiografia.pdf");
+
+        EstudioClinicoDTO estudio1 = new EstudioClinicoDTO();
+        estudio1.setId(100L);
+        estudio1.setPacienteId(pacienteId);
+        estudio1.setNombreArchivo("radiografia.pdf");
+
+        EstudioClinico estudioClinico2 = new EstudioClinico();
+        estudioClinico2.setId(101L);
+        estudioClinico2.setNombreArchivo("analisis.pdf");
+
+        EstudioClinicoDTO estudio2 = new EstudioClinicoDTO();
+        estudio2.setId(101L);
+        estudio2.setPacienteId(pacienteId);
+        estudio2.setNombreArchivo("analisis.pdf");
+
+        Paciente pacienteMock = new Paciente();
+        pacienteMock.setId(pacienteId);
+        pacienteMock.agregarEstudioClinico(estudioClinico1);
+        pacienteMock.agregarEstudioClinico(estudioClinico2);
+
+        estudioClinico1.setPaciente(pacienteMock);
+        estudioClinico2.setPaciente(pacienteMock);
+
+        when(pacienteService.obtenerPaciente(pacienteId))
+                .thenReturn(pacienteMock);
+
+        when(repoMedico.findByUsuarioAuthId("auth0")).thenReturn(Optional.of(medico));
+
+        List<EstudioClinicoDTO> resultado = service.obtenerHistorialClinico("auth0", pacienteId);
+
+
+        verify(repoMedico).findByUsuarioAuthId("auth0");
+
+        assertEquals(2, resultado.size());
+        assertEquals(estudio1.getNombreArchivo(), resultado.getFirst().getNombreArchivo());
+        assertEquals(estudio2.getNombreArchivo(), resultado.get(1).getNombreArchivo());
     }
 }

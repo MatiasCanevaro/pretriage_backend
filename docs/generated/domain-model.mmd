@@ -37,6 +37,16 @@ erDiagram
         LocalDateTime fechaHoraUltimaRepregunta
         LocalDateTime fechaHoraLimiteRespuesta
     }
+    ESTUDIO_CLINICO {
+        Long id
+        String nombreArchivo
+        String tipoArchivo
+        String extensionArchivo
+        String descripcion
+        LocalDateTime fechaSubida
+        Long tamanoArchivo
+        String rutaArchivo
+    }
     GESTOR_DE_COLA {
         Long id
         long TIEMPO_ESTIMADO_DE_ATENCION_TRIAGE
@@ -153,6 +163,7 @@ erDiagram
     CONSULTA_MEDICA ||--o{ MENSAJE : chat
     ENTRADA_COLA }o--|| GESTOR_DE_COLA : gestorDeCola
     ENTRADA_COLA ||--|| CONSULTA_MEDICA : consultaMedica
+    ESTUDIO_CLINICO }o--|| PACIENTE : paciente
     GESTOR_DE_COLA }o--|| HOSPITAL : hospital
     GESTOR_DE_COLA }o--|| ESPECIALIDAD_MEDICA : especialidad
     GESTOR_DE_COLA ||--o{ CONSULTA_MEDICA : consultasEnEspera
