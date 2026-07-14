@@ -58,11 +58,10 @@ public class AtencionHospitalService {
 
     private final RepoConsultasMedicas repoConsultasMedicas;
     private final RepoHospitales repoHospitales;
-    private final RepoGestoresDeColas repoGestorDeCola;
-    private final RepoEntradasCola repoEntradasCola;
     private final RepoEspecialidadesMedicas repoEspecialidadesMedicas;
 
     private final EstimacionAtencionService estimacionAtencionService;
+    private final IngresoColaService ingresoColaService;
 
     private final PacienteService pacienteService;
     private final GooglePlacesService googlePlacesService;
@@ -146,13 +145,7 @@ public class AtencionHospitalService {
     public TiempoEstimadoAtencionResponse finalizarTriageEIngresarACola(String auth0Id, NivelDeGravedad nivelDeGravedadBot) {
         Paciente paciente = this.obtenerPaciente(auth0Id);
         ConsultaMedica consultaMedica = obtenerConsultaConHospitalSeleccionado(paciente);
-
-        consultaMedica.setNivelDeGravedadBot(nivelDeGravedadBot);
-        consultaMedica.setEstadoConsulta(EstadoConsulta.EN_COLA);
-        repoConsultasMedicas.save(consultaMedica);
-        this.ingresarALaColaDelHospital(consultaMedica);
-
-        return calcularTiempoEstimadoDeAtencion(consultaMedica);
+        return ingresoColaService.ingresar(consultaMedica, nivelDeGravedadBot);
     }
 
     private ConsultaMedica obtenerConsultaConHospitalSeleccionado(Paciente paciente) {
@@ -177,52 +170,6 @@ public class AtencionHospitalService {
         }
 
         return opPaciente.get();
-    }
-
-    @Transactional
-    private void ingresarALaColaDelHospital(ConsultaMedica consultaMedica){
-        GestorDeCola gestorDeCola= this.obtenerOCrearColaDeConsulta(consultaMedica);
-        gestorDeCola.agregarConsultaMedicaALaCola(consultaMedica);
-        repoGestorDeCola.save(gestorDeCola);
-        this.obtenerOCrearEntradaCola(gestorDeCola, consultaMedica);
-    }
-
-    private GestorDeCola obtenerOCrearColaDeConsulta(ConsultaMedica consultaMedica){
-        Hospital hospital = consultaMedica.getHospital();
-        EspecialidadMedica especialidad = consultaMedica.getEspecialidad();
-
-        if (hospital == null || especialidad == null) {
-            throw new NoSuchElementException("Se debe seleccionar hospital y especialidad antes de ingresar a la cola");
-        }
-
-        return repoGestorDeCola.findByHospitalIdAndEspecialidadId(hospital.getId(), especialidad.getId())
-                .orElseGet(()->{
-                    GestorDeCola gestorDeColaNuevo = new GestorDeCola();
-                    gestorDeColaNuevo.setHospital(hospital);
-                    gestorDeColaNuevo.setEspecialidad(especialidad);
-                    repoGestorDeCola.save(gestorDeColaNuevo);
-                    return gestorDeColaNuevo;
-                });
-    }
-
-    private EntradaCola obtenerOCrearEntradaCola(GestorDeCola gestorDeCola, ConsultaMedica consultaMedica) {
-        return repoEntradasCola.findByConsultaMedicaId(consultaMedica.getId())
-                .orElseGet(() -> {
-                    EntradaCola entrada = new EntradaCola();
-                    entrada.setGestorDeCola(gestorDeCola);
-                    entrada.setConsultaMedica(consultaMedica);
-                    entrada.setEstado(EstadoEntradaCola.EN_COLA);
-                    entrada.setPrioridad(gestorDeCola.obtenerPrioridad(consultaMedica.getNivelDeGravedadBot()));
-                    entrada.setOrdenRelativo(obtenerSiguienteOrdenRelativo(gestorDeCola));
-                    entrada.setFechaHoraIngreso(LocalDateTime.now());
-                    return repoEntradasCola.save(entrada);
-                });
-    }
-
-    private long obtenerSiguienteOrdenRelativo(GestorDeCola gestorDeCola) {
-        return repoEntradasCola.findFirstByGestorDeColaIdOrderByOrdenRelativoDesc(gestorDeCola.getId())
-                .map(entrada -> entrada.getOrdenRelativo() + 1)
-                .orElse(1L);
     }
 
     private EspecialidadMedica obtenerEspecialidad(String codigoEspecialidad) {

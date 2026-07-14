@@ -242,3 +242,7 @@ Accept: text/event-stream
 ```
 
 Authenticated SSE stream with `tiempo-estimado` and `heartbeat` events. The patient must own the consultation.
+
+## Reception Admission
+
+See docs/09-reception-admission.md for the complete reception API and rules.

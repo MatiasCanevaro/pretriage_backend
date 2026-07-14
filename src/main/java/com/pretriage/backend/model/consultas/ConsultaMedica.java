@@ -26,6 +26,9 @@ public class ConsultaMedica {
 
     private LocalDateTime fechaHoraCreacion;
 
+    @Column(unique = true)
+    private String codigoLlamado;
+
     @ManyToOne
     @JoinColumn(name="id_hospital", referencedColumnName = "id")
     private Hospital hospital;

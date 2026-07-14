@@ -12,4 +12,5 @@ public interface RepoRecepcionistas  extends JpaRepository<Recepcionista, Long> 
     boolean existsByUsuarioAuthId(String auth0Id);
 
     Optional<UsuarioAuth> findByUsuarioAuthId(String auth0Id);
+    Optional<Recepcionista> findRecepcionistaByUsuarioAuthId(String auth0Id);
 }

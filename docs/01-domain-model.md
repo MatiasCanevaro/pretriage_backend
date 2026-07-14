@@ -2,7 +2,9 @@
 
 ## Patient And Consultation
 
-`Paciente` represents the authenticated patient profile.
+`Paciente` represents either an authenticated patient profile or a reception-created patient.
+Reception-created patients store their identity fields directly plus `telefono`, optional
+`correoElectronico`, and a structured one-to-one `Direccion`.
 
 `ConsultaMedica` represents the current first-attention workflow. Important fields:
 

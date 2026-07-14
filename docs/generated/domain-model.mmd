@@ -20,6 +20,7 @@ erDiagram
     CONSULTA_MEDICA {
         Long id
         LocalDateTime fechaHoraCreacion
+        String codigoLlamado
         NivelDeGravedad nivelDeGravedadBot
         NivelDeGravedad nivelDeGravedadMedico
         EstadoConsulta estadoConsulta
@@ -110,7 +111,14 @@ erDiagram
         Long id
         Genero generoBiologico
         Genero generoConElQueSeIdentifica
+        String nombre
+        String apellido
+        String numeroDocumento
+        TipoDocumento tipoDocumento
+        OrigenRegistroPaciente origenRegistro
         LocalDate fechaNacimiento
+        String telefono
+        String correoElectronico
         Double peso
         Integer altura
     }
@@ -125,6 +133,21 @@ erDiagram
         TipoDocumento tipoDocumento
         String correoElectronico
         RolSistema rol
+    }
+    ADMISION_RECEPCION {
+        Long id
+        EstadoAdmisionRecepcion estado
+        String formularioJson
+        String resultadoTriageJson
+        LocalDateTime fechaHoraInicio
+        LocalDateTime fechaHoraFinalizacion
+        LocalDateTime fechaHoraCancelacion
+    }
+    SESION_RECEPCION {
+        Long id
+        EstadoSesionRecepcion estado
+        LocalDateTime fechaHoraInicio
+        LocalDateTime fechaHoraFin
     }
     CHAT ||--o{ MENSAJE : mensajes
     CHAT ||--|| PACIENTE : paciente
@@ -165,4 +188,9 @@ erDiagram
     MEDICO ||--o{ ASIGNACION_MEDICO_HOSPITAL : asignaciones
     PACIENTE ||--|| USUARIO_AUTH : usuarioAuth
     PACIENTE ||--|| COORDENADA : coordenadaActual
+    PACIENTE ||--|| DIRECCION : direccion
     RECEPCIONISTA ||--|| USUARIO_AUTH : usuarioAuth
+    ADMISION_RECEPCION ||--|| CONSULTA_MEDICA : consultaMedica
+    ADMISION_RECEPCION }o--|| SESION_RECEPCION : sesionRecepcion
+    SESION_RECEPCION }o--|| RECEPCIONISTA : recepcionista
+    SESION_RECEPCION }o--|| HOSPITAL : hospital
