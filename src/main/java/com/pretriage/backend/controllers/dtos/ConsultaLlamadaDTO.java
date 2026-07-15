@@ -13,6 +13,10 @@ public class ConsultaLlamadaDTO {
 
     private Long pacienteId;
 
+    private String nombrePaciente;
+
+    private String apellidoPaciente;
+
     private Long salaId;
 
     private String nombreSala;

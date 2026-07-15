@@ -69,7 +69,7 @@ When attention finishes:
 
 - `GET /api/medico/sesiones/actual` returns the authenticated doctor's active or
   paused session and their currently called or in-attention consultation, if present.
-- `GET /api/medico/sesiones/{sesionId}/pacientes-disponibles` lists ordered `EN_COLA` patients for the session hospital and specialty.
+- `GET /api/medico/sesiones/{sesionId}/pacientes-disponibles` lists ordered `EN_COLA` patients for the session hospital and specialty, including the patient name and surname authorized for the attending doctor. A room is not present until the patient is called.
 - `GET /api/medico/atenciones` returns the authenticated doctor's historical attention records.
 
 ## Clinical History Access

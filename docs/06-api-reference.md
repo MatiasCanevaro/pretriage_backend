@@ -181,7 +181,8 @@ POST /api/medico/sesiones/{sesionId}/consultas/{consultaId}/ausente
 GET /api/medico/sesiones/{sesionId}/pacientes-disponibles
 ```
 
-Returns ordered `EntradaCola.EN_COLA` consultations for the session hospital and specialty.
+Returns ordered `EntradaCola.EN_COLA` consultations for the session hospital and specialty,
+including patient name and surname. Room fields remain null until the consultation is called.
 
 ### Attention History
 

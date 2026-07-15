@@ -69,6 +69,8 @@ class AtencionMedicoServiceTest {
         gestor.setId(3L);
         Paciente paciente = new Paciente();
         paciente.setId(4L);
+        paciente.setNombre("Ana");
+        paciente.setApellido("Pérez");
         ConsultaMedica consulta = new ConsultaMedica();
         consulta.setId(5L);
         consulta.setCodigoLlamado("A-005");
@@ -94,6 +96,8 @@ class AtencionMedicoServiceTest {
 
         assertEquals(1, resultado.size());
         assertEquals(5L, resultado.getFirst().getConsultaId());
+        assertEquals("Ana", resultado.getFirst().getNombrePaciente());
+        assertEquals("Pérez", resultado.getFirst().getApellidoPaciente());
         assertEquals(EstadoConsulta.EN_COLA, resultado.getFirst().getEstadoConsulta());
         assertNull(resultado.getFirst().getSalaId());
         assertNull(resultado.getFirst().getNombreSala());

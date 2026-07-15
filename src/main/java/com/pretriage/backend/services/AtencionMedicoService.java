@@ -395,6 +395,8 @@ public class AtencionMedicoService {
         dto.setConsultaId(consulta.getId());
         dto.setCodigoLlamado(consulta.getCodigoLlamado());
         dto.setPacienteId(consulta.getPaciente().getId());
+        dto.setNombrePaciente(consulta.getPaciente().getNombre());
+        dto.setApellidoPaciente(consulta.getPaciente().getApellido());
         Sala sala = consulta.getSala();
         if (sala != null) {
             dto.setSalaId(sala.getId());
