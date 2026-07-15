@@ -158,7 +158,10 @@ public class AdmisionRecepcionService {
         try { resultado = triageFormularioService.clasificar(formulario); }
         catch (ProveedorIaException error) { resultado = triageFormularioService.resultadoFallback(formulario); }
         NivelDeGravedad prioridad = prioridad(resultado.nivelPrioridad());
-        admision.setResultadoTriageJson(escribir(resultado));
+        String resultadoJson = escribir(resultado);
+        admision.setResultadoTriageJson(resultadoJson);
+        admision.getConsultaMedica().setResumenPretriageJson(resultadoJson);
+        repoConsultasMedicas.save(admision.getConsultaMedica());
         admision.setEstado(EstadoAdmisionRecepcion.FINALIZADA);
         admision.setFechaHoraFinalizacion(LocalDateTime.now());
         repoAdmisionesRecepcion.save(admision);

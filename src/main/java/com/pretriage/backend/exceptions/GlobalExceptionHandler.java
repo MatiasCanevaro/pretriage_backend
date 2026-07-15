@@ -18,7 +18,7 @@ public class GlobalExceptionHandler {
             NoSePudoCrearUsuario.class, NoSePudoEstimarElHorarioDeAtencion.class, ChatFinalizadoException.class,
             NoSePudoObtenerHospital.class, ObraSocialYaExisteException.class, ObraSocialNoExisteException.class,
             RecepcionistaNoExisteException.class,
-            NoSuchElementException.class, IllegalStateException.class})
+            NoSuchElementException.class, IllegalStateException.class, IllegalArgumentException.class})
     public ResponseEntity<Map<String, String>> handleExceptions(
             RuntimeException e) {
 

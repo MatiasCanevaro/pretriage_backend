@@ -11,7 +11,8 @@ flowchart TD
     E --> F{Patient responds?}
     F -->|Yes| G[Patient enters attention]
     F -->|No| H[Doctor marks absent]
-    G --> I[Doctor finishes attention]
+    G --> I[Doctor reviews preliminary priority]
+    I --> K[Doctor finishes attention]
     H --> J[Patient waiting/delayed flow]
 ```
 
@@ -62,8 +63,21 @@ If patient does not respond:
 
 When attention finishes:
 
+- The doctor must first confirm the preliminary priority or correct it.
+- Confirmation is a one-click action. A correction requires a different priority; its short reason is optional.
+- Each genuine review change creates an append-only `RevisionPrioridadConsulta` record with doctor, previous and new priority, decision, optional reason, and timestamp.
+- Repeating the exact same review is idempotent and does not duplicate history.
+- The current effective value is also stored in `ConsultaMedica.nivelDeGravedadMedico` for direct reads. Reviewing it does not reorder an entry that is already `EN_ATENCION`.
+- Priority can be changed again while attention remains open, but never after finalization.
 - `EntradaCola` and `ConsultaMedica` become `FINALIZADA`.
 - The linked `AtencionMedica` becomes `FINALIZADA` and stores its end time.
+
+The authorized clinical summary and review state are available at
+`GET /api/medico/sesiones/{sesionId}/consultas/{consultaId}/pretriaje`.
+`PUT /api/medico/sesiones/{sesionId}/consultas/{consultaId}/revision-prioridad`
+accepts `CONFIRMAR`, or `CORREGIR` with a required different `prioridad` and an
+optional `motivo` of at most 500 characters. Finalization returns `409` while
+the review is pending.
 
 ## Queue Visibility And History
 

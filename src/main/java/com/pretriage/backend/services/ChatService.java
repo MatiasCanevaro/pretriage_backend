@@ -143,10 +143,12 @@ public class ChatService {
             TriageResultDTO resultadoConPrioridad = normalizarResultadoFinal(respuestaIa.resultado());
             respuestaIa = new TriageAiResponse(true, respuestaIa.mensaje(), resultadoConPrioridad);
             chat.setFinalizado(true);
-            chat.setResultadoTriageJson(escribirResultado(resultadoConPrioridad));
+            String resultadoJson = escribirResultado(resultadoConPrioridad);
+            chat.setResultadoTriageJson(resultadoJson);
             atencionEstimada = atencionHospitalService.finalizarTriageEIngresarACola(
                     idPaciente,
-                    nivelDeGravedadDesdePrioridad(resultadoConPrioridad.nivelPrioridad()));
+                    nivelDeGravedadDesdePrioridad(resultadoConPrioridad.nivelPrioridad()),
+                    resultadoJson);
         }
 
         repoChat.save(chat);

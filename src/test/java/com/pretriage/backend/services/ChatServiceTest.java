@@ -69,7 +69,7 @@ class ChatServiceTest {
         when(repoChat.save(any(Chat.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(chatClient.prompt().system(anyString()).user(anyString()).call().entity(eq(TriageAiResponse.class), any()))
                 .thenThrow(new RuntimeException("ollama down"));
-        when(atencionHospitalService.finalizarTriageEIngresarACola("auth0|paciente", NivelDeGravedad.URGENTE))
+        when(atencionHospitalService.finalizarTriageEIngresarACola(eq("auth0|paciente"), any(NivelDeGravedad.class), anyString()))
                 .thenReturn(new TiempoEstimadoAtencionResponse());
 
         var resultado = chatService.enviarMensaje("1", "auth0|paciente", "Tengo dolor de cabeza y fiebre desde ayer.");
@@ -164,7 +164,7 @@ class ChatServiceTest {
         when(repoChat.save(any(Chat.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(chatClient.prompt().system(anyString()).user(anyString()).call().entity(eq(TriageAiResponse.class), any()))
                 .thenThrow(new RuntimeException("ollama down"));
-        when(atencionHospitalService.finalizarTriageEIngresarACola("auth0|paciente", NivelDeGravedad.URGENTE))
+        when(atencionHospitalService.finalizarTriageEIngresarACola(eq("auth0|paciente"), any(NivelDeGravedad.class), anyString()))
                 .thenReturn(new TiempoEstimadoAtencionResponse());
 
         var resultado = chatService.enviarMensaje("1", "auth0|paciente",
@@ -187,7 +187,7 @@ class ChatServiceTest {
         when(repoChat.save(any(Chat.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(chatClient.prompt().system(anyString()).user(anyString()).call().entity(eq(TriageAiResponse.class), any()))
                 .thenReturn(new TriageAiResponse(false, "¿Cuál es el síntoma más agudo o molestia que estás experimentando?", null));
-        when(atencionHospitalService.finalizarTriageEIngresarACola("auth0|paciente", NivelDeGravedad.URGENTE))
+        when(atencionHospitalService.finalizarTriageEIngresarACola(eq("auth0|paciente"), any(NivelDeGravedad.class), anyString()))
                 .thenReturn(new TiempoEstimadoAtencionResponse());
 
         var resultado = chatService.enviarMensaje("1", "auth0|paciente", "Tengo dolor de cabeza desde ayer y fiebre de 39, sin dificultad para respirar ni dolor de pecho.");
