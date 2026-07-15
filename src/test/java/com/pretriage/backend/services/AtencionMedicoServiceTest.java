@@ -1,7 +1,10 @@
 package com.pretriage.backend.services;
 
+import com.pretriage.backend.controllers.dtos.ConsultaLlamadaDTO;
 import com.pretriage.backend.controllers.dtos.EstudioClinicoDTO;
 import com.pretriage.backend.model.consultas.*;
+import com.pretriage.backend.model.hospitales.EspecialidadMedica;
+import com.pretriage.backend.model.hospitales.Hospital;
 import com.pretriage.backend.model.hospitales.Sala;
 import com.pretriage.backend.model.personas.Medico;
 import com.pretriage.backend.model.personas.Paciente;
@@ -17,6 +20,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -53,6 +57,47 @@ class AtencionMedicoServiceTest {
 
         assertThrows(IllegalStateException.class, () -> service.pausarSesion("auth0", 20L));
     }
+
+    @Test
+    void listaUnaConsultaEnColaAunqueTodaviaNoTengaSala() {
+        Hospital hospital = new Hospital();
+        hospital.setId(1L);
+        EspecialidadMedica especialidad = new EspecialidadMedica();
+        especialidad.setId(2L);
+        GestorDeCola gestor = new GestorDeCola();
+        gestor.setId(3L);
+        Paciente paciente = new Paciente();
+        paciente.setId(4L);
+        ConsultaMedica consulta = new ConsultaMedica();
+        consulta.setId(5L);
+        consulta.setCodigoLlamado("A-005");
+        consulta.setPaciente(paciente);
+        consulta.setEstadoConsulta(EstadoConsulta.EN_COLA);
+        EntradaCola entrada = new EntradaCola();
+        entrada.setConsultaMedica(consulta);
+        SesionAtencionMedica sesion = new SesionAtencionMedica();
+        sesion.setId(6L);
+        sesion.setHospital(hospital);
+        sesion.setEspecialidad(especialidad);
+        sesion.setEstado(EstadoSesionMedica.ACTIVA);
+
+        when(repoSesionesAtencionMedica.findByIdAndMedicoUsuarioAuthId(6L, "auth0"))
+                .thenReturn(Optional.of(sesion));
+        when(repoGestoresDeColas.findByHospitalIdAndEspecialidadId(1L, 2L))
+                .thenReturn(Optional.of(gestor));
+        when(repoEntradasCola.findByGestorDeColaIdAndEstadoOrderByPrioridadDescOrdenRelativoAscFechaHoraIngresoAsc(
+                3L, EstadoEntradaCola.EN_COLA))
+                .thenReturn(List.of(entrada));
+
+        List<ConsultaLlamadaDTO> resultado = service.listarPacientesDisponibles("auth0", 6L);
+
+        assertEquals(1, resultado.size());
+        assertEquals(5L, resultado.getFirst().getConsultaId());
+        assertEquals(EstadoConsulta.EN_COLA, resultado.getFirst().getEstadoConsulta());
+        assertNull(resultado.getFirst().getSalaId());
+        assertNull(resultado.getFirst().getNombreSala());
+    }
+
     @Test
     void creaLaAtencionHistoricaCuandoElPacienteConfirmaPresencia() {
         Medico medico = new Medico(); medico.setId(10L);
