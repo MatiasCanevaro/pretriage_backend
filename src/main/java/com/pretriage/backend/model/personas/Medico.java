@@ -22,10 +22,14 @@ public class Medico {
 
     private String matricula;
 
+    @OneToMany(mappedBy = "medico", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<CredencialProfesional> credencialesProfesionales;
+
     @OneToMany(mappedBy = "medico")
     private List<AsignacionMedicoHospital> asignaciones;
 
     public Medico() {
         this.asignaciones = new ArrayList<>();
+        this.credencialesProfesionales = new ArrayList<>();
     }
 }

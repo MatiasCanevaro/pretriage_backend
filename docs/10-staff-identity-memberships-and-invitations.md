@@ -120,6 +120,19 @@ AsignacionMedicoHospital(membresia_id, especialidad_id)
 Credential uniqueness must be defined by the applicable jurisdiction and type, not
 only by a free-form registration string.
 
+The first implementation now persists `CredencialProfesional` with:
+
+```text
+numero
+tipo: NACIONAL | PROVINCIAL
+jurisdiccion (NACION for national registrations; province for provincial ones)
+estado: PENDIENTE_VERIFICACION | VERIFICADA | SUSPENDIDA | VENCIDA
+```
+
+One doctor may own several credentials. The tuple `(numero, tipo, jurisdiccion)` is
+unique. The former `Medico.matricula` column is retained temporarily as a legacy
+compatibility field and must not be used as the future source of truth.
+
 ### Reception profile
 
 Reception normally needs no global professional profile. Its access is represented
@@ -328,11 +341,19 @@ authenticated subject, active membership, role, hospital, and resource ownership
 
 ## Implemented contract (2026-07-14)
 
-The current implementation adds `MembresiaHospital`, `InvitacionHospital` and
-`AuditoriaHospital`, including hashed single-use invitation secrets and seven-day
-expiry. Legacy receptionist/hospital and doctor/assignment relationships are
-backfilled lazily when `/api/staff/me` is requested, so existing development data
-continues to work during the transition.
+The current implementation adds `MembresiaHospital`, `InvitacionHospital`,
+`CredencialProfesional` and `AuditoriaHospital`, including hashed single-use
+invitation secrets and seven-day expiry. Legacy receptionist/hospital and
+doctor/assignment relationships are backfilled lazily when `/api/staff/me` is
+requested, so existing development data continues to work during the transition.
+
+Medical invitations require registration number, national/provincial type and a
+jurisdiction for provincial credentials. National credentials are normalized to
+the `NACION` jurisdiction. Newly accepted credentials begin as
+`PENDIENTE_VERIFICACION`; granting hospital access does not represent official
+REFEPS verification. This follows the federal credential data model, which exposes
+the registration number and its issuing jurisdiction:
+https://www.argentina.gob.ar/salud/matricula-digital-de-profesionales-de-la-salud
 
 Available endpoints:
 

@@ -4,6 +4,7 @@ import com.pretriage.backend.model.acceso.EstadoInvitacionHospital;
 import com.pretriage.backend.model.acceso.EstadoMembresiaHospital;
 import com.pretriage.backend.model.acceso.RolMembresiaHospital;
 import com.pretriage.backend.model.personas.TipoDocumento;
+import com.pretriage.backend.model.personas.TipoMatriculaProfesional;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -32,11 +33,15 @@ public final class StaffAccessDtos {
             @NotBlank @Email String email,
             @NotEmpty Set<RolMembresiaHospital> roles,
             String matricula,
+            TipoMatriculaProfesional tipoMatricula,
+            String jurisdiccionMatricula,
             Set<Long> especialidadIds) {}
 
     public record InvitacionResponse(Long id, Long hospitalId, String hospitalNombre, String email,
                                      EstadoInvitacionHospital estado, Set<RolMembresiaHospital> roles,
-                                     Set<Long> especialidadIds, String matricula, Instant venceEn,
+                                     Set<Long> especialidadIds, String matricula,
+                                     TipoMatriculaProfesional tipoMatricula,
+                                     String jurisdiccionMatricula, Instant venceEn,
                                      Instant fechaCreacion, Boolean emailEnviado,
                                      String tokenEntregaUnica) {}
 
@@ -44,6 +49,8 @@ public final class StaffAccessDtos {
                                             EstadoInvitacionHospital estado,
                                             Set<RolMembresiaHospital> roles,
                                             Set<Long> especialidadIds, String matricula,
+                                            TipoMatriculaProfesional tipoMatricula,
+                                            String jurisdiccionMatricula,
                                             Instant venceEn, boolean cuentaExistente) {}
 
     public record RegistrarInvitadoRequest(@NotBlank String nombre, @NotBlank String apellido,

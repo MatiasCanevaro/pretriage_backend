@@ -5,8 +5,11 @@ import com.pretriage.backend.controllers.dtos.acceso.StaffAccessDtos.CrearInvita
 import com.pretriage.backend.exceptions.ConflictoDeEstadoException;
 import com.pretriage.backend.model.acceso.*;
 import com.pretriage.backend.model.hospitales.Hospital;
+import com.pretriage.backend.model.hospitales.EspecialidadMedica;
 import com.pretriage.backend.model.personas.RolSistema;
 import com.pretriage.backend.model.personas.UsuarioAuth;
+import com.pretriage.backend.model.personas.TipoMatriculaProfesional;
+import com.pretriage.backend.model.personas.CredencialProfesional;
 import com.pretriage.backend.repositories.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -34,6 +37,7 @@ class StaffAccessServiceTest {
     @Mock RepoMedico medicos;
     @Mock RepoAsignacionesMedicoHospital asignaciones;
     @Mock RepoEspecialidadesMedicas especialidades;
+    @Mock RepoCredencialesProfesionales credencialesProfesionales;
     @Mock AuthService authService;
 
     private StaffAccessService service;
@@ -44,7 +48,7 @@ class StaffAccessServiceTest {
     @BeforeEach
     void setUp() {
         service = new StaffAccessService(usuarios, hospitales, membresias, invitaciones, auditorias,
-                recepcionistas, medicos, asignaciones, especialidades, authService);
+                recepcionistas, medicos, asignaciones, especialidades, credencialesProfesionales, authService);
         admin = new UsuarioAuth();
         admin.setId("auth0|admin");
         admin.setNombre("Ada");
@@ -82,7 +86,7 @@ class StaffAccessServiceTest {
 
         var response = service.crearInvitacion(admin.getId(), hospital.getId(),
                 new CrearInvitacionRequest(" Staff@Example.com ",
-                        Set.of(RolMembresiaHospital.RECEPCIONISTA), null, Set.of()));
+                        Set.of(RolMembresiaHospital.RECEPCIONISTA), null, null, null, Set.of()));
 
         ArgumentCaptor<InvitacionHospital> captor = ArgumentCaptor.forClass(InvitacionHospital.class);
         verify(invitaciones).save(captor.capture());
@@ -104,5 +108,28 @@ class StaffAccessServiceTest {
                 admin.getId(), hospital.getId(), membresiaAdmin.getId(),
                 new ActualizarMembresiaRequest(EstadoMembresiaHospital.SUSPENDIDA)));
         verify(membresias, never()).save(membresiaAdmin);
+    }
+
+    @Test
+    void normalizaLaJurisdiccionDeUnaMatriculaNacional() {
+        EspecialidadMedica clinica = new EspecialidadMedica();
+        clinica.setId(1L);
+        clinica.setCodigo("CLINICA_MEDICA");
+        hospital.setEspecialidades(java.util.List.of(clinica));
+        when(hospitales.findById(hospital.getId())).thenReturn(Optional.of(hospital));
+        when(invitaciones.existsByHospitalIdAndEmailNormalizadoAndEstado(any(), any(), any()))
+                .thenReturn(false);
+        when(invitaciones.save(any())).thenAnswer(invocation -> {
+            InvitacionHospital saved = invocation.getArgument(0);
+            saved.setId(12L);
+            return saved;
+        });
+
+        var response = service.crearInvitacion(admin.getId(), hospital.getId(),
+                new CrearInvitacionRequest("medico@example.com", Set.of(RolMembresiaHospital.MEDICO),
+                        "11111111", TipoMatriculaProfesional.NACIONAL, "Buenos Aires", Set.of(1L)));
+
+        assertEquals(TipoMatriculaProfesional.NACIONAL, response.tipoMatricula());
+        assertEquals(CredencialProfesional.JURISDICCION_NACIONAL, response.jurisdiccionMatricula());
     }
 }

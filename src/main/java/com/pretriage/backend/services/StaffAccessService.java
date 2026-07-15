@@ -35,6 +35,7 @@ public class StaffAccessService {
     private final RepoMedico medicos;
     private final RepoAsignacionesMedicoHospital asignaciones;
     private final RepoEspecialidadesMedicas especialidades;
+    private final RepoCredencialesProfesionales credencialesProfesionales;
     private final AuthService authService;
 
     @Transactional
@@ -79,7 +80,8 @@ public class StaffAccessService {
         Set<RolMembresiaHospital> roles = new LinkedHashSet<>(request.roles());
         roles.add(RolMembresiaHospital.ADMIN_HOSPITAL);
         return crearInvitacion(actor, hospitalId,
-                new CrearInvitacionRequest(request.email(), roles, request.matricula(), request.especialidadIds()));
+                new CrearInvitacionRequest(request.email(), roles, request.matricula(),
+                        request.tipoMatricula(), request.jurisdiccionMatricula(), request.especialidadIds()));
     }
 
     private InvitacionResponse crearInvitacion(UsuarioAuth actor, Long hospitalId, CrearInvitacionRequest request) {
@@ -90,7 +92,8 @@ public class StaffAccessService {
                 EstadoInvitacionHospital.PENDIENTE)) {
             throw new ConflictoDeEstadoException("Ya existe una invitación pendiente para ese correo");
         }
-        validarDatosMedicos(request.roles(), request.matricula(), request.especialidadIds(), hospital);
+        String jurisdiccion = validarDatosMedicos(request.roles(), request.matricula(),
+                request.tipoMatricula(), request.jurisdiccionMatricula(), request.especialidadIds(), hospital);
 
         String token = nuevoToken();
         InvitacionHospital invitacion = new InvitacionHospital();
@@ -100,6 +103,9 @@ public class StaffAccessService {
         invitacion.setEspecialidadIds(request.especialidadIds() == null
                 ? new LinkedHashSet<>() : new LinkedHashSet<>(request.especialidadIds()));
         invitacion.setMatricula(limpiar(request.matricula()));
+        invitacion.setTipoMatricula(request.roles().contains(RolMembresiaHospital.MEDICO)
+                ? request.tipoMatricula() : null);
+        invitacion.setJurisdiccionMatricula(jurisdiccion);
         invitacion.setTokenHash(hash(token));
         invitacion.setVenceEn(Instant.now().plus(VIGENCIA_INVITACION));
         invitacion.setInvitadaPor(actor);
@@ -115,7 +121,8 @@ public class StaffAccessService {
         InvitacionHospital invitacion = invitacionValida(token, false);
         return new InvitacionResumenResponse(invitacion.getHospital().getId(), invitacion.getHospital().getNombre(),
                 invitacion.getEmailNormalizado(), estadoActual(invitacion), Set.copyOf(invitacion.getRolesSolicitados()),
-                Set.copyOf(invitacion.getEspecialidadIds()), invitacion.getMatricula(), invitacion.getVenceEn(),
+                Set.copyOf(invitacion.getEspecialidadIds()), invitacion.getMatricula(),
+                invitacion.getTipoMatricula(), invitacion.getJurisdiccionMatricula(), invitacion.getVenceEn(),
                 usuarios.findByCorreoElectronicoIgnoreCase(invitacion.getEmailNormalizado()).isPresent());
     }
 
@@ -268,6 +275,8 @@ public class StaffAccessService {
                 nuevo.setMatricula(invitacion.getMatricula());
                 return medicos.save(nuevo);
             });
+            crearCredencialSiNoExiste(medico, invitacion.getMatricula(), invitacion.getTipoMatricula(),
+                    invitacion.getJurisdiccionMatricula());
             for (Long especialidadId : invitacion.getEspecialidadIds()) {
                 EspecialidadMedica especialidad = especialidades.findById(especialidadId)
                         .orElseThrow(() -> new RecursoNoEncontradoException("Especialidad inexistente"));
@@ -283,16 +292,38 @@ public class StaffAccessService {
         }
     }
 
-    private void validarDatosMedicos(Set<RolMembresiaHospital> roles, String matricula,
-                                     Set<Long> especialidadIds, Hospital hospital) {
-        if (!roles.contains(RolMembresiaHospital.MEDICO)) return;
-        if (limpiar(matricula) == null || especialidadIds == null || especialidadIds.isEmpty()) {
-            throw new IllegalStateException("Una invitación médica requiere matrícula y especialidades");
+    private String validarDatosMedicos(Set<RolMembresiaHospital> roles, String matricula,
+                                       TipoMatriculaProfesional tipoMatricula, String jurisdiccionMatricula,
+                                       Set<Long> especialidadIds, Hospital hospital) {
+        if (!roles.contains(RolMembresiaHospital.MEDICO)) return null;
+        if (limpiar(matricula) == null || tipoMatricula == null
+                || especialidadIds == null || especialidadIds.isEmpty()) {
+            throw new IllegalStateException(
+                    "Una invitación médica requiere número, tipo de matrícula y especialidades");
+        }
+        String jurisdiccion = tipoMatricula == TipoMatriculaProfesional.NACIONAL
+                ? CredencialProfesional.JURISDICCION_NACIONAL
+                : normalizarJurisdiccion(jurisdiccionMatricula);
+        if (tipoMatricula == TipoMatriculaProfesional.PROVINCIAL && jurisdiccion == null) {
+            throw new IllegalStateException("Una matrícula provincial requiere jurisdicción");
         }
         Set<Long> habilitadas = hospital.getEspecialidades().stream().map(EspecialidadMedica::getId).collect(java.util.stream.Collectors.toSet());
         if (!habilitadas.containsAll(especialidadIds)) {
             throw new IllegalStateException("Las especialidades deben estar habilitadas en el hospital");
         }
+        return jurisdiccion;
+    }
+
+    private void crearCredencialSiNoExiste(Medico medico, String numero,
+                                            TipoMatriculaProfesional tipo, String jurisdiccion) {
+        if (credencialesProfesionales.existsByNumeroAndTipoAndJurisdiccionIgnoreCase(
+                numero, tipo, jurisdiccion)) return;
+        CredencialProfesional credencial = new CredencialProfesional();
+        credencial.setMedico(medico);
+        credencial.setNumero(numero);
+        credencial.setTipo(tipo);
+        credencial.setJurisdiccion(jurisdiccion);
+        credencialesProfesionales.save(credencial);
     }
 
     private void protegerUltimoAdmin(MembresiaHospital membresia, EstadoMembresiaHospital estadoNuevo,
@@ -340,7 +371,8 @@ public class StaffAccessService {
     private InvitacionResponse aInvitacionResponse(InvitacionHospital i, Boolean emailEnviado, String token) {
         return new InvitacionResponse(i.getId(), i.getHospital().getId(), i.getHospital().getNombre(),
                 i.getEmailNormalizado(), estadoActual(i), Set.copyOf(i.getRolesSolicitados()),
-                Set.copyOf(i.getEspecialidadIds()), i.getMatricula(), i.getVenceEn(), i.getFechaCreacion(),
+                Set.copyOf(i.getEspecialidadIds()), i.getMatricula(), i.getTipoMatricula(),
+                i.getJurisdiccionMatricula(), i.getVenceEn(), i.getFechaCreacion(),
                 emailEnviado, token);
     }
 
@@ -356,6 +388,10 @@ public class StaffAccessService {
 
     private static String normalizarEmail(String email) { return email.trim().toLowerCase(Locale.ROOT); }
     private static String limpiar(String value) { return value == null || value.isBlank() ? null : value.trim(); }
+    private static String normalizarJurisdiccion(String value) {
+        String limpia = limpiar(value);
+        return limpia == null ? null : limpia.toUpperCase(Locale.ROOT);
+    }
     private static String nuevoToken() {
         byte[] bytes = new byte[32];
         new SecureRandom().nextBytes(bytes);

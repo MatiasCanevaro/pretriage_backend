@@ -2,6 +2,7 @@ package com.pretriage.backend.model.acceso;
 
 import com.pretriage.backend.model.hospitales.Hospital;
 import com.pretriage.backend.model.personas.UsuarioAuth;
+import com.pretriage.backend.model.personas.TipoMatriculaProfesional;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -41,6 +42,9 @@ public class InvitacionHospital {
     @Column(nullable = false, unique = true, length = 64)
     private String tokenHash;
     private String matricula;
+    @Enumerated(EnumType.STRING)
+    private TipoMatriculaProfesional tipoMatricula;
+    private String jurisdiccionMatricula;
     private Instant venceEn;
     private Instant fechaCreacion = Instant.now();
     private Instant fechaAceptacion;

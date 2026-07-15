@@ -22,6 +22,7 @@ python scripts\generate_domain_diagram.py
 - `ConsultaMedica`: `src/main/java/com/pretriage/backend/model/consultas/ConsultaMedica.java`
 - `Coordenada`: `src/main/java/com/pretriage/backend/model/hospitales/Coordenada.java`
 - `Credencial`: `src/main/java/com/pretriage/backend/model/hospitales/Credencial.java`
+- `CredencialProfesional`: `src/main/java/com/pretriage/backend/model/personas/CredencialProfesional.java`
 - `Direccion`: `src/main/java/com/pretriage/backend/model/hospitales/Direccion.java`
 - `EntradaCola`: `src/main/java/com/pretriage/backend/model/consultas/EntradaCola.java`
 - `EspecialidadMedica`: `src/main/java/com/pretriage/backend/model/hospitales/EspecialidadMedica.java`
@@ -60,6 +61,8 @@ erDiagram
         Long especialidadIds
         String tokenHash
         String matricula
+        TipoMatriculaProfesional tipoMatricula
+        String jurisdiccionMatricula
         Instant venceEn
         Instant fechaCreacion
         Instant fechaAceptacion
@@ -178,6 +181,14 @@ erDiagram
     ASIGNACION_MEDICO_HOSPITAL {
         Long id
     }
+    CREDENCIAL_PROFESIONAL {
+        static_final_String JURISDICCION_NACIONAL
+        Long id
+        String numero
+        TipoMatriculaProfesional tipo
+        String jurisdiccion
+        EstadoCredencialProfesional estado
+    }
     MEDICO {
         Long id
         String matricula
@@ -267,7 +278,9 @@ erDiagram
     ASIGNACION_MEDICO_HOSPITAL }o--|| MEDICO : medico
     ASIGNACION_MEDICO_HOSPITAL }o--|| HOSPITAL : hospital
     ASIGNACION_MEDICO_HOSPITAL }o--|| ESPECIALIDAD_MEDICA : especialidad
+    CREDENCIAL_PROFESIONAL }o--|| MEDICO : medico
     MEDICO ||--|| USUARIO_AUTH : usuarioAuth
+    MEDICO ||--o{ CREDENCIAL_PROFESIONAL : credencialesProfesionales
     MEDICO ||--o{ ASIGNACION_MEDICO_HOSPITAL : asignaciones
     PACIENTE ||--|| USUARIO_AUTH : usuarioAuth
     PACIENTE ||--|| COORDENADA : coordenadaActual
