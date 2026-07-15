@@ -2,6 +2,7 @@ package com.pretriage.backend.services;
 
 import com.pretriage.backend.exceptions.ArchivoS3Exception;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.core.ResponseInputStream;
@@ -17,12 +18,18 @@ import java.io.IOException;
 public class GestionDeArchivosService {
 
 
-    private final S3Client s3Client;
+    private final ObjectProvider<S3Client> s3ClientProvider;
 
     @Value("${aws.s3.bucket-name}")
     private String bucketName;
 
     public byte[] descargarArchivoDesdeS3(String rutaArchivo){
+        S3Client s3Client = s3ClientProvider.getIfAvailable();
+        if (s3Client == null) {
+            throw new ArchivoS3Exception(
+                    "El almacenamiento de estudios clínicos en S3 está deshabilitado en este entorno");
+        }
+
         // 1. Construir la petición de descarga para AWS S3
         GetObjectRequest getObjectRequest = GetObjectRequest.builder()
                 .bucket(bucketName)
