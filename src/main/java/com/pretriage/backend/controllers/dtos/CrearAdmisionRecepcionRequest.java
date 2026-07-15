@@ -20,5 +20,7 @@ public record CrearAdmisionRecepcionRequest(
         @NotBlank String calle,
         @NotBlank String alturaDomicilio,
         String piso,
+        @NotBlank String ciudad,
+        @NotBlank String provincia,
         @NotBlank String codigoPostal,
         @NotBlank String codigoEspecialidad) {}

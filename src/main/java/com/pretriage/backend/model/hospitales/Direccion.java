@@ -21,6 +21,10 @@ public class Direccion {
 
     private String codigoPostal;
 
+    private String ciudad;
+
+    private String provincia;
+
     @OneToOne
     @JoinColumn(name="id_coordenada", referencedColumnName = "id")
     private Coordenada coordenada;
