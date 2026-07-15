@@ -7,6 +7,7 @@ import java.util.List;
 import com.pretriage.backend.model.hospitales.Coordenada;
 import com.pretriage.backend.model.hospitales.Credencial;
 import com.pretriage.backend.model.hospitales.Direccion;
+import com.pretriage.backend.model.consultas.EstudioClinico;
 
 import jakarta.persistence.*;
 import lombok.Getter;

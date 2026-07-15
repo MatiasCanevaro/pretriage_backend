@@ -16,7 +16,7 @@ public class Medico {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @OneToOne(cascade = CascadeType.ALL)
+    @OneToOne(cascade = {CascadeType.PERSIST, CascadeType.MERGE})
     @JoinColumn(name = "auth_id", referencedColumnName = "id")
     private UsuarioAuth usuarioAuth;
 

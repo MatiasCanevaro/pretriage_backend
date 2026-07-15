@@ -32,6 +32,8 @@ public class SpringSecurityConfig {
                         .dispatcherTypeMatchers(DispatcherType.FORWARD, DispatcherType.ERROR).permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/hello", "/api/login", "/api/register").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/invitaciones/*/resumen").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/invitaciones/*/registro").permitAll()
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .anyRequest().authenticated()
                 )

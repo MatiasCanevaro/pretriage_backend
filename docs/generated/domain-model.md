@@ -17,6 +17,7 @@ python scripts\generate_domain_diagram.py
 - `AdmisionRecepcion`: `src/main/java/com/pretriage/backend/model/recepcion/AdmisionRecepcion.java`
 - `AsignacionMedicoHospital`: `src/main/java/com/pretriage/backend/model/personas/AsignacionMedicoHospital.java`
 - `AtencionMedica`: `src/main/java/com/pretriage/backend/model/consultas/AtencionMedica.java`
+- `AuditoriaHospital`: `src/main/java/com/pretriage/backend/model/acceso/AuditoriaHospital.java`
 - `Chat`: `src/main/java/com/pretriage/backend/model/chat/Chat.java`
 - `ConsultaMedica`: `src/main/java/com/pretriage/backend/model/consultas/ConsultaMedica.java`
 - `Coordenada`: `src/main/java/com/pretriage/backend/model/hospitales/Coordenada.java`
@@ -27,7 +28,9 @@ python scripts\generate_domain_diagram.py
 - `EstudioClinico`: `src/main/java/com/pretriage/backend/model/consultas/EstudioClinico.java`
 - `GestorDeCola`: `src/main/java/com/pretriage/backend/model/consultas/GestorDeCola.java`
 - `Hospital`: `src/main/java/com/pretriage/backend/model/hospitales/Hospital.java`
+- `InvitacionHospital`: `src/main/java/com/pretriage/backend/model/acceso/InvitacionHospital.java`
 - `Medico`: `src/main/java/com/pretriage/backend/model/personas/Medico.java`
+- `MembresiaHospital`: `src/main/java/com/pretriage/backend/model/acceso/MembresiaHospital.java`
 - `Mensaje`: `src/main/java/com/pretriage/backend/model/chat/Mensaje.java`
 - `ObraSocial`: `src/main/java/com/pretriage/backend/model/hospitales/ObraSocial.java`
 - `Paciente`: `src/main/java/com/pretriage/backend/model/personas/Paciente.java`
@@ -42,6 +45,33 @@ python scripts\generate_domain_diagram.py
 
 ```mermaid
 erDiagram
+    AUDITORIA_HOSPITAL {
+        Long id
+        Instant fecha
+        String accion
+        String objetivo
+        String resultado
+    }
+    INVITACION_HOSPITAL {
+        Long id
+        String emailNormalizado
+        EstadoInvitacionHospital estado
+        RolMembresiaHospital rolesSolicitados
+        Long especialidadIds
+        String tokenHash
+        String matricula
+        Instant venceEn
+        Instant fechaCreacion
+        Instant fechaAceptacion
+    }
+    MEMBRESIA_HOSPITAL {
+        Long id
+        EstadoMembresiaHospital estado
+        RolMembresiaHospital roles
+        Instant fechaCreacion
+        Instant fechaAceptacion
+        Instant fechaSuspension
+    }
     CHAT {
         Long id
         LocalDateTime fechaHoraCreacion
@@ -122,6 +152,8 @@ erDiagram
         String altura
         String piso
         String codigoPostal
+        String ciudad
+        String provincia
     }
     ESPECIALIDAD_MEDICA {
         Long id
@@ -192,6 +224,14 @@ erDiagram
         LocalDateTime fechaHoraInicio
         LocalDateTime fechaHoraFin
     }
+    AUDITORIA_HOSPITAL }o--|| HOSPITAL : hospital
+    AUDITORIA_HOSPITAL }o--|| USUARIO_AUTH : actor
+    INVITACION_HOSPITAL }o--|| HOSPITAL : hospital
+    INVITACION_HOSPITAL }o--|| USUARIO_AUTH : invitadaPor
+    INVITACION_HOSPITAL }o--|| USUARIO_AUTH : aceptadaPor
+    MEMBRESIA_HOSPITAL }o--|| USUARIO_AUTH : usuario
+    MEMBRESIA_HOSPITAL }o--|| HOSPITAL : hospital
+    MEMBRESIA_HOSPITAL }o--|| USUARIO_AUTH : creadaPor
     CHAT ||--o{ MENSAJE : mensajes
     CHAT ||--|| PACIENTE : paciente
     MENSAJE }o--|| PACIENTE : pacienteAutor

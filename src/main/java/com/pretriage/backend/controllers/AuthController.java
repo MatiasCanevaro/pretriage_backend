@@ -2,6 +2,7 @@ package com.pretriage.backend.controllers;
 
 import com.pretriage.backend.controllers.dtos.LoginRequest;
 import com.pretriage.backend.controllers.dtos.RegisterRequest;
+import com.pretriage.backend.controllers.dtos.TipoUsuario;
 import com.pretriage.backend.model.personas.*;
 import com.pretriage.backend.repositories.RepoMedico;
 import com.pretriage.backend.repositories.RepoPacientes;
@@ -32,16 +33,17 @@ public class AuthController {
     public ResponseEntity<Map<String, String>> register(
             @Valid @RequestBody RegisterRequest request){
 
+        if (request.getTipoUsuario() != TipoUsuario.Paciente || request.getRol() != RolSistema.USER) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "El registro público sólo permite crear cuentas de paciente");
+        }
+
 
         String auth0Id = authService.registrarUsuarioYObtenerAuth0Id(request.getEmail(), request.getPassword());
 
         String email = request.getEmail();
 
-        switch (request.getTipoUsuario()){
-            case Medico -> this.crearMedico(request, email, auth0Id);
-            case Paciente -> this.crearPaciente(request, email, auth0Id);
-            case Recepcionista -> this.crearRecepcionista(request, email, auth0Id, request.getRol());//solo el recepcionista puede ser o no admin
-        }
+        this.crearPaciente(request, email, auth0Id);
 
         return ResponseEntity.ok(Map.of("message", "usuario creado con Ã©xito"));
     }

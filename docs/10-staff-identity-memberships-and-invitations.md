@@ -1,7 +1,10 @@
 # Staff identity, hospital memberships, and invitations
 
-Status: proposed architecture. None of the membership, invitation, or hospital-admin
-contracts described here are implemented yet.
+Status: first vertical slice implemented. Memberships, scoped roles, staff discovery,
+hospital invitations, acceptance, suspension/reactivation, last-admin protection and
+basic audit contracts are available. Universal Login/PKCE, SMTP delivery, MFA,
+platform hospital creation, room/specialty management and patient account claiming
+remain follow-up work.
 
 ## Purpose
 
@@ -322,6 +325,41 @@ authenticated subject, active membership, role, hospital, and resource ownership
 6. Multi-workspace staff login and navigation.
 7. Patient account claiming and duplicate resolution.
 8. MFA enforcement, audit reports, E2E tests, and operational recovery.
+
+## Implemented contract (2026-07-14)
+
+The current implementation adds `MembresiaHospital`, `InvitacionHospital` and
+`AuditoriaHospital`, including hashed single-use invitation secrets and seven-day
+expiry. Legacy receptionist/hospital and doctor/assignment relationships are
+backfilled lazily when `/api/staff/me` is requested, so existing development data
+continues to work during the transition.
+
+Available endpoints:
+
+```http
+GET    /api/staff/me
+GET    /api/admin/hospitales/{hospitalId}/personal
+GET    /api/admin/hospitales/{hospitalId}/invitaciones
+POST   /api/admin/hospitales/{hospitalId}/invitaciones
+DELETE /api/admin/hospitales/{hospitalId}/invitaciones/{invitacionId}
+PATCH  /api/admin/hospitales/{hospitalId}/membresias/{membresiaId}
+PUT    /api/admin/hospitales/{hospitalId}/membresias/{membresiaId}/roles
+GET    /api/admin/hospitales/{hospitalId}/auditoria
+POST   /api/platform/hospitales/{hospitalId}/primer-admin/invitaciones
+GET    /api/invitaciones/{token}/resumen
+POST   /api/invitaciones/{token}/registro
+POST   /api/invitaciones/{token}/aceptar
+```
+
+The public `/api/register` endpoint now rejects doctor, receptionist and admin
+registration. Invitation registration derives hospital roles from the stored
+invitation and never accepts them from the public caller.
+
+Email delivery is deliberately not simulated. Until an SMTP or transactional-mail
+adapter is configured, invitation creation returns the raw secret exactly once to
+the authorized administrator with `emailEnviado=false`; only its SHA-256 hash is
+persisted. Production rollout must replace this development handoff with email and
+must not log the returned secret.
 
 ## Acceptance criteria
 
