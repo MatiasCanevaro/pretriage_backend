@@ -1,6 +1,7 @@
 package com.pretriage.backend.controllers.dtos;
 
 import com.pretriage.backend.model.consultas.EstadoConsulta;
+import com.pretriage.backend.model.consultas.NivelDeGravedad;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -20,6 +21,8 @@ public class ConsultaLlamadaDTO {
     private Long salaId;
 
     private String nombreSala;
+
+    private NivelDeGravedad prioridad;
 
     private EstadoConsulta estadoConsulta;
 }

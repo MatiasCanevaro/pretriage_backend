@@ -481,6 +481,9 @@ public class AtencionMedicoService {
             dto.setSalaId(sala.getId());
             dto.setNombreSala(sala.getNombre());
         }
+        dto.setPrioridad(consulta.getNivelDeGravedadMedico() == null
+                ? consulta.getNivelDeGravedadBot()
+                : consulta.getNivelDeGravedadMedico());
         dto.setEstadoConsulta(consulta.getEstadoConsulta());
         return dto;
     }

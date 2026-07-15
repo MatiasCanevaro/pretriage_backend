@@ -182,7 +182,7 @@ GET /api/medico/sesiones/{sesionId}/pacientes-disponibles
 ```
 
 Returns ordered `EntradaCola.EN_COLA` consultations for the session hospital and specialty,
-including patient name and surname. Room fields remain null until the consultation is called.
+including the effective priority, patient name and surname. For queued patients the effective priority is the preliminary backend classification. Room fields remain null until the consultation is called.
 
 ### Attention History
 

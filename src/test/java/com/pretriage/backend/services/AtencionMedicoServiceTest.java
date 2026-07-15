@@ -82,6 +82,7 @@ class AtencionMedicoServiceTest {
         consulta.setCodigoLlamado("A-005");
         consulta.setPaciente(paciente);
         consulta.setEstadoConsulta(EstadoConsulta.EN_COLA);
+        consulta.setNivelDeGravedadBot(NivelDeGravedad.URGENTE);
         EntradaCola entrada = new EntradaCola();
         entrada.setConsultaMedica(consulta);
         SesionAtencionMedica sesion = new SesionAtencionMedica();
@@ -105,6 +106,7 @@ class AtencionMedicoServiceTest {
         assertEquals("Ana", resultado.getFirst().getNombrePaciente());
         assertEquals("Pérez", resultado.getFirst().getApellidoPaciente());
         assertEquals(EstadoConsulta.EN_COLA, resultado.getFirst().getEstadoConsulta());
+        assertEquals(NivelDeGravedad.URGENTE, resultado.getFirst().getPrioridad());
         assertNull(resultado.getFirst().getSalaId());
         assertNull(resultado.getFirst().getNombreSala());
     }
