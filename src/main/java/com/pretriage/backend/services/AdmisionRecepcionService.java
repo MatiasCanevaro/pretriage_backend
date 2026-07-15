@@ -63,13 +63,19 @@ public class AdmisionRecepcionService {
         return repoPacientes.findByNumeroDocumentoOrUsuarioAuthNumeroDocumento(dni, dni)
                 .map(p -> {
                     Direccion d = p.getDireccion();
+                    EstadoConsulta estadoAtencion = repoConsultasMedicas
+                            .findFirstByPacienteIdAndEstadoConsultaIn(p.getId(), ESTADOS_ACTIVOS)
+                            .map(ConsultaMedica::getEstadoConsulta)
+                            .orElse(null);
                     return new PacienteRecepcionDTO(p.getId(), dni,
                             p.getNombre() != null ? p.getNombre() : p.getUsuarioAuth().getNombre(),
                             p.getApellido() != null ? p.getApellido() : p.getUsuarioAuth().getApellido(),
                             p.getFechaNacimiento(), p.getGeneroBiologico(), p.getTelefono(),
                             p.getCorreoElectronico(), d != null ? d.getCalle() : null,
                             d != null ? d.getAltura() : null, d != null ? d.getPiso() : null,
-                            d != null ? d.getCodigoPostal() : null, p.getUsuarioAuth() != null);
+                            d != null ? d.getCiudad() : null, d != null ? d.getProvincia() : null,
+                            d != null ? d.getCodigoPostal() : null, p.getUsuarioAuth() != null,
+                            estadoAtencion != null, estadoAtencion);
                 })
                 .orElse(null);
     }
@@ -107,6 +113,10 @@ public class AdmisionRecepcionService {
         SesionRecepcion sesion = obtenerSesionActiva(auth0Id, request.sesionId());
         String dni = request.dni().replaceAll("\\D", "");
         Paciente paciente = repoPacientes.findByNumeroDocumentoOrUsuarioAuthNumeroDocumento(dni, dni)
+                .map(existente -> {
+                    actualizarDireccion(existente, request);
+                    return existente;
+                })
                 .orElseGet(() -> crearPacientePresencial(request, dni));
         if (repoConsultasMedicas.findFirstByPacienteIdAndEstadoConsultaIn(paciente.getId(), ESTADOS_ACTIVOS).isPresent()) {
             throw new AtencionEnCursoException();
@@ -195,13 +205,20 @@ public class AdmisionRecepcionService {
         paciente.setTelefono(r.telefono().trim());
         paciente.setCorreoElectronico(r.correoElectronico() == null || r.correoElectronico().isBlank()
                 ? null : r.correoElectronico().trim());
-        Direccion direccion = new Direccion();
-        direccion.setCalle(r.calle().trim()); direccion.setAltura(r.alturaDomicilio().trim());
-        direccion.setPiso(r.piso() == null || r.piso().isBlank() ? null : r.piso().trim());
-        direccion.setCodigoPostal(r.codigoPostal().trim());
-        paciente.setDireccion(repoDirecciones.save(direccion));
+        actualizarDireccion(paciente, r);
         paciente.setOrigenRegistro(OrigenRegistroPaciente.RECEPCION);
         return repoPacientes.save(paciente);
+    }
+
+    private void actualizarDireccion(Paciente paciente, CrearAdmisionRecepcionRequest r) {
+        Direccion direccion = paciente.getDireccion() == null ? new Direccion() : paciente.getDireccion();
+        direccion.setCalle(r.calle().trim());
+        direccion.setAltura(r.alturaDomicilio().trim());
+        direccion.setPiso(r.piso() == null || r.piso().isBlank() ? null : r.piso().trim());
+        direccion.setCiudad(r.ciudad().trim());
+        direccion.setProvincia(r.provincia().trim());
+        direccion.setCodigoPostal(r.codigoPostal().trim());
+        paciente.setDireccion(repoDirecciones.save(direccion));
     }
     private Recepcionista obtenerRecepcionista(String auth0Id) {
         return repoRecepcionistas.findRecepcionistaByUsuarioAuthId(auth0Id)

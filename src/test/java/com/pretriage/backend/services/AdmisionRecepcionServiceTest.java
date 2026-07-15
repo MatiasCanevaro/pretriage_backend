@@ -1,6 +1,7 @@
 package com.pretriage.backend.services;
 
 import com.pretriage.backend.controllers.dtos.FormularioTriageRecepcionRequest;
+import com.pretriage.backend.controllers.dtos.DolorReportadoRequest;
 import com.pretriage.backend.controllers.dtos.TriageResultDTO;
 import com.pretriage.backend.controllers.dtos.TiempoEstimadoAtencionResponse;
 import com.pretriage.backend.model.consultas.*;
@@ -34,6 +35,27 @@ class AdmisionRecepcionServiceTest {
     @InjectMocks AdmisionRecepcionService service;
 
     @Test
+    void informaAtencionEnCursoAlBuscarPaciente() {
+        Hospital hospital = new Hospital(); hospital.setId(3L);
+        SesionRecepcion sesion = new SesionRecepcion(); sesion.setId(6L);
+        sesion.setHospital(hospital); sesion.setEstado(EstadoSesionRecepcion.ACTIVA);
+        Paciente paciente = new Paciente(); paciente.setId(2L); paciente.setNumeroDocumento("30111222");
+        paciente.setNombre("Ana"); paciente.setApellido("Perez");
+        ConsultaMedica consulta = new ConsultaMedica(); consulta.setEstadoConsulta(EstadoConsulta.EN_COLA);
+        when(repoSesionesRecepcion.findByIdAndRecepcionistaUsuarioAuthId(6L, "auth"))
+                .thenReturn(Optional.of(sesion));
+        when(repoPacientes.findByNumeroDocumentoOrUsuarioAuthNumeroDocumento("30111222", "30111222"))
+                .thenReturn(Optional.of(paciente));
+        when(repoConsultasMedicas.findFirstByPacienteIdAndEstadoConsultaIn(eq(2L), anyCollection()))
+                .thenReturn(Optional.of(consulta));
+
+        var resultado = service.buscarPaciente("auth", 6L, "30111222");
+
+        assertTrue(resultado.atencionEnCurso());
+        assertEquals(EstadoConsulta.EN_COLA, resultado.estadoAtencionEnCurso());
+    }
+
+    @Test
     void noPermiteDosSesionesActivas() {
         Recepcionista recepcionista = new Recepcionista(); recepcionista.setId(1L);
         when(repoRecepcionistas.findRecepcionistaByUsuarioAuthId("auth")).thenReturn(Optional.of(recepcionista));
@@ -55,8 +77,9 @@ class AdmisionRecepcionServiceTest {
         AdmisionRecepcion admision = new AdmisionRecepcion(); admision.setId(7L); admision.setConsultaMedica(consulta);
         admision.setSesionRecepcion(sesion); admision.setEstado(EstadoAdmisionRecepcion.INICIADA);
         FormularioTriageRecepcionRequest formulario = new FormularioTriageRecepcionRequest(
-                "dolor abdominal", List.of("dolor"), "hace dos horas", "empeora", 7,
-                "abdomen", false, List.of(), List.of(), List.of(), List.of(), "no aplica", "");
+                "dolor abdominal", List.of(), "hace dos horas", "empeora",
+                List.of(new DolorReportadoRequest("abdomen", 7)), false,
+                List.of(), List.of(), List.of(), List.of(), "no aplica", "");
         TriageResultDTO resultado = new TriageResultDTO("dolor abdominal", List.of("dolor"), "dos horas",
                 "empeora", 7, List.of(), List.of(), List.of(), List.of(), "no aplica", "", 3, false, "evaluar");
         when(repoAdmisionesRecepcion.findByIdAndSesionRecepcionRecepcionistaUsuarioAuthId(7L, "auth"))
@@ -151,7 +174,7 @@ class AdmisionRecepcionServiceTest {
         var request = new com.pretriage.backend.controllers.dtos.CrearAdmisionRecepcionRequest(
                 6L, "30111222", "Ana", "Perez", java.time.LocalDate.of(1990, 5, 10),
                 Genero.FEMENINO, "+54 11 5555-0101", "", "Calle E2E", "1234", "2",
-                "C1000", "CLINICA_MEDICA");
+                "Ciudad Autonoma de Buenos Aires", "Buenos Aires", "C1000", "CLINICA_MEDICA");
         when(repoSesionesRecepcion.findByIdAndRecepcionistaUsuarioAuthId(6L, "auth"))
                 .thenReturn(Optional.of(sesion));
         when(repoPacientes.findByNumeroDocumentoOrUsuarioAuthNumeroDocumento("30111222", "30111222"))
@@ -179,6 +202,8 @@ class AdmisionRecepcionServiceTest {
         assertNull(paciente.getCorreoElectronico());
         assertEquals("Calle E2E", paciente.getDireccion().getCalle());
         assertEquals("1234", paciente.getDireccion().getAltura());
+        assertEquals("Ciudad Autonoma de Buenos Aires", paciente.getDireccion().getCiudad());
+        assertEquals("Buenos Aires", paciente.getDireccion().getProvincia());
         assertEquals("C1000", paciente.getDireccion().getCodigoPostal());
     }
 

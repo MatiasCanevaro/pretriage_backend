@@ -9,8 +9,32 @@ AI triage collects initial symptoms and produces a structured result. It does no
 Spring AI Ollama is configured with:
 
 ```properties
-spring.ai.ollama.chat.options.model=llama3.2:3b
+spring.ai.ollama.chat.model=llama3.2:3b
+spring.ai.ollama.chat.temperature=0
+spring.ai.ollama.chat.seed=42
+spring.ai.retry.max-attempts=1
+spring.http.clients.connect-timeout=2s
+spring.http.clients.read-timeout=45s
 ```
+
+The HTTP limits apply to the auto-configured Ollama client. Reception-assisted
+triage catches provider failures and continues with its deterministic fallback;
+it must not remain pending indefinitely when Ollama is unavailable. Only one
+provider attempt is made; the default exponential retry sequence is intentionally
+disabled.
+
+Reception form classification sends the generated `TriageResultDTO` JSON Schema
+to Ollama as a provider-native structured-output constraint and validates the
+response against that same schema. This prevents semantically valid answers with
+renamed or nested fields from being discarded and replaced by the conservative
+fallback.
+
+Classification uses temperature `0` and a fixed seed so identical forms are
+reproducible. A deterministic coherence guard also caps an explicitly low-risk
+form at level `2` when pain is `0..3`, evolution is improving, fever is absent,
+and no alarm signs were recorded. Reception forms may report multiple pains; the
+classifier evaluates all of them and uses the highest intensity for the structured
+result and deterministic rules. The same guard applies to the provider fallback.
 
 ## Chat Flow
 

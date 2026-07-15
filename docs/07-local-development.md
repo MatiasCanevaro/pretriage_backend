@@ -12,10 +12,16 @@
 ## Important Properties
 
 ```properties
-spring.ai.ollama.chat.options.model=llama3.2:3b
+spring.ai.ollama.chat.model=llama3.2:3b
+spring.ai.ollama.chat.temperature=0
+spring.ai.ollama.chat.seed=42
 pretriage.estimacion.minutos-promedio-atencion=10
 spring.config.import=optional:file:.env[.properties]
+spring.jpa.hibernate.ddl-auto=${JPA_DDL_AUTO:update}
 ```
+
+Local data is preserved across backend restarts by default. Set
+`JPA_DDL_AUTO=create` explicitly only when a clean schema is intended.
 
 ## Compile
 
