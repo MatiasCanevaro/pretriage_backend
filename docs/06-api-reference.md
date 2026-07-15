@@ -128,6 +128,15 @@ POST /api/paciente/consulta/llegue
 
 ## Doctor
 
+### Recover Current Session
+
+```http
+GET /api/medico/sesiones/actual
+```
+
+Returns the authenticated doctor's active or paused session together with the
+currently called or in-attention consultation. Both values are nullable.
+
 ### Start Session
 
 ```http

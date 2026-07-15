@@ -30,6 +30,11 @@ public class MedicoController {
         return ResponseEntity.ok(atencionMedicoService.obtenerAsignaciones(jwt.getSubject()));
     }
 
+    @GetMapping("/api/medico/sesiones/actual")
+    public ResponseEntity<SesionMedicaActualDTO> obtenerSesionActual(@AuthenticationPrincipal Jwt jwt) {
+        return ResponseEntity.ok(atencionMedicoService.obtenerSesionActual(jwt.getSubject()));
+    }
+
     @GetMapping("/api/hospitales/{hospitalId}/salas")
     public ResponseEntity<List<SalaDTO>> obtenerSalas(
             @PathVariable Long hospitalId,

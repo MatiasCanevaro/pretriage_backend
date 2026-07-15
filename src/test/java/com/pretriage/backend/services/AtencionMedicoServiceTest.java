@@ -2,6 +2,7 @@ package com.pretriage.backend.services;
 
 import com.pretriage.backend.controllers.dtos.ConsultaLlamadaDTO;
 import com.pretriage.backend.controllers.dtos.EstudioClinicoDTO;
+import com.pretriage.backend.controllers.dtos.SesionMedicaActualDTO;
 import com.pretriage.backend.model.consultas.*;
 import com.pretriage.backend.model.hospitales.EspecialidadMedica;
 import com.pretriage.backend.model.hospitales.Hospital;
@@ -96,6 +97,51 @@ class AtencionMedicoServiceTest {
         assertEquals(EstadoConsulta.EN_COLA, resultado.getFirst().getEstadoConsulta());
         assertNull(resultado.getFirst().getSalaId());
         assertNull(resultado.getFirst().getNombreSala());
+    }
+
+    @Test
+    void recuperaLaSesionYLaConsultaActualDelMedico() {
+        Medico medico = new Medico();
+        medico.setId(10L);
+        Hospital hospital = new Hospital();
+        hospital.setId(20L);
+        EspecialidadMedica especialidad = new EspecialidadMedica();
+        especialidad.setCodigo("CLINICA_MEDICA");
+        Sala sala = new Sala();
+        sala.setId(30L);
+        sala.setNombre("Consultorio 1");
+        Paciente paciente = new Paciente();
+        paciente.setId(40L);
+        ConsultaMedica consulta = new ConsultaMedica();
+        consulta.setId(50L);
+        consulta.setPaciente(paciente);
+        consulta.setMedico(medico);
+        consulta.setSala(sala);
+        consulta.setEstadoConsulta(EstadoConsulta.LLAMADO);
+        EntradaCola entrada = new EntradaCola();
+        entrada.setConsultaMedica(consulta);
+        SesionAtencionMedica sesion = new SesionAtencionMedica();
+        sesion.setId(60L);
+        sesion.setMedico(medico);
+        sesion.setHospital(hospital);
+        sesion.setEspecialidad(especialidad);
+        sesion.setSala(sala);
+        sesion.setEstado(EstadoSesionMedica.ACTIVA);
+
+        when(repoMedico.findByUsuarioAuthId("auth0")).thenReturn(Optional.of(medico));
+        when(repoSesionesAtencionMedica.findFirstByMedicoUsuarioAuthIdAndEstadoInOrderByFechaHoraInicioDesc(
+                "auth0", List.of(EstadoSesionMedica.ACTIVA, EstadoSesionMedica.PAUSADA)))
+                .thenReturn(Optional.of(sesion));
+        when(repoEntradasCola.findFirstByConsultaMedicaMedicoUsuarioAuthIdAndEstadoInOrderByFechaHoraLlamadoDesc(
+                "auth0", List.of(EstadoEntradaCola.LLAMADO, EstadoEntradaCola.EN_ATENCION)))
+                .thenReturn(Optional.of(entrada));
+
+        SesionMedicaActualDTO resultado = service.obtenerSesionActual("auth0");
+
+        assertEquals(60L, resultado.getSesion().getId());
+        assertEquals(EstadoSesionMedica.ACTIVA, resultado.getSesion().getEstado());
+        assertEquals(50L, resultado.getConsultaActual().getConsultaId());
+        assertEquals(EstadoConsulta.LLAMADO, resultado.getConsultaActual().getEstadoConsulta());
     }
 
     @Test

@@ -5,7 +5,7 @@
 ```mermaid
 flowchart TD
     A[Doctor logs in] --> B[Sees assigned hospitals and specialties]
-    B --> C[Chooses hospital and room]
+    B --> C[Chooses specialty and room in the selected hospital]
     C --> D[Starts active session]
     D --> E[Calls next patient from queue]
     E --> F{Patient responds?}
@@ -23,6 +23,8 @@ flowchart TD
 - To change specialty, close the current session and start another.
 - A room can be used by one doctor at a time.
 - A doctor can have one active or paused session at a time.
+- After a reload or new login, the active or paused session and any `LLAMADO` or
+  `EN_ATENCION` consultation are recovered from the backend.
 - A paused session continues reserving the doctor and room, although it does not count as estimation capacity.
 - A doctor cannot pause or close a session while a consultation is LLAMADO or EN_ATENCION.
 - A doctor cannot call another patient while a previous patient is still LLAMADO or EN_ATENCION.
@@ -65,6 +67,8 @@ When attention finishes:
 
 ## Queue Visibility And History
 
+- `GET /api/medico/sesiones/actual` returns the authenticated doctor's active or
+  paused session and their currently called or in-attention consultation, if present.
 - `GET /api/medico/sesiones/{sesionId}/pacientes-disponibles` lists ordered `EN_COLA` patients for the session hospital and specialty.
 - `GET /api/medico/atenciones` returns the authenticated doctor's historical attention records.
 

@@ -6,6 +6,7 @@ import com.pretriage.backend.controllers.dtos.ConsultaLlamadaDTO;
 import com.pretriage.backend.controllers.dtos.EstudioClinicoDTO;
 import com.pretriage.backend.controllers.dtos.SalaDTO;
 import com.pretriage.backend.controllers.dtos.SesionAtencionMedicaDTO;
+import com.pretriage.backend.controllers.dtos.SesionMedicaActualDTO;
 import com.pretriage.backend.exceptions.ArchivoS3Exception;
 import com.pretriage.backend.model.consultas.*;
 import com.pretriage.backend.model.hospitales.EspecialidadMedica;
@@ -61,6 +62,23 @@ public class AtencionMedicoService {
                 .map(this::mapearSala)
                 .toList();
     }
+
+    public SesionMedicaActualDTO obtenerSesionActual(String auth0Id) {
+        obtenerMedico(auth0Id);
+        SesionAtencionMedicaDTO sesion = repoSesionesAtencionMedica
+                .findFirstByMedicoUsuarioAuthIdAndEstadoInOrderByFechaHoraInicioDesc(
+                        auth0Id, SESIONES_RESERVAN_RECURSOS)
+                .map(this::mapearSesion)
+                .orElse(null);
+        ConsultaLlamadaDTO consultaActual = repoEntradasCola
+                .findFirstByConsultaMedicaMedicoUsuarioAuthIdAndEstadoInOrderByFechaHoraLlamadoDesc(
+                        auth0Id, List.of(EstadoEntradaCola.LLAMADO, EstadoEntradaCola.EN_ATENCION))
+                .map(EntradaCola::getConsultaMedica)
+                .map(this::mapearConsultaLlamada)
+                .orElse(null);
+        return new SesionMedicaActualDTO(sesion, consultaActual);
+    }
+
     public List<ConsultaLlamadaDTO> listarPacientesDisponibles(String auth0Id, Long sesionId) {
         SesionAtencionMedica sesion = obtenerSesionActiva(auth0Id, sesionId);
         GestorDeCola gestor = obtenerGestorDeCola(sesion);
