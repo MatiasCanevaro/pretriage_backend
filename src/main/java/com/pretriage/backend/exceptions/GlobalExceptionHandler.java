@@ -18,7 +18,8 @@ public class GlobalExceptionHandler {
             NoSePudoCrearUsuario.class, NoSePudoEstimarElHorarioDeAtencion.class, ChatFinalizadoException.class,
             NoSePudoObtenerHospital.class, ObraSocialYaExisteException.class, ObraSocialNoExisteException.class,
             RecepcionistaNoExisteException.class,
-            NoSuchElementException.class, IllegalStateException.class})
+            NoSuchElementException.class, IllegalStateException.class,
+            ChatNoEncontradoException.class})
     public ResponseEntity<Map<String, String>> handleExceptions(
             RuntimeException e) {
 
@@ -42,6 +43,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AtencionEnCursoException.class)
     public ResponseEntity<Map<String, String>> handleConflict(RuntimeException e) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(Map.of("error", e.getMessage()));
+    }
+
+    @ExceptionHandler({ProveedorIaException.class, ArchivoS3Exception.class})
+    public ResponseEntity<Map<String, String>> handleProviderException(RuntimeException e) {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(Map.of("error", e.getMessage()));
     }
 
