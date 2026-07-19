@@ -25,16 +25,19 @@ class AtencionMedicoServiceTest {
     @Mock RepoMedico repoMedico;
     @Mock RepoHospitales repoHospitales;
     @Mock RepoEspecialidadesMedicas repoEspecialidadesMedicas;
-    @Mock RepoSalas repoSalas;
     @Mock RepoAsignacionesMedicoHospital repoAsignacionesMedicoHospital;
     @Mock RepoSesionesAtencionMedica repoSesionesAtencionMedica;
     @Mock RepoGestoresDeColas repoGestoresDeColas;
     @Mock RepoEntradasCola repoEntradasCola;
     @Mock RepoConsultasMedicas repoConsultasMedicas;
     @Mock RepoAtencionesMedicas repoAtencionesMedicas;
+    @Mock RepoEstudiosClinicos repoEstudiosClinicos;
+
     @Mock PacienteService pacienteService;
     @InjectMocks AtencionMedicoService service;
-
+    @Mock UsuariosService usuariosService;
+    @Mock SalaService salaService;
+    @Mock GestionDeArchivosService gestionDeArchivosService;
 
     @Test
     void noPermitePausarUnaSesionConConsultaTomada() {

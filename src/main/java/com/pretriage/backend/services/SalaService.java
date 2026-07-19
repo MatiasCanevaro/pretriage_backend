@@ -27,6 +27,8 @@ public class SalaService {
 
     private final RecepcionistaService recepcionistaService;
 
+
+    @Transactional
     public List<SalaDTO> obtenerSalas(Long hospitalId, String codigoEspecialidad) {
         return repoSalas.findByHospitalIdAndEspecialidadCodigoAndActivaTrue(hospitalId, codigoEspecialidad).stream()
                 .map(this::mapearSala)
@@ -34,7 +36,7 @@ public class SalaService {
     }
 
     public Sala obtenerSala(Long salaId){
-        return repoSalas.findById(salaId)
+        return repoSalas.findByIdAndActivaTrue(salaId)
                 .orElseThrow(() -> new NoSuchElementException("Sala inexistente"));
     }
 
@@ -57,6 +59,14 @@ public class SalaService {
         this.repoSalas.save(sala);
     }
 
+    public void eliminarSalaAdmin(String auth0Id, Long salaId){
+        this.verificarSiEsAdmin(auth0Id);
+
+        Sala sala = this.obtenerSala(salaId);
+
+        sala.setActiva(false);
+        this.repoSalas.save(sala);
+    }
 
     private SalaDTO mapearSala(Sala sala) {
         SalaDTO dto = new SalaDTO();

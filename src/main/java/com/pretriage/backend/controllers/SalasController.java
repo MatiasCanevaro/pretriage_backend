@@ -31,5 +31,13 @@ public class SalasController {
         return ResponseEntity.ok(Map.of("message", "Sala creada exitosamente"));
     }
 
+    @DeleteMapping("/salas/{salaId}")
+    public ResponseEntity<Map<String, String>> eliminarSalaAdmin(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable("salaId") Long salaId
+    ){
+        salaService.eliminarSalaAdmin(jwt.getSubject(), salaId);
 
+        return ResponseEntity.ok(Map.of("meesage", "Sala eliminada con éxito"));
+    }
 }

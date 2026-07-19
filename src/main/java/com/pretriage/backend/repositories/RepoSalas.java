@@ -14,4 +14,6 @@ public interface RepoSalas extends JpaRepository<Sala, Long> {
 
 
     Optional<Sala> findByNombre(String nombreSalaABuscar);
+
+    Optional<Sala> findByIdAndActivaTrue(Long idSala);
 }
