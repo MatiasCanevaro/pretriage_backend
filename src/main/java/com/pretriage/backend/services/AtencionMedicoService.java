@@ -37,7 +37,7 @@ public class AtencionMedicoService {
     private final RepoMedico repoMedico;
     private final RepoHospitales repoHospitales;
     private final RepoEspecialidadesMedicas repoEspecialidadesMedicas;
-    private final RepoSalas repoSalas;
+
     private final RepoAsignacionesMedicoHospital repoAsignacionesMedicoHospital;
     private final RepoSesionesAtencionMedica repoSesionesAtencionMedica;
     private final RepoGestoresDeColas repoGestoresDeColas;
@@ -49,6 +49,7 @@ public class AtencionMedicoService {
     private final PacienteService pacienteService;
     private final GestionDeArchivosService gestionDeArchivosService;
     private final UsuariosService usuariosService;
+    private final SalaService salaService;
 
     public List<AsignacionMedicoDTO> obtenerAsignaciones(String auth0Id) {
         Medico medico = obtenerMedico(auth0Id);
@@ -60,9 +61,7 @@ public class AtencionMedicoService {
     public List<SalaDTO> obtenerSalas(Long hospitalId, String codigoEspecialidad, String auth0Id) {
         usuariosService.validarSiEsUsuarioValido(auth0Id);
 
-        return repoSalas.findByHospitalIdAndEspecialidadCodigoAndActivaTrue(hospitalId, codigoEspecialidad).stream()
-                .map(this::mapearSala)
-                .toList();
+        return salaService.obtenerSalas(hospitalId, codigoEspecialidad);
     }
 
     public List<ConsultaLlamadaDTO> listarPacientesDisponibles(String auth0Id, Long sesionId) {
@@ -117,8 +116,7 @@ public class AtencionMedicoService {
                 .orElseThrow(() -> new NoSuchElementException("Hospital inexistente"));
         EspecialidadMedica especialidad = repoEspecialidadesMedicas.findByCodigo(codigoEspecialidad)
                 .orElseThrow(() -> new NoSuchElementException("Especialidad medica inexistente"));
-        Sala sala = repoSalas.findById(salaId)
-                .orElseThrow(() -> new NoSuchElementException("Sala inexistente"));
+        Sala sala = salaService.obtenerSala(salaId);
 
         validarAsignacion(medico, hospital, especialidad);
         validarSala(sala, hospital, especialidad);
@@ -354,12 +352,7 @@ public class AtencionMedicoService {
         return dto;
     }
 
-    private SalaDTO mapearSala(Sala sala) {
-        SalaDTO dto = new SalaDTO();
-        dto.setId(sala.getId());
-        dto.setNombre(sala.getNombre());
-        return dto;
-    }
+
 
 
     private AtencionMedicaDTO mapearAtencion(AtencionMedica atencion) {
