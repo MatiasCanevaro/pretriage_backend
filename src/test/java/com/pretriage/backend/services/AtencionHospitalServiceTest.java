@@ -167,6 +167,7 @@ public class AtencionHospitalServiceTest {
 
     @Test
     void hospitalesCercanosSeFiltranPorEspecialidadManteniendoElOrdenDeDistancia(){
+        String auth0idPaciente = "auth0|Paciente";
         String codigoEspecialidad = "PEDIATRIA";
         EspecialidadMedica especialidad = crearEspecialidad(30L, codigoEspecialidad);
         Hospital hospitalDisponible = crearHospital(20L, "hospital2", especialidad);
@@ -179,7 +180,10 @@ public class AtencionHospitalServiceTest {
         when(repoHospitales.findByPlaceIdInAndEspecialidadesCodigo(List.of("hospital1", "hospital2"), codigoEspecialidad))
                 .thenReturn(List.of(hospitalDisponible));
 
-        List<HospitalCercanoDTO> hospitales = service.buscarHospitalesCercanos(-34.6, -58.4, codigoEspecialidad);
+        when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0idPaciente))
+                .thenReturn(Optional.of(new Paciente()));
+
+        List<HospitalCercanoDTO> hospitales = service.buscarHospitalesCercanos(-34.6, -58.4, codigoEspecialidad,auth0idPaciente);
 
         assertEquals(1, hospitales.size());
         assertEquals("hospital2", hospitales.getFirst().getPlaceId());

@@ -27,9 +27,11 @@ public class HospitalController {
     public ResponseEntity<List<HospitalCercanoDTO>> obtenerHospitalesCercanos(
             @RequestParam Double latitud,
             @RequestParam Double longitud,
-            @RequestParam String codigoEspecialidad
+            @RequestParam String codigoEspecialidad,
+            @AuthenticationPrincipal Jwt jwt
     ){
-        return ResponseEntity.ok(atencionHospitalService.buscarHospitalesCercanos(latitud, longitud, codigoEspecialidad));
+        return ResponseEntity.ok(atencionHospitalService
+                .buscarHospitalesCercanos(latitud, longitud, codigoEspecialidad, jwt.getSubject()));
     }
 
     @PostMapping("/api/atencion/hospital")

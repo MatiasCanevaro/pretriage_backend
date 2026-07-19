@@ -66,7 +66,9 @@ public class AtencionHospitalService {
     private final PacienteService pacienteService;
     private final GooglePlacesService googlePlacesService;
 
-    public List<HospitalCercanoDTO> buscarHospitalesCercanos(Double latitud, Double longitud, String codigoEspecialidad) {
+    public List<HospitalCercanoDTO> buscarHospitalesCercanos(Double latitud, Double longitud, String codigoEspecialidad, String auth0Id) {
+        this.obtenerPaciente(auth0Id);//valida si es un paciente válido
+
         EspecialidadMedica especialidad = obtenerEspecialidad(codigoEspecialidad);
         List<HospitalCercanoDTO> hospitalesCercanos = googlePlacesService.buscarHospitales(latitud, longitud);
         List<String> placeIds = hospitalesCercanos.stream()
