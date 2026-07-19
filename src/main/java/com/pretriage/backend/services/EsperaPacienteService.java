@@ -114,13 +114,7 @@ public class EsperaPacienteService {
                 TipoPausaCola.ATRASADO_CONFIRMADO,
                 LocalDateTime.now());
 
-        vencidas.forEach(entrada -> {
-            entrada.setEstado(EstadoEntradaCola.CANCELADA);
-            ConsultaMedica consulta = entrada.getConsultaMedica();
-            consulta.setEstadoConsulta(EstadoConsulta.CANCELADA);
-            repoConsultasMedicas.save(consulta);
-            repoEntradasCola.save(entrada);
-        });
+        cancelarEntradas(vencidas);
     }
 
 
@@ -130,6 +124,7 @@ public class EsperaPacienteService {
         List<EntradaCola> vencidas = repoEntradasCola.findByEstadoAndFechaHoraSalidaTemporalBefore(
                 EstadoEntradaCola.EN_ESPERA,
                 LocalDateTime.now().minusMinutes(MINUTOS_MAXIMOS_EN_ESPERA));
+
         cancelarEntradas(vencidas);
     }
 

@@ -13,10 +13,6 @@ public class TiempoEstimadoAtencionResponse {
 
     private LocalDateTime fechaHoraAtencionEstimada;
 
-    private LocalDateTime fechaHoraAtencionEstimadaDesde;
-    private LocalDateTime fechaHoraAtencionEstimadaHasta;
-
-
     private boolean hayMedicosActivos;
 
     private int medicosActivos;
