@@ -48,6 +48,7 @@ public class AtencionMedicoService {
 
     private final PacienteService pacienteService;
     private final GestionDeArchivosService gestionDeArchivosService;
+    private final UsuariosService usuariosService;
 
     public List<AsignacionMedicoDTO> obtenerAsignaciones(String auth0Id) {
         Medico medico = obtenerMedico(auth0Id);
@@ -56,11 +57,14 @@ public class AtencionMedicoService {
                 .toList();
     }
 
-    public List<SalaDTO> obtenerSalas(Long hospitalId, String codigoEspecialidad) {
+    public List<SalaDTO> obtenerSalas(Long hospitalId, String codigoEspecialidad, String auth0Id) {
+        usuariosService.validarSiEsUsuarioValido(auth0Id);
+
         return repoSalas.findByHospitalIdAndEspecialidadCodigoAndActivaTrue(hospitalId, codigoEspecialidad).stream()
                 .map(this::mapearSala)
                 .toList();
     }
+
     public List<ConsultaLlamadaDTO> listarPacientesDisponibles(String auth0Id, Long sesionId) {
         SesionAtencionMedica sesion = obtenerSesionActiva(auth0Id, sesionId);
         GestorDeCola gestor = obtenerGestorDeCola(sesion);

@@ -33,8 +33,11 @@ public class MedicoController {
     @GetMapping("/api/hospitales/{hospitalId}/salas")
     public ResponseEntity<List<SalaDTO>> obtenerSalas(
             @PathVariable Long hospitalId,
-            @RequestParam String codigoEspecialidad) {
-        return ResponseEntity.ok(atencionMedicoService.obtenerSalas(hospitalId, codigoEspecialidad));
+            @RequestParam String codigoEspecialidad,
+            @AuthenticationPrincipal Jwt jwt) {
+        String auth0Id = jwt.getSubject();
+
+        return ResponseEntity.ok(atencionMedicoService.obtenerSalas(hospitalId, codigoEspecialidad,auth0Id));
     }
 
     @PostMapping("/api/medico/sesiones")
