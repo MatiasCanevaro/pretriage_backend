@@ -40,30 +40,12 @@ public class GestorDeCola {
     @OneToMany(mappedBy = "gestorDeCola")
     private List<EntradaCola> entradas;
 
-    @Value("${tiempo.estimado.atencion-triage.segundos}")
-    private long TIEMPO_ESTIMADO_DE_ATENCION_TRIAGE; //en segundos
 
     public GestorDeCola (){
         this.consultasEnEspera = new ArrayList<>();
         this.entradas = new ArrayList<>();
     }
 
-
-    public Optional<LocalDateTime> calcularTiempoDeAtencionPara(ConsultaMedica consultaMedica) {
-
-        reordenarColaPorPrioridad();
-
-        int posicion = consultasEnEspera.indexOf(consultaMedica);
-
-        if (posicion == -1) {
-            return Optional.empty();
-        }
-
-        return Optional.of(
-                LocalDateTime.now()
-                        .plusSeconds(posicion * TIEMPO_ESTIMADO_DE_ATENCION_TRIAGE)// asumiendo que las cosultas son siempre a futuro
-        );
-    }
 
     private void reordenarColaPorPrioridad() {
 

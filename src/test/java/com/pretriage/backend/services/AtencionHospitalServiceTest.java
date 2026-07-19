@@ -135,7 +135,6 @@ public class AtencionHospitalServiceTest {
         gestorDeCola.setId(40L);
         gestorDeCola.setHospital(hospital);
         gestorDeCola.setEspecialidad(especialidad);
-        ReflectionTestUtils.setField(gestorDeCola, "TIEMPO_ESTIMADO_DE_ATENCION_TRIAGE", 600L);
         gestorDeCola.agregarConsultaMedicaALaCola(consultaCriticaPrevia);
 
         when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id)).thenReturn(Optional.of(paciente));
