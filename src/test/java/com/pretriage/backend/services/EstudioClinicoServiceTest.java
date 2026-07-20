@@ -1,7 +1,6 @@
 package com.pretriage.backend.services;
 
 import com.pretriage.backend.controllers.dtos.EstudioClinicoDTO;
-import com.pretriage.backend.exceptions.ArchivoS3Exception;
 import com.pretriage.backend.exceptions.PacienteNoExisteException;
 import com.pretriage.backend.model.consultas.EstudioClinico;
 import com.pretriage.backend.model.personas.Paciente;
@@ -14,15 +13,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.multipart.MultipartFile;
-import software.amazon.awssdk.awscore.exception.AwsServiceException;
-import software.amazon.awssdk.core.exception.SdkClientException;
-import software.amazon.awssdk.core.sync.RequestBody;
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
-import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-import software.amazon.awssdk.services.s3.model.S3Exception;
 
-import java.io.IOException;
+import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 
@@ -34,7 +26,7 @@ import static org.mockito.Mockito.*;
 public class EstudioClinicoServiceTest {
 
     @Mock
-    private S3Client s3;
+    private GestionDeArchivosService gestionDeArchivosService;
 
     @Mock
     private RepoEstudiosClinicos repoEstudiosClinicos;
@@ -75,7 +67,7 @@ public class EstudioClinicoServiceTest {
 
         estudioClinicoService.subirArchivoEstudioClinico(AUTH0_ID, multipartFile, estudioClinicoDTO);
 
-        verify(s3).putObject(any(PutObjectRequest.class), any(RequestBody.class));// se guarda en s3
+        verify(gestionDeArchivosService).subirArchivo(any(MultipartFile.class), eq(FILE_NAME));// se guarda en s3
 
         verify(repoEstudiosClinicos).save(any(EstudioClinico.class));// se guarda metadata en la db
     }
@@ -89,7 +81,7 @@ public class EstudioClinicoServiceTest {
 
         assertEquals("El archivo no puede ser nulo", exception.getMessage());
         verify(pacienteService, never()).obtenerPacienteConUsuarioAuthId(any());
-        verify(s3, never()).putObject(any(PutObjectRequest.class), any(RequestBody.class));
+        verify(gestionDeArchivosService,never()).subirArchivo(any(MultipartFile.class), eq(FILE_NAME));// se guarda en s3
         verify(repoEstudiosClinicos, never()).save(any(EstudioClinico.class));
     }
 
@@ -102,27 +94,10 @@ public class EstudioClinicoServiceTest {
                 () -> estudioClinicoService.subirArchivoEstudioClinico(AUTH0_ID, multipartFile, estudioClinicoDTO)
         );
 
-        verify(s3, never()).putObject(any(PutObjectRequest.class), any(RequestBody.class));
+        verify(gestionDeArchivosService, never()).subirArchivo(any(MultipartFile.class), eq(FILE_NAME));// se guarda en s3
         verify(repoEstudiosClinicos, never()).save(any(EstudioClinico.class));
     }
 
-    @Test
-    void subirArchivoEstudioClinico_IOException_ThrowsArchivoS3Exception() throws IOException {
-        when(pacienteService.obtenerPacienteConUsuarioAuthId(AUTH0_ID)).thenReturn(Optional.of(paciente));
-        
-        MultipartFile fileWithIOException = mock(MultipartFile.class);
-        when(fileWithIOException.getOriginalFilename()).thenReturn(FILE_NAME);
-        when(fileWithIOException.getBytes()).thenThrow(new IOException("Test IO exception"));
-
-        ArchivoS3Exception exception = assertThrows(
-                ArchivoS3Exception.class,
-                () -> estudioClinicoService.subirArchivoEstudioClinico(AUTH0_ID, fileWithIOException, estudioClinicoDTO)
-        );
-
-        assertEquals("No se pudo subir el archivo a s3", exception.getMessage());
-        verify(pacienteService).obtenerPacienteConUsuarioAuthId(AUTH0_ID);
-        verify(repoEstudiosClinicos, never()).save(any(EstudioClinico.class));
-    }
 
     @Test
     void eliminarArchivoEstudioClinico_Success() {
@@ -135,7 +110,7 @@ public class EstudioClinicoServiceTest {
 
         estudioClinicoService.eliminarArchivoEstudioClinico(AUTH0_ID,idEstudio);
 
-        verify(s3).deleteObject(any(DeleteObjectRequest.class));
+        verify(gestionDeArchivosService).eliminarArchivo(any(String.class));
         verify(estudioClinicoMock).setActivo(false);
         verify(repoEstudiosClinicos).save(estudioClinicoMock);
     }
@@ -150,7 +125,7 @@ public class EstudioClinicoServiceTest {
         assertThrows(PacienteNoExisteException.class,
                 ()-> estudioClinicoService.eliminarArchivoEstudioClinico(AUTH0_ID,idEstudio));
 
-        verify(s3, never()).deleteObject(any(DeleteObjectRequest.class));
+        verify(gestionDeArchivosService, never()).eliminarArchivo(any(String.class));
         verify(estudioClinicoMock, never()).setActivo(false);
         verify(repoEstudiosClinicos, never()).save(estudioClinicoMock);
     }
@@ -166,7 +141,7 @@ public class EstudioClinicoServiceTest {
         assertThrows(NoSuchElementException.class,
                 ()-> estudioClinicoService.eliminarArchivoEstudioClinico(AUTH0_ID,idEstudio));
 
-        verify(s3, never()).deleteObject(any(DeleteObjectRequest.class));
+        verify(gestionDeArchivosService, never()).eliminarArchivo(any(String.class));
         verify(estudioClinicoMock, never()).setActivo(false);
         verify(repoEstudiosClinicos, never()).save(estudioClinicoMock);
     }
@@ -184,9 +159,34 @@ public class EstudioClinicoServiceTest {
 
         assertEquals("No se encontra cargada la ruta del archivo", exception.getMessage());
 
-        verify(s3, never()).deleteObject(any(DeleteObjectRequest.class));
+        verify(gestionDeArchivosService, never()).eliminarArchivo(any(String.class));
         verify(estudioClinicoMock, never()).setActivo(false);
         verify(repoEstudiosClinicos, never()).save(estudioClinicoMock);
+    }
+
+    @Test
+    void obtenerTodosEstudiosClinicos_Success() {
+        EstudioClinico estudio1 = new EstudioClinico();
+        EstudioClinico estudio2 = new EstudioClinico();
+
+        estudio1.setNombreArchivo(FILE_NAME);
+        estudio2.setNombreArchivo('2'+FILE_NAME);
+
+        estudio1.setPaciente(paciente);
+        estudio2.setPaciente(paciente);
+
+        estudio1.setActivo(true);
+        estudio2.setActivo(true);
+
+        when(pacienteService.obtenerPacienteConUsuarioAuthId(AUTH0_ID)).thenReturn(Optional.of(paciente));
+        when(repoEstudiosClinicos.findAllByPacienteAndActivoTrue(paciente))
+                .thenReturn(List.of(estudio1, estudio2));
+
+        List<EstudioClinicoDTO> estudiosResult = estudioClinicoService.obtenerTodosEstudiosClinicos(AUTH0_ID);
+
+        assertEquals(2, estudiosResult.size());
+        assertEquals(estudio1.getNombreArchivo(), estudiosResult.get(0).getNombreArchivo());
+        assertEquals(estudio2.getNombreArchivo(), estudiosResult.get(1).getNombreArchivo());
     }
 
 }
