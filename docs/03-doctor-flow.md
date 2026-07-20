@@ -75,4 +75,4 @@ When attending patients, doctors can access their medical records:
 - `GET /api/medico/pacientes/{pacienteId}/historial-clinico` retrieves all medical records (PDFs, images) for a specific patient.
 - `GET /api/medico/pacientes/{pacienteId}/historial-clinico/{estudioId}/archivo` downloads or previews a specific medical record file.
 - `GET /api/medico/pacientes/{pacienteId}/historial-clinico/{estudioId}/reporte` retrieves structured information about a specific medical record.
-- `GET /api/medico/pacientes/{pacienteId}/ultimos-reportes` gets the most recent medical records (typically last 5-10).
+- `GET /api/medico/pacientes/{pacienteId}/ultimos-reportes` gets the most recent medical records for quick triage reference.

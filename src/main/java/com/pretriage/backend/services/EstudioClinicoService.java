@@ -47,9 +47,11 @@ public class EstudioClinicoService {
         Paciente paciente = this.validadYObtenerPacienteConAuth0(auth0Id);
 
         String fileName = file.getOriginalFilename();
+        if(fileName == null){
+            throw new IllegalArgumentException("El nombre del archivo no puede ser nulo");
+        }
 
         this.gestionDeArchivosService.subirArchivo(file, fileName);
-
 
         String fileExtension = fileName.split("\\.")[1];
 
@@ -58,7 +60,7 @@ public class EstudioClinicoService {
         estudioClinico.setExtensionArchivo(fileExtension);
         estudioClinico.setNombreArchivo(fileName);
         estudioClinico.setPaciente(paciente);
-        estudioClinico.setRutaArchivo("/"+fileName);
+        estudioClinico.setRutaArchivo(fileName);
         estudioClinico.setTamanoArchivo(file.getSize());
 
         repoEstudiosClinicos.save(estudioClinico);
