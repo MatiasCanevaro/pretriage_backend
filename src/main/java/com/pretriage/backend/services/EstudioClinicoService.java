@@ -12,12 +12,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 import javax.swing.text.html.Option;
 import java.io.IOException;
 import java.time.LocalDateTime;
-import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Optional;
 
 @Service
@@ -70,6 +71,38 @@ public class EstudioClinicoService {
 
         repoEstudiosClinicos.save(estudioClinico);
 
+    }
+
+    public void eliminarArchivoEstudioClinico(String auth0Id, Long idEstudio) {
+        Optional<Paciente> opPaciente = pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id); // valido que sea paciente y usuario válido
+
+        if(opPaciente.isEmpty()){
+            throw new PacienteNoExisteException();
+        }
+
+        Optional<EstudioClinico> opEstudioClinico = repoEstudiosClinicos.findById(idEstudio);
+        if(opEstudioClinico.isEmpty()){
+            throw new NoSuchElementException("No se encontro el estudio clinico con id: " + idEstudio);
+        }
+        EstudioClinico estudioAEliminar = opEstudioClinico.get();
+
+        String rutaArchivoAEliminar = estudioAEliminar.getRutaArchivo();
+
+        if(rutaArchivoAEliminar == null){
+            throw new IllegalArgumentException("No se encontra cargada la ruta del archivo");
+        }
+
+        //primero intento borrar de s3
+            // si falla no llega a hacer el borrado lógico, como si no hubiera pasado nada
+        DeleteObjectRequest deleteObjectRequest = DeleteObjectRequest.builder()
+                .bucket(this.BucketName)
+                .key(rutaArchivoAEliminar)
+                .build();
+
+        this.s3.deleteObject(deleteObjectRequest);
+
+        estudioAEliminar.setActivo(false); // borrado lógico
+        repoEstudiosClinicos.save(estudioAEliminar);
     }
 
     private EstudioClinico mappearAEtudioClinico(EstudioClinicoDTO dto){

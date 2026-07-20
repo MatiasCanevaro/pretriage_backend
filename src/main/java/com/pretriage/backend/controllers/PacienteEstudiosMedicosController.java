@@ -32,7 +32,16 @@ public class PacienteEstudiosMedicosController {
         return ResponseEntity.ok(Map.of("message", "Archivo subido exitosamente"));
     }
 
-    //TODO falta agregar el endpoint para eliminar algún estudio medico
+    @DeleteMapping("/estudios/{idEstudio}")
+    public ResponseEntity<Map<String, String>> eliminarEstudioClinico(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable("idEstudio") Long idEstudio) {
+
+        estudioClinicoService.eliminarArchivoEstudioClinico(jwt.getSubject(), idEstudio);
+
+        return ResponseEntity.ok(Map.of("message", "Archivo eliminado exitosamente"));
+    }
+
     //todo falta agregar el endpoint para obtener todos los estudios medicos del paciente
     //todo falta agregar el endpoint para obtener un estudio medico por id
 

@@ -30,7 +30,10 @@ public class EstudioClinico {
 
     private String rutaArchivo;
 
+    private boolean activo;
+
     public EstudioClinico() {
         this.fechaSubida = LocalDateTime.now();
+        this.activo=true;
     }
 }
