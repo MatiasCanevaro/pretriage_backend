@@ -46,10 +46,10 @@ erDiagram
         LocalDateTime fechaSubida
         Long tamanoArchivo
         String rutaArchivo
+        boolean activo
     }
     GESTOR_DE_COLA {
         Long id
-        long TIEMPO_ESTIMADO_DE_ATENCION_TRIAGE
     }
     SESION_ATENCION_MEDICA {
         Long id
@@ -79,6 +79,8 @@ erDiagram
         String altura
         String piso
         String codigoPostal
+        String ciudad
+        String provincia
     }
     ESPECIALIDAD_MEDICA {
         Long id

@@ -246,3 +246,190 @@ Authenticated SSE stream with `tiempo-estimado` and `heartbeat` events. The pati
 ## Reception Admission
 
 See docs/09-reception-admission.md for the complete reception API and rules.
+
+## Health Insurance (Patient)
+
+### List Credentials
+
+```http
+GET /api/obrasocial/credenciales
+```
+
+Returns all health insurance credentials for the authenticated patient.
+
+### Add Credential
+
+```http
+POST /api/obrasocial/credenciales
+```
+
+Body:
+
+```json
+{
+  "numeroAfiliado": "12345678",
+  "nombreObraSocial": "OSDE",
+  "plan": "classic",
+  "fechaVencimiento": "2045-12-31"
+}
+```
+
+### Delete Credential
+
+```http
+DELETE /api/obrasocial/credenciales/{idCredencial}
+```
+
+### Update Credential
+
+```http
+PUT /api/obrasocial/credenciales/{idCredencial}
+```
+
+Body:
+
+```json
+{
+  "numeroAfiliado": "12345678",
+  "nombreObraSocial": "OSDE",
+  "plan": "classic",
+  "fechaVencimiento": "2045-12-31"
+}
+```
+
+## Health Insurance (Admin)
+
+### Add Health Insurance
+
+```http
+POST /api/obrasocial
+```
+
+Body:
+
+```json
+{
+  "nombre": "OSDE"
+}
+```
+
+### Delete Health Insurance
+
+```http
+DELETE /api/obrasocial/{idObraSocial}
+```
+
+## Health Insurance (Receptionist)
+
+### List Patient Credentials
+
+```http
+GET /api/pacientes/{idPaciente}/obrasocial/credenciales
+```
+
+### Add Patient Credential
+
+```http
+POST /api/pacientes/{idPaciente}/obrasocial/credencial
+```
+
+Body:
+
+```json
+{
+  "numeroAfiliado": "12345678",
+  "nombreObraSocial": "OSDE",
+  "plan": "classic",
+  "fechaVencimiento": "2045-12-31"
+}
+```
+
+### Delete Patient Credential
+
+```http
+DELETE /api/pacientes/{idPaciente}/obrasocial/credenciales/{idCredencial}
+```
+
+### Update Patient Credential
+
+```http
+PUT /api/pacientes/{idPaciente}/obrasocial/credenciales/{idCredencial}
+```
+
+Body:
+
+```json
+{
+  "numeroAfiliado": "12345678",
+  "nombreObraSocial": "OSDE",
+  "plan": "classic",
+  "fechaVencimiento": "2045-12-31"
+}
+```
+
+## Medical Studies (Patient)
+
+### Upload Study
+
+```http
+POST /api/estudios
+```
+
+Multipart form with file and JSON body:
+
+```json
+{
+  "tipoArchivo": "Radiografía",
+  "descripcion": "Radiografía de tórax"
+}
+```
+
+### Delete Study
+
+```http
+DELETE /api/estudios/{idEstudio}
+```
+
+### List All Studies
+
+```http
+GET /api/estudios
+```
+
+Returns metadata for all medical studies of the authenticated patient.
+
+### Get Study Metadata
+
+```http
+GET /api/estudios/{idEstudio}
+```
+
+### Download Study File
+
+```http
+GET /api/estudios/{idEstudio}/file
+```
+
+Downloads the actual file (PDF, image, etc.) for the specified study.
+
+## Rooms (Admin)
+
+### Create Room
+
+```http
+POST /api/hospitales/{hospitalId}/especialidades/{idEspecialidadMedica}/salas
+```
+
+Body:
+
+```json
+{
+  "nombre": "Sala 1"
+}
+```
+
+### Delete Room
+
+```http
+DELETE /api/salas/{salaId}
+```
