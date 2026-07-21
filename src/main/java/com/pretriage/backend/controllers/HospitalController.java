@@ -58,9 +58,9 @@ public class HospitalController {
     public ResponseEntity<TiempoEstimadoArriboHospitalResponse> calcularTiempoArriboAlHospital(
             @PathVariable Long idHospital,
             @AuthenticationPrincipal Jwt jwt,
-            @RequestParam String transporte,
-            @RequestParam Double latitud,
-            @RequestParam Double longitud
+            @RequestParam String transporte,//obligatorio
+            @RequestParam Double latitud, //obligatorio
+            @RequestParam Double longitud //obligatorio
     ){
         return ResponseEntity.ok(atencionHospitalService
                 .calcularTiempoArriboHospital(jwt.getSubject(), idHospital, transporte, latitud, longitud));

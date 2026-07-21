@@ -56,6 +56,14 @@ Body:
 }
 ```
 
+### Calculate Arrival Time to Hospital
+
+```http
+GET /api/hospitales/{idHospital}/tiempo-arribo?transporte=transporte-publico&latitud=-34.6&longitud=-58.4
+```
+
+Returns estimated travel time from patient's location to the specified hospital.
+
 ## Estimated Attention Time
 
 ```http
