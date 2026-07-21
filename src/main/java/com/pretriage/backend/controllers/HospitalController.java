@@ -2,18 +2,16 @@ package com.pretriage.backend.controllers;
 
 import com.pretriage.backend.controllers.dtos.HospitalCercanoDTO;
 import com.pretriage.backend.controllers.dtos.SeleccionHospitalRequest;
+import com.pretriage.backend.controllers.dtos.TiempoEstimadoArriboHospitalResponse;
 import com.pretriage.backend.controllers.dtos.TiempoEstimadoAtencionResponse;
 import com.pretriage.backend.services.AtencionHospitalService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.apache.coyote.Response;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
@@ -54,5 +52,17 @@ public class HospitalController {
     ){
         String auth0Id = jwt.getSubject();
         return ResponseEntity.ok(atencionHospitalService.obtenerTiempoEstimadoDeAtencion(auth0Id));
+    }
+
+    @GetMapping("/api/hospitales/{idHospital}/tiempo-arribo")
+    public ResponseEntity<TiempoEstimadoArriboHospitalResponse> calcularTiempoArriboAlHospital(
+            @PathVariable Long idHospital,
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam String transporte,
+            @RequestParam Double latitud,
+            @RequestParam Double longitud
+    ){
+        return ResponseEntity.ok(atencionHospitalService
+                .calcularTiempoArriboHospital(jwt.getSubject(), idHospital, transporte, latitud, longitud));
     }
 }

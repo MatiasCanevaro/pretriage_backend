@@ -2,6 +2,7 @@ package com.pretriage.backend.services;
 
 import com.pretriage.backend.controllers.dtos.EspecialidadMedicaDTO;
 import com.pretriage.backend.controllers.dtos.HospitalCercanoDTO;
+import com.pretriage.backend.controllers.dtos.TiempoEstimadoArriboHospitalResponse;
 import com.pretriage.backend.controllers.dtos.TiempoEstimadoAtencionResponse;
 import com.pretriage.backend.exceptions.AtencionEnCursoException;
 import com.pretriage.backend.model.consultas.ConsultaMedica;
@@ -86,7 +87,11 @@ public class AtencionHospitalService {
 
         return hospitalesCercanos.stream()
                 .filter(hospitalCercano -> hospitalesPorPlaceId.containsKey(hospitalCercano.getPlaceId()))
-                .map(hospitalCercano -> completarEspecialidades(hospitalCercano, hospitalesPorPlaceId.get(hospitalCercano.getPlaceId())))
+                .map(hospitalCercano -> {
+                    Hospital hospital = hospitalesPorPlaceId.get(hospitalCercano.getPlaceId());
+                    hospitalCercano.setIdHospital(hospital.getId());
+                    return completarEspecialidades(hospitalCercano, hospital);
+                })
                 .toList();
     }
 
@@ -150,6 +155,21 @@ public class AtencionHospitalService {
         return ingresoColaService.ingresar(consultaMedica, nivelDeGravedadBot);
     }
 
+    @Transactional
+    public TiempoEstimadoArriboHospitalResponse calcularTiempoArriboHospital(
+            String auth0Id, Long idHospital, String transporte, Double latitud, Double longitud
+    ) {
+        this.obtenerPaciente(auth0Id);//valido que sea paciente
+
+        Hospital hospital = this.obtenerHospital(idHospital);
+
+        if(!googlePlacesService.esTransporteValido(transporte)){
+            throw new IllegalArgumentException("Transporte no valido");
+        }
+
+        return googlePlacesService.calcularTiempoArriboHospital(hospital, transporte, latitud, longitud);
+    }
+
     private ConsultaMedica obtenerConsultaConHospitalSeleccionado(Paciente paciente) {
         Optional<ConsultaMedica> opConsultaMedica =
                 repoConsultasMedicas.findFirstByPacienteIdAndEstadoConsultaIn(paciente.getId(), ESTADOS_CONSULTA_CON_HOSPITAL);
@@ -200,6 +220,14 @@ public class AtencionHospitalService {
         dto.setCodigo(especialidad.getCodigo());
         dto.setNombre(especialidad.getNombre());
         return dto;
+    }
+
+    private Hospital obtenerHospital(Long idHospital){
+        Optional<Hospital> opHospital = repoHospitales.findById(idHospital);
+        if(opHospital.isEmpty()){
+            throw new NoSuchElementException("No existe el Hospital con id: " + idHospital);
+        }
+        return opHospital.get();
     }
 }
 
