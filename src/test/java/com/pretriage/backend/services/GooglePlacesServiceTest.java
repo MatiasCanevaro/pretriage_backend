@@ -2,6 +2,8 @@ package com.pretriage.backend.services;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.pretriage.backend.controllers.dtos.HospitalCercanoDTO;
+import com.pretriage.backend.controllers.dtos.TiempoEstimadoArriboHospitalResponse;
+import com.pretriage.backend.model.hospitales.Coordenada;
 import com.pretriage.backend.model.hospitales.Direccion;
 import com.pretriage.backend.model.hospitales.Hospital;
 import org.junit.jupiter.api.AfterAll;
@@ -12,6 +14,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
+import java.time.LocalTime;
 import java.util.List;
 
 
@@ -28,6 +31,7 @@ import static org.mockito.Mockito.when;
 @TestPropertySource(properties = { //se sobreescriben los valores del "application.properties" solo para ejecutar este test
         "google.api.key=test-api-key",
         "google.places.base-url=http://localhost:8089/v1/places",
+        "google.routes.base-url=http://localhost:8089/directions/v2:computeRoutes",
         // auth0 no se usan en este test
         "auth0.client-id.machine-to-machine=AUTH0_M2M_CLIENT_ID",
         "auth0.client-secret.machine-to-machine=AUTH0_M2M_CLIENT_SECRET",
@@ -158,6 +162,171 @@ public class GooglePlacesServiceTest {
                 service.obtenerHospitalDesdeGoogle("inexistente");
 
         assertNull(hospital);
+    }
+
+    @Test
+    void sePuedeCalcularTiempoEstimadoArriboHospitalConExito(){
+        Hospital hospital = new Hospital();
+        hospital.setId(1L);
+        hospital.setPlaceId("hospital1");
+
+        Coordenada coordenada = new Coordenada();
+        coordenada.setLatitud(-34.6);
+        coordenada.setLongitud(-58.4);
+
+        Direccion direccion = new Direccion();
+        direccion.setCoordenada(coordenada);
+        hospital.setDireccion(direccion);
+
+        wireMockServer.stubFor(post(urlEqualTo("/directions/v2:computeRoutes"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                            {
+                              "routes": [
+                                {
+                                  "duration": "300s",
+                                  "distanceMeters": 1500,
+                                  "polyline": {
+                                    "encodedPolyline": "encoded_polyline_string"
+                                  },
+                                  "routeLabels": ["DEFAULT_ROUTE"]
+                                }
+                              ]
+                            }
+                            """)));
+
+        TiempoEstimadoArriboHospitalResponse response =
+                service.calcularTiempoArriboHospital(hospital, "transporte-publico", -34.61, -58.41);
+
+        assertNotNull(response);
+        assertEquals(1L, response.getIdHospital());
+        assertEquals("transporte-publico", response.getTransporte());
+        assertEquals(LocalTime.of(0, 5, 0), response.getTiempoEstimadoArribo());
+        assertEquals(1500, response.getDistanciaMetros());
+        assertEquals("encoded_polyline_string", response.getPolylineCode());
+    }
+
+    @Test
+    void fallaCalcularTiempoEstimadoArriboHospitalCuandoApiNoDevuelveRutas(){
+        Hospital hospital = new Hospital();
+        hospital.setId(1L);
+        hospital.setPlaceId("hospital1");
+
+        Coordenada coordenada = new Coordenada();
+        coordenada.setLatitud(-34.6);
+        coordenada.setLongitud(-58.4);
+
+        Direccion direccion = new Direccion();
+        direccion.setCoordenada(coordenada);
+        hospital.setDireccion(direccion);
+
+        wireMockServer.stubFor(post(urlEqualTo("/directions/v2:computeRoutes"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                            {
+                              "routes": []
+                            }
+                            """)));
+
+        assertThrows(IllegalArgumentException.class, () ->
+                service.calcularTiempoArriboHospital(hospital, "transporte-publico", -34.61, -58.41));
+    }
+
+    @Test
+    void fallaCalcularTiempoEstimadoArriboHospitalCuandoApiDevuelveError(){
+        Hospital hospital = new Hospital();
+        hospital.setId(1L);
+        hospital.setPlaceId("hospital1");
+
+        Coordenada coordenada = new Coordenada();
+        coordenada.setLatitud(-34.6);
+        coordenada.setLongitud(-58.4);
+
+        Direccion direccion = new Direccion();
+        direccion.setCoordenada(coordenada);
+        hospital.setDireccion(direccion);
+
+        wireMockServer.stubFor(post(urlEqualTo("/directions/v2:computeRoutes"))
+                .willReturn(aResponse()
+                        .withStatus(500)));
+
+        assertThrows(IllegalArgumentException.class, () ->
+                service.calcularTiempoArriboHospital(hospital, "transporte-publico", -34.61, -58.41));
+    }
+
+    @Test
+    void fallaCalcularTiempoEstimadoArriboHospitalCuandoTransporteNoEsValido(){
+        Hospital hospital = new Hospital();
+        hospital.setId(1L);
+        hospital.setPlaceId("hospital1");
+
+        Coordenada coordenada = new Coordenada();
+        coordenada.setLatitud(-34.6);
+        coordenada.setLongitud(-58.4);
+
+        Direccion direccion = new Direccion();
+        direccion.setCoordenada(coordenada);
+        hospital.setDireccion(direccion);
+
+        assertThrows(IllegalArgumentException.class, () ->
+                service.calcularTiempoArriboHospital(hospital, "transporte-invalido", -34.61, -58.41));
+    }
+
+    @Test
+    void fallaCalcularTiempoEstimadoArriboHospitalCuandoNoHayRutaDefault(){
+        Hospital hospital = new Hospital();
+        hospital.setId(1L);
+        hospital.setPlaceId("hospital1");
+
+        Coordenada coordenada = new Coordenada();
+        coordenada.setLatitud(-34.6);
+        coordenada.setLongitud(-58.4);
+
+        Direccion direccion = new Direccion();
+        direccion.setCoordenada(coordenada);
+        hospital.setDireccion(direccion);
+
+        wireMockServer.stubFor(post(urlEqualTo("/directions/v2:computeRoutes"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                            {
+                              "routes": [
+                                {
+                                  "duration": "300s",
+                                  "distanceMeters": 1500,
+                                  "polyline": {
+                                    "encodedPolyline": "encoded_polyline_string"
+                                  },
+                                  "routeLabels": ["FUEL_EFFICIENT"]
+                                }
+                              ]
+                            }
+                            """)));
+
+        assertThrows(IllegalArgumentException.class, () ->
+                service.calcularTiempoArriboHospital(hospital, "transporte-publico", -34.61, -58.41));
+    }
+
+    @Test
+    void sePuedeVerificarTransporteValido(){
+        assertTrue(service.esTransporteValido("transporte-publico"));
+        assertTrue(service.esTransporteValido("vehiculo"));
+        assertTrue(service.esTransporteValido("vehiculo-dos-ruedas"));
+        assertTrue(service.esTransporteValido("caminar"));
+        assertTrue(service.esTransporteValido("bicicleta"));
+    }
+
+    @Test
+    void sePuedeVerificarTransporteInvalido(){
+        assertFalse(service.esTransporteValido("transporte-invalido"));
+        assertFalse(service.esTransporteValido("avion"));
+        assertFalse(service.esTransporteValido(""));
     }
 
 

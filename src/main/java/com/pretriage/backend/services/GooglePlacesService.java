@@ -337,7 +337,7 @@ public class GooglePlacesService {
     private LocalTime convertDurationToTime(String duration) {
         duration = duration.replace("s", "");
         int durationInt = Integer.parseInt(duration);
-        return LocalTime.of(0, 0, durationInt);
+        return LocalTime.ofSecondOfDay(durationInt);
     }
 }
 
