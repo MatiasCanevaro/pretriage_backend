@@ -200,7 +200,13 @@ public class AtencionHospitalService {
     }
 
     private void validarHospitalAtiendeEspecialidad(Hospital hospital, EspecialidadMedica especialidad) {
-        boolean atiendeEspecialidad = hospital.getEspecialidades().stream()
+        List<EspecialidadMedica> especialidadesHospital = hospital.getEspecialidades();
+
+        if(especialidadesHospital.isEmpty()){
+            throw new NoSuchElementException("En el hospital seleccionado no se cargaron las especialidades o no cuenta con ninguna especialidad en urgencias");
+        }
+
+        boolean atiendeEspecialidad = especialidadesHospital.stream()
                 .anyMatch(especialidadHospital -> especialidadHospital.getCodigo().equals(especialidad.getCodigo()));
 
         if (!atiendeEspecialidad) {
