@@ -183,24 +183,53 @@ public class GooglePlacesServiceTest {
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
                         .withBody("""
-                            {
-                              "routes": [
                                 {
-                                  "duration": "300s",
-                                  "distanceMeters": 1500,
-                                  "polyline": {
-                                    "encodedPolyline": "encoded_polyline_string"
-                                  },
-                                  "routeLabels": ["DEFAULT_ROUTE"]
+                                   "routes":[
+                                      {
+                                         "duration":"300s",
+                                         "distanceMeters":1500,
+                                         "polyline":{
+                                            "encodedPolyline":"encoded_polyline_string"
+                                         },
+                                         "routeLabels":[
+                                            "DEFAULT_ROUTE"
+                                         ],
+                                         "legs":[
+                                            {
+                                               "duration":"120s",
+                                               "distanceMeters":148,
+                                               "polyline":{
+                                                  "encodedPolyline":"encoded_polyline_string_leg1_step1"
+                                               },
+                                               "steps":[
+                                                  {
+                                                     "transitDetails":{
+                                                        "transitLine":{
+                                                           "name":"Linea 85 A",
+                                                           "nameShort":"85 A"
+                                                        }
+                                                     },
+                                                     "duration":"100s",
+                                                     "distanceMeters":130,
+                                                     "polyline":{
+                                                        "encodedPolyline":"encoded_polyline_string_leg1"
+                                                     }
+                                                  }
+                                               ]
+                                            }
+                                         ]
+                                      }
+                                   ]
                                 }
-                              ]
-                            }
-                            """)));
+                                """)));
 
-        TiempoEstimadoArriboHospitalResponse response =
+        List<TiempoEstimadoArriboHospitalResponse> responseList =
                 service.calcularTiempoArriboHospital(hospital, "transporte-publico", -34.61, -58.41);
 
-        assertNotNull(response);
+        assertNotNull(responseList);
+        assertEquals(1, responseList.size());
+
+        TiempoEstimadoArriboHospitalResponse response = responseList.getFirst();
         assertEquals(1L, response.getIdHospital());
         assertEquals("transporte-publico", response.getTransporte());
         assertEquals(LocalTime.of(0, 5, 0), response.getTiempoEstimadoArribo());

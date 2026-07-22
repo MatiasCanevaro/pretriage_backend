@@ -1,5 +1,6 @@
 package com.pretriage.backend.services;
 
+import com.pretriage.backend.controllers.dtos.CombinacionRutasDTO;
 import com.pretriage.backend.controllers.dtos.HospitalCercanoDTO;
 import com.pretriage.backend.controllers.dtos.TiempoEstimadoArriboHospitalResponse;
 import com.pretriage.backend.controllers.dtos.googleMaps.*;
@@ -76,7 +77,7 @@ public class GooglePlacesService {
      * Ref: https://developers.google.com/maps/documentation/routes/web-service/compute-routes#fieldmask
      */
     private static final String COMPUTE_ROUTES_FIELD_MASK =
-            "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline,routes.routeLabels";
+            "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline,routes.routeLabels,routes.legs";
 
 
     @Value("${google.api.key}")
@@ -209,7 +210,7 @@ public class GooglePlacesService {
     *  Calcula el tiempo estimado de arribo a un hospital
     * */
     @Transactional
-    public TiempoEstimadoArriboHospitalResponse calcularTiempoArriboHospital(
+    public List<TiempoEstimadoArriboHospitalResponse> calcularTiempoArriboHospital(
             Hospital hospital, String transporte, Double latitud, Double longitud
     ){
         Coordenada coordenadaHospital = hospital.getDireccion().getCoordenada();
@@ -228,7 +229,8 @@ public class GooglePlacesService {
                         "placeId", hospital.getPlaceId()
                 ),
                 "travelMode", this.traducirTransportePermitido(transporte), //necesario dado que la api está en inglés
-                "units", "METRIC" // se lo pido en metros
+                "units", "METRIC", // se lo pido en metros
+                "computeAlternativeRoutes", true // máximo de 3 rutas
         );
 
         try {
@@ -302,32 +304,52 @@ public class GooglePlacesService {
     /**
      * Convierte un {@link GooglePlacesComputeRouteResponseDTO} a un {@link TiempoEstimadoArriboHospitalResponse}.
      */
-    private TiempoEstimadoArriboHospitalResponse mappearATiempoEstimadoArriboHospitalResponse(
+    private List<TiempoEstimadoArriboHospitalResponse> mappearATiempoEstimadoArriboHospitalResponse(
             GooglePlacesComputeRouteResponseDTO response, String transporte, Long idHospital
     ){
-        TiempoEstimadoArriboHospitalResponse dto = new TiempoEstimadoArriboHospitalResponse();
-        dto.setIdHospital(idHospital);
-        dto.setTransporte(transporte);//transporte en español
-
         //busco la ruta mas optima que me devolvio la api
-        Optional<RouteDTO> opRouteDTO = response.getRoutes().stream()
-                .filter(route -> route.getRouteLabels().contains(RouteLabel.DEFAULT_ROUTE))
-                .findFirst();
+        List<RouteDTO> rutas = response.getRoutes();
 
-        if(opRouteDTO.isEmpty()){
+        if(rutas.isEmpty()){
             throw new IllegalArgumentException("La API de Google no encontró una ruta válidá para el hospital");
         }
 
-        RouteDTO ruta = opRouteDTO.get();
+        List<TiempoEstimadoArriboHospitalResponse> rutasDTO = new ArrayList<>();
 
-        dto.setTiempoEstimadoArribo(
-                this.convertDurationToTime(ruta.getDuration())
-        );
+        rutas.forEach(ruta -> {
+            TiempoEstimadoArriboHospitalResponse dto = new TiempoEstimadoArriboHospitalResponse();
+            dto.setIdHospital(idHospital);
+            dto.setTransporte(transporte);//transporte en español
 
-        dto.setDistanciaMetros(ruta.getDistanceMeters());
-        dto.setPolylineCode(ruta.getPolyline().getEncodedPolyline());
+            dto.setTiempoEstimadoArribo(
+                    this.convertDurationToTime(ruta.getDuration())
+            );
 
-        return dto;
+            dto.setDistanciaMetros(ruta.getDistanceMeters());
+            dto.setPolylineCode(ruta.getPolyline().getEncodedPolyline());
+
+            List<RouteLegDTO> tramosRuta = ruta.getLegs();
+
+            if(!tramosRuta.isEmpty()){ //obtengo las líneas de transporte público que se usa para estimar la ruta
+                List<CombinacionRutasDTO> combinaciones = new ArrayList<>();
+                tramosRuta.forEach(
+                        leg -> leg.getSteps()
+                                .forEach(step -> {
+                                            String lineaTransportePublico = step.getTransitDetails().getTransitLine().getName();
+                                            CombinacionRutasDTO combinacionRutasDTO = new CombinacionRutasDTO();
+                                            combinacionRutasDTO.setNombreLinea(lineaTransportePublico);
+                                            combinaciones.add(combinacionRutasDTO);
+                                        }
+                                )
+                );
+
+                dto.setCombinacionesLineas(combinaciones);
+            }
+
+            rutasDTO.add(dto);
+        });
+
+        return rutasDTO;
     }
 
     /**

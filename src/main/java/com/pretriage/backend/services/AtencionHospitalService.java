@@ -156,7 +156,7 @@ public class AtencionHospitalService {
     }
 
     @Transactional
-    public TiempoEstimadoArriboHospitalResponse calcularTiempoArriboHospital(
+    public List<TiempoEstimadoArriboHospitalResponse> calcularTiempoArriboHospital(
             String auth0Id, Long idHospital, String transporte, Double latitud, Double longitud
     ) {
         this.obtenerPaciente(auth0Id);//valido que sea paciente

@@ -7,12 +7,14 @@ import java.util.List;
 
 @Getter
 @Setter
-public class RouteDTO {
+public class RouteLegDTO {
+
+    private List<RouteLegStepDTO> steps;
 
     private String duration;
+
     private Integer distanceMeters;
+
     private PolylineDTO polyline;
-    private List<RouteLabel> routeLabels;
-    private List<RouteLegDTO> legs;
 
 }
