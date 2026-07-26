@@ -46,6 +46,12 @@ public class StaffAccessController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/api/admin/hospitales/{hospitalId}/invitaciones/{invitacionId}/reenviar")
+    public InvitacionResponse reenviar(@org.springframework.security.core.annotation.AuthenticationPrincipal Jwt jwt,
+                                        @PathVariable Long hospitalId, @PathVariable Long invitacionId) {
+        return service.reenviarInvitacion(jwt.getSubject(), hospitalId, invitacionId);
+    }
+
     @PatchMapping("/api/admin/hospitales/{hospitalId}/membresias/{membresiaId}")
     public MembresiaResponse actualizarEstado(@org.springframework.security.core.annotation.AuthenticationPrincipal Jwt jwt,
                                                @PathVariable Long hospitalId, @PathVariable Long membresiaId,
@@ -71,6 +77,12 @@ public class StaffAccessController {
                                            @PathVariable Long hospitalId,
                                            @Valid @RequestBody CrearInvitacionRequest request) {
         return service.crearPrimerAdmin(jwt.getSubject(), hospitalId, request);
+    }
+
+    @GetMapping("/api/platform/hospitales")
+    public List<HospitalPlataformaResponse> hospitalesPlataforma(
+            @org.springframework.security.core.annotation.AuthenticationPrincipal Jwt jwt) {
+        return service.listarHospitalesPlataforma(jwt.getSubject());
     }
 
     @GetMapping("/api/invitaciones/{token}/resumen")

@@ -2,6 +2,7 @@ package com.pretriage.backend.services;
 
 import com.pretriage.backend.controllers.dtos.acceso.StaffAccessDtos.ActualizarMembresiaRequest;
 import com.pretriage.backend.controllers.dtos.acceso.StaffAccessDtos.CrearInvitacionRequest;
+import com.pretriage.backend.controllers.dtos.acceso.StaffAccessDtos.RegistrarInvitadoRequest;
 import com.pretriage.backend.exceptions.ConflictoDeEstadoException;
 import com.pretriage.backend.model.acceso.*;
 import com.pretriage.backend.model.hospitales.Hospital;
@@ -9,8 +10,10 @@ import com.pretriage.backend.model.hospitales.EspecialidadMedica;
 import com.pretriage.backend.model.personas.RolSistema;
 import com.pretriage.backend.model.personas.UsuarioAuth;
 import com.pretriage.backend.model.personas.TipoMatriculaProfesional;
+import com.pretriage.backend.model.personas.TipoDocumento;
 import com.pretriage.backend.model.personas.CredencialProfesional;
 import com.pretriage.backend.repositories.*;
+import com.pretriage.backend.services.ports.InvitationEmailPort;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,6 +24,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.LinkedHashSet;
 import java.util.Optional;
 import java.util.Set;
+import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -39,6 +43,7 @@ class StaffAccessServiceTest {
     @Mock RepoEspecialidadesMedicas especialidades;
     @Mock RepoCredencialesProfesionales credencialesProfesionales;
     @Mock AuthService authService;
+    @Mock InvitationEmailPort invitationEmailPort;
 
     private StaffAccessService service;
     private UsuarioAuth admin;
@@ -48,7 +53,10 @@ class StaffAccessServiceTest {
     @BeforeEach
     void setUp() {
         service = new StaffAccessService(usuarios, hospitales, membresias, invitaciones, auditorias,
-                recepcionistas, medicos, asignaciones, especialidades, credencialesProfesionales, authService);
+                recepcionistas, medicos, asignaciones, especialidades, credencialesProfesionales, authService,
+                invitationEmailPort);
+        lenient().when(invitationEmailPort.deliver(any())).thenReturn(
+                new InvitationEmailPort.DeliveryResult(false, true));
         admin = new UsuarioAuth();
         admin.setId("auth0|admin");
         admin.setNombre("Ada");
@@ -131,5 +139,94 @@ class StaffAccessServiceTest {
 
         assertEquals(TipoMatriculaProfesional.NACIONAL, response.tipoMatricula());
         assertEquals(CredencialProfesional.JURISDICCION_NACIONAL, response.jurisdiccionMatricula());
+    }
+
+    @Test
+    void smtpNoExponeElTokenAlAdministrador() {
+        when(hospitales.findById(hospital.getId())).thenReturn(Optional.of(hospital));
+        when(invitaciones.existsByHospitalIdAndEmailNormalizadoAndEstado(any(), any(), any())).thenReturn(false);
+        when(invitaciones.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(invitationEmailPort.deliver(any())).thenReturn(
+                new InvitationEmailPort.DeliveryResult(true, false));
+
+        var response = service.crearInvitacion(admin.getId(), hospital.getId(),
+                new CrearInvitacionRequest("staff@example.com",
+                        Set.of(RolMembresiaHospital.RECEPCIONISTA), null, null, null, Set.of()));
+
+        assertTrue(response.emailEnviado());
+        assertNull(response.tokenEntregaUnica());
+        assertEquals(1, response.cantidadIntentosEnvio());
+    }
+
+    @Test
+    void reenviarRotaElTokenYRenuevaLaEntrega() {
+        InvitacionHospital invitacion = new InvitacionHospital();
+        invitacion.setId(21L);
+        invitacion.setHospital(hospital);
+        invitacion.setEmailNormalizado("staff@example.com");
+        invitacion.setTokenHash("a".repeat(64));
+        invitacion.setVenceEn(Instant.now().plusSeconds(3600));
+        invitacion.setRolesSolicitados(new LinkedHashSet<>(Set.of(RolMembresiaHospital.RECEPCIONISTA)));
+        when(invitaciones.findById(invitacion.getId())).thenReturn(Optional.of(invitacion));
+        when(invitaciones.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var response = service.reenviarInvitacion(admin.getId(), hospital.getId(), invitacion.getId());
+
+        assertNotEquals("a".repeat(64), invitacion.getTokenHash());
+        assertNotNull(response.tokenEntregaUnica());
+        assertEquals(1, response.cantidadIntentosEnvio());
+        verify(invitationEmailPort).deliver(any());
+    }
+
+    @Test
+    void aceptaLaInvitacionConLaInstanciaGestionadaDevueltaPorElRepositorio() {
+        when(hospitales.findById(hospital.getId())).thenReturn(Optional.of(hospital));
+        when(invitaciones.existsByHospitalIdAndEmailNormalizadoAndEstado(
+                eq(hospital.getId()), eq("new-admin@example.com"), eq(EstadoInvitacionHospital.PENDIENTE)))
+                .thenReturn(false);
+        when(invitaciones.save(any())).thenAnswer(invocation -> {
+            InvitacionHospital saved = invocation.getArgument(0);
+            if (saved.getId() == null) saved.setId(21L);
+            return saved;
+        });
+
+        var creada = service.crearInvitacion(admin.getId(), hospital.getId(),
+                new CrearInvitacionRequest("new-admin@example.com",
+                        Set.of(RolMembresiaHospital.ADMIN_HOSPITAL), null, null, null, Set.of()));
+
+        ArgumentCaptor<InvitacionHospital> invitacionCaptor = ArgumentCaptor.forClass(InvitacionHospital.class);
+        verify(invitaciones).save(invitacionCaptor.capture());
+        InvitacionHospital invitacion = invitacionCaptor.getValue();
+        when(invitaciones.findByTokenHash(invitacion.getTokenHash())).thenReturn(Optional.of(invitacion));
+        when(usuarios.findByCorreoElectronicoIgnoreCase("new-admin@example.com")).thenReturn(Optional.empty());
+        when(usuarios.existsByNumeroDocumento("22222222")).thenReturn(false);
+        when(authService.registrarUsuarioYObtenerAuth0Id(anyString(), anyString()))
+                .thenReturn("auth0|new-admin");
+
+        UsuarioAuth managed = new UsuarioAuth();
+        managed.setId("auth0|new-admin");
+        managed.setNombre("Nuevo");
+        managed.setApellido("Admin");
+        managed.setNumeroDocumento("22222222");
+        managed.setTipoDocumento(TipoDocumento.DNI);
+        managed.setCorreoElectronico("new-admin@example.com");
+        managed.setRol(RolSistema.USER);
+        when(usuarios.save(any(UsuarioAuth.class))).thenReturn(managed);
+        when(membresias.findByUsuarioIdAndHospitalId("auth0|new-admin", hospital.getId()))
+                .thenReturn(Optional.empty());
+        when(membresias.save(any(MembresiaHospital.class))).thenAnswer(invocation -> {
+            MembresiaHospital saved = invocation.getArgument(0);
+            saved.setId(31L);
+            return saved;
+        });
+
+        service.registrarYAceptar(creada.tokenEntregaUnica(),
+                new RegistrarInvitadoRequest("Nuevo", "Admin", "22222222", TipoDocumento.DNI,
+                        "Strong!2026Password"));
+
+        ArgumentCaptor<MembresiaHospital> membresiaCaptor = ArgumentCaptor.forClass(MembresiaHospital.class);
+        verify(membresias).save(membresiaCaptor.capture());
+        assertSame(managed, membresiaCaptor.getValue().getUsuario());
+        assertEquals(EstadoInvitacionHospital.ACEPTADA, invitacion.getEstado());
     }
 }

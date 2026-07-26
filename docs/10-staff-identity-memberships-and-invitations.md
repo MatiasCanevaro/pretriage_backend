@@ -1,10 +1,11 @@
 # Staff identity, hospital memberships, and invitations
 
-Status: first vertical slice implemented. Memberships, scoped roles, staff discovery,
-hospital invitations, acceptance, suspension/reactivation, last-admin protection and
-basic audit contracts are available. Universal Login/PKCE, SMTP delivery, MFA,
-platform hospital creation, room/specialty management and patient account claiming
-remain follow-up work.
+Status: memberships, scoped roles, capability discovery, hospital invitations,
+acceptance, resend with token rotation, local/SMTP email adapters,
+suspension/reactivation, last-admin protection and basic audit contracts are
+available. Universal Login/PKCE, persistent email outbox, MFA, platform hospital
+creation, room/specialty management and patient account claiming remain follow-up
+work.
 
 ## Purpose
 
@@ -45,14 +46,9 @@ and perform audited recovery operations. It cannot be granted by a hospital admi
 ### Hospital administrator
 
 Scoped to one hospital. It can manage that hospital's staff, invitations,
-specialties, rooms, and operational configuration. It cannot modify another
-hospital or create a platform administrator.
-
-### Medical coordinator
-
-Optional hospital- or specialty-scoped role. It can manage medical assignments and
-rooms without receiving all hospital-administration permissions. Ordinary doctors
-should not receive room-management permissions merely because they are doctors.
+medical assignments, specialties, rooms, and operational configuration. Medical
+coordination is part of this role. It cannot modify another hospital or create a
+platform administrator.
 
 ### Doctor
 
@@ -99,8 +95,12 @@ Introduce either a join table or entity for membership roles:
 
 ```text
 membresia_id
-rol: ADMIN_HOSPITAL | COORDINADOR_MEDICO | MEDICO | RECEPCIONISTA
+rol: ADMIN_HOSPITAL | MEDICO | RECEPCIONISTA
 ```
+
+The former `COORDINADOR_MEDICO` role is consolidated into `ADMIN_HOSPITAL`. An
+idempotent compatibility migration converts existing memberships and pending
+invitations without removing any other roles.
 
 This replaces role inference from the mere existence of a `Medico` or
 `Recepcionista` row. `RolSistema` should represent platform-level authority only;
@@ -362,25 +362,47 @@ GET    /api/staff/me
 GET    /api/admin/hospitales/{hospitalId}/personal
 GET    /api/admin/hospitales/{hospitalId}/invitaciones
 POST   /api/admin/hospitales/{hospitalId}/invitaciones
+POST   /api/admin/hospitales/{hospitalId}/invitaciones/{invitacionId}/reenviar
 DELETE /api/admin/hospitales/{hospitalId}/invitaciones/{invitacionId}
 PATCH  /api/admin/hospitales/{hospitalId}/membresias/{membresiaId}
 PUT    /api/admin/hospitales/{hospitalId}/membresias/{membresiaId}/roles
 GET    /api/admin/hospitales/{hospitalId}/auditoria
+GET    /api/platform/hospitales
 POST   /api/platform/hospitales/{hospitalId}/primer-admin/invitaciones
 GET    /api/invitaciones/{token}/resumen
 POST   /api/invitaciones/{token}/registro
 POST   /api/invitaciones/{token}/aceptar
+GET    /api/admin/hospitales/{hospitalId}/configuracion
+POST   /api/admin/hospitales/{hospitalId}/configuracion/especialidades/{especialidadId}
+DELETE /api/admin/hospitales/{hospitalId}/configuracion/especialidades/{especialidadId}
+POST   /api/admin/hospitales/{hospitalId}/configuracion/salas
+PUT    /api/admin/hospitales/{hospitalId}/configuracion/salas/{salaId}
+PATCH  /api/admin/hospitales/{hospitalId}/configuracion/salas/{salaId}/estado
 ```
+
+The specialty catalog is global; a hospital admin manages which catalog entries are
+offered by their hospital. Rooms belong to one hospital and one enabled specialty.
+They are activated or deactivated rather than deleted to preserve historical
+references, and disabling a specialty requires deactivating its rooms first.
 
 The public `/api/register` endpoint now rejects doctor, receptionist and admin
 registration. Invitation registration derives hospital roles from the stored
-invitation and never accepts them from the public caller.
+invitation and never accepts them from the public caller. New-account registration
+requires a password between 8 and 72 characters, including uppercase, lowercase,
+numeric and symbol characters; password confirmation belongs to the frontend and
+is never sent to or persisted by the backend.
 
-Email delivery is deliberately not simulated. Until an SMTP or transactional-mail
-adapter is configured, invitation creation returns the raw secret exactly once to
-the authorized administrator with `emailEnviado=false`; only its SHA-256 hash is
-persisted. Production rollout must replace this development handoff with email and
-must not log the returned secret.
+If Auth0 already contains the invited identity but the local account does not exist,
+registration authenticates the supplied password and reuses the verified Auth0
+subject to finish the local account and membership. A local document conflict is
+checked before any Auth0 write to avoid creating another external orphan.
+
+Email delivery follows Ports and Adapters. `InvitationEmailPort` is implemented by
+`LocalInvitationEmailAdapter` for the one-time development handoff and by
+`SmtpInvitationEmailAdapter` for actual delivery. SMTP mode never returns the raw
+secret. Reissuing rotates the secret and renews the seven-day expiry. A persistent
+outbox remains required before production so provider outages can be retried and
+observed independently of request processing.
 
 ## Acceptance criteria
 
@@ -389,7 +411,7 @@ must not log the returned secret.
 - An invitation authorizes nothing until the verified recipient accepts it.
 - A hospital admin cannot affect another hospital or create a platform admin.
 - The last active hospital admin cannot be removed.
-- A new staff member chooses their password; PreTriage never emails a password.
+- A new staff member chooses and confirms their password; PreTriage never emails a password.
 - Public registration cannot create staff or administrative access.
 - Every privileged change is attributable to an actor, hospital, timestamp, and
   resulting state.

@@ -9,6 +9,8 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 
 import java.time.Instant;
 import java.util.List;
@@ -29,6 +31,9 @@ public final class StaffAccessDtos {
                                    EstadoMembresiaHospital estado,
                                    Set<RolMembresiaHospital> roles) {}
 
+    public record HospitalPlataformaResponse(Long id, String nombre,
+                                             long administradoresActivos) {}
+
     public record CrearInvitacionRequest(
             @NotBlank @Email String email,
             @NotEmpty Set<RolMembresiaHospital> roles,
@@ -43,6 +48,7 @@ public final class StaffAccessDtos {
                                      TipoMatriculaProfesional tipoMatricula,
                                      String jurisdiccionMatricula, Instant venceEn,
                                      Instant fechaCreacion, Boolean emailEnviado,
+                                     Instant ultimoIntentoEnvio, Integer cantidadIntentosEnvio,
                                      String tokenEntregaUnica) {}
 
     public record InvitacionResumenResponse(Long hospitalId, String hospitalNombre, String email,
@@ -56,7 +62,13 @@ public final class StaffAccessDtos {
     public record RegistrarInvitadoRequest(@NotBlank String nombre, @NotBlank String apellido,
                                            @NotBlank String numeroDocumento,
                                            @NotNull TipoDocumento tipoDocumento,
-                                           @NotBlank String password) {}
+                                                  @NotBlank
+                                                  @Size(min = 8, max = 72)
+                                                  @Pattern(
+                                                          regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9]).+$",
+                                                          message = "Debe incluir mayúscula, minúscula, número y símbolo"
+                                                  )
+                                                  String password) {}
 
     public record ActualizarMembresiaRequest(@NotNull EstadoMembresiaHospital estado) {}
     public record ActualizarRolesRequest(@NotEmpty Set<RolMembresiaHospital> roles) {}

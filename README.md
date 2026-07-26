@@ -26,6 +26,30 @@ AUTH0_APP_CLIENT_ID=
 GOOGLE_MAPS_API_KEY=
 ```
 
+### Correo de invitaciones
+
+Por defecto se utiliza `LocalInvitationEmailAdapter`: no requiere SMTP y devuelve
+el secreto una sola vez al administrador para probar el enlace localmente.
+
+Para enviar correos con `SmtpInvitationEmailAdapter`:
+
+```env
+PRETRIAGE_INVITATIONS_EMAIL_MODE=smtp
+PRETRIAGE_FRONTEND_BASE_URL=http://localhost:3000
+PRETRIAGE_INVITATIONS_EMAIL_FROM=no-reply@tu-dominio.com
+SMTP_HOST=localhost
+SMTP_PORT=1025
+SMTP_USERNAME=
+SMTP_PASSWORD=
+SMTP_AUTH=false
+SMTP_STARTTLS=false
+```
+
+Mailpit puede utilizarse localmente en el puerto SMTP `1025`. Cuando el modo es
+`smtp`, el backend nunca incluye el token de invitación en la respuesta. Si falla
+la entrega, la invitación queda pendiente y puede reenviarse desde el panel; el
+reenvío rota el token y vence el enlace anterior.
+
 ## Ejecutar localmente
 
 Desde PowerShell, en la raíz del backend:

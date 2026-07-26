@@ -4,15 +4,21 @@ import com.pretriage.backend.controllers.dtos.auth0.AuthIdTokenResponse;
 import com.pretriage.backend.controllers.dtos.auth0.AuthTokenResponse;
 import com.pretriage.backend.controllers.dtos.auth0.AuthUserDetailsResponse;
 import com.pretriage.backend.exceptions.NoSePudoCrearUsuario;
+import com.nimbusds.jwt.JWTParser;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 import tools.jackson.databind.ObjectMapper;
 
+import java.util.Locale;
 import java.util.Map;
+import java.text.ParseException;
 
 @Service
 @RequiredArgsConstructor
@@ -38,6 +44,7 @@ public class AuthService {
     //contantes para evitar repetición de strings
 
     private static final String USERNAME_FIELD = "username";
+    private static final String EMAIL_FIELD = "email";
     private static final String PASSWORD_FIELD = "password";
     private static final String CONNECTION_FIELD = "connection";
     private static final String CLIENT_ID_FIELD="client_id";
@@ -45,8 +52,6 @@ public class AuthService {
     private static final String SCOPE_FIELD="scope";
     private static final String GRANT_TYPE_FIELD ="grant_type";
 
-    private static final String CONTENT_TYPE_HEADER_FIELD = "Content-Type";
-    private static final String CONTENT_TYPE_APPLICATION_JSON= "application/json";
     private static final String REALM_NAME= "Username-Password-Authentication";
 
 
@@ -56,23 +61,40 @@ public class AuthService {
 
 
     public String registrarUsuarioYObtenerAuth0Id(String email, String password) {
+        try {
             String tokenParaCrearUsuario = this.obtenerTokenParaCrearUsuario();
 
             Map<String, String> bodyRequest = Map.of(
-                    USERNAME_FIELD,email,
+                    EMAIL_FIELD, email,
                     PASSWORD_FIELD, password,
                     CONNECTION_FIELD, REALM_NAME
             );
 
             String responseUserDetails = this.llamarApiToken(bodyRequest,
                     AUTH0_BASE_PATH+"/api/v2/users",
-                    "Authorization",
-                    "Bearer "+tokenParaCrearUsuario
+                    tokenParaCrearUsuario
                     );
 
-        AuthUserDetailsResponse userDetailsNuevo = objectMapper.readValue(responseUserDetails, AuthUserDetailsResponse.class);
+            AuthUserDetailsResponse userDetailsNuevo = objectMapper.readValue(responseUserDetails, AuthUserDetailsResponse.class);
 
-        return userDetailsNuevo.getUserId();
+            return userDetailsNuevo.getUserId();
+        } catch (Auth0UsuarioExistenteException exception) {
+            return obtenerAuth0IdPorCredenciales(email, password);
+        }
+    }
+
+    private String obtenerAuth0IdPorCredenciales(String email, String password) {
+        String idToken = obtenerTokenParaLogearUsuario(email, password);
+        try {
+            String subject = JWTParser.parse(idToken).getJWTClaimsSet().getSubject();
+            if (subject == null || subject.isBlank()) {
+                throw new NoSePudoCrearUsuario();
+            }
+            return subject;
+        } catch (ParseException exception) {
+            log.error("Auth0 devolvió un id_token inválido", exception);
+            throw new NoSePudoCrearUsuario();
+        }
     }
 
     public String obtenerTokenParaLogearUsuario(String email, String password){
@@ -87,8 +109,7 @@ public class AuthService {
         );
         String responseJson = this.llamarApiToken(bodyTokenRequest,
                 AUTH0_BASE_PATH+"/oauth/token",
-                CONTENT_TYPE_HEADER_FIELD,
-                CONTENT_TYPE_APPLICATION_JSON);
+                null);
 
         AuthIdTokenResponse response = objectMapper.readValue(responseJson, AuthIdTokenResponse.class);
 
@@ -99,7 +120,7 @@ public class AuthService {
         Map<String, String> bodyRequest = Map.of(
                 CLIENT_ID_FIELD, AUTH0_M2M_CLIENT_ID,
                 "client_secret", AUTH0_M2M_CLIENT_SECRET,
-                AUDIENCE_FIELD, AUTH0_BASE_PATH+"/api/v2",
+                AUDIENCE_FIELD, AUTH0_BASE_PATH+"/api/v2/",
                 SCOPE_FIELD,AUTH0_M2M_SCOPE,
                 GRANT_TYPE_FIELD, "client_credentials"
         );
@@ -107,8 +128,7 @@ public class AuthService {
         String responseJson = this.llamarApiToken(
                 bodyRequest,
                 AUTH0_BASE_PATH +"/oauth/token",
-                CONTENT_TYPE_HEADER_FIELD,
-                CONTENT_TYPE_APPLICATION_JSON
+                null
         );
 
         AuthTokenResponse response = objectMapper.readValue(responseJson, AuthTokenResponse.class);
@@ -118,16 +138,18 @@ public class AuthService {
 
     private String llamarApiToken(Map<String, String> bodyRequest,
                                   String uriPath,
-                                  String headerType,
-                                  String headerValue){
+                                  String bearerToken){
         try{
-
-            String jsonBody = new ObjectMapper().writeValueAsString(bodyRequest);//parseo a json
-
-            String responseJson = restClient.post()
+            RestClient.RequestBodySpec request = restClient.post()
                     .uri(uriPath)
-                    .header(headerType,headerValue)
-                    .body(jsonBody)
+                    .contentType(MediaType.APPLICATION_JSON);
+
+            if (bearerToken != null) {
+                request.header(HttpHeaders.AUTHORIZATION, "Bearer " + bearerToken);
+            }
+
+            String responseJson = request
+                    .body(bodyRequest)
                     .retrieve()
                     .body(String.class);
 
@@ -138,9 +160,43 @@ public class AuthService {
 
             return responseJson;
 
+        } catch (RestClientResponseException e) {
+            log.error("Auth0 API respondió con estado {}", e.getStatusCode(), e);
+            if (esUsuarioExistente(e)) {
+                throw new Auth0UsuarioExistenteException();
+            }
+            throw new NoSePudoCrearUsuario(mensajeSeguroAuth0(e));
+        } catch (NoSePudoCrearUsuario e) {
+            throw e;
         } catch (Exception e){
             log.error("Error al crear el usuario con Auth0 API: {}", e.getMessage(), e);
             throw new NoSePudoCrearUsuario();
         }
+    }
+
+    private String mensajeSeguroAuth0(RestClientResponseException exception) {
+        String response = exception.getResponseBodyAsString().toLowerCase(Locale.ROOT);
+
+        if (response.contains("passwordstrengtherror") || response.contains("password is too weak")) {
+            return "La contraseña es demasiado débil. Usá mayúsculas, minúsculas, números y símbolos.";
+        }
+        if (response.contains("wrong email or password") || response.contains("invalid_grant")) {
+            return "La cuenta ya existe en Auth0, pero la contraseña ingresada no coincide.";
+        }
+        if (response.contains("service not enabled within domain")) {
+            return "La API de administración de Auth0 no está habilitada para la audiencia configurada.";
+        }
+
+        return "No se pudo crear el usuario en Auth0. Revisá la configuración o intentá nuevamente.";
+    }
+
+    private boolean esUsuarioExistente(RestClientResponseException exception) {
+        String response = exception.getResponseBodyAsString().toLowerCase(Locale.ROOT);
+        return exception.getStatusCode().value() == 409
+                || response.contains("already exists")
+                || response.contains("user_exists");
+    }
+
+    private static class Auth0UsuarioExistenteException extends RuntimeException {
     }
 }

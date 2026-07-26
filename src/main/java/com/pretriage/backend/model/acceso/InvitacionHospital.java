@@ -48,6 +48,9 @@ public class InvitacionHospital {
     private Instant venceEn;
     private Instant fechaCreacion = Instant.now();
     private Instant fechaAceptacion;
+    private Boolean emailEnviado = false;
+    private Instant ultimoIntentoEnvio;
+    private Integer cantidadIntentosEnvio = 0;
 
     @ManyToOne(optional = false)
     private UsuarioAuth invitadaPor;

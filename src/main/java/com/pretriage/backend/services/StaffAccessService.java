@@ -8,6 +8,7 @@ import com.pretriage.backend.model.hospitales.EspecialidadMedica;
 import com.pretriage.backend.model.hospitales.Hospital;
 import com.pretriage.backend.model.personas.*;
 import com.pretriage.backend.repositories.*;
+import com.pretriage.backend.services.ports.InvitationEmailPort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
@@ -37,6 +38,7 @@ public class StaffAccessService {
     private final RepoEspecialidadesMedicas especialidades;
     private final RepoCredencialesProfesionales credencialesProfesionales;
     private final AuthService authService;
+    private final InvitationEmailPort invitationEmailPort;
 
     @Transactional
     public StaffMeResponse obtenerContexto(String subject) {
@@ -84,6 +86,25 @@ public class StaffAccessService {
                         request.tipoMatricula(), request.jurisdiccionMatricula(), request.especialidadIds()));
     }
 
+    @Transactional(readOnly = true)
+    public List<HospitalPlataformaResponse> listarHospitalesPlataforma(String subject) {
+        exigirAdminPlataforma(subject);
+        return hospitales.findAll().stream()
+                .sorted(Comparator.comparing(Hospital::getNombre, String.CASE_INSENSITIVE_ORDER))
+                .map(hospital -> new HospitalPlataformaResponse(hospital.getId(), hospital.getNombre(),
+                        membresias.countByHospitalIdAndEstadoAndRolesContaining(hospital.getId(),
+                                EstadoMembresiaHospital.ACTIVA, RolMembresiaHospital.ADMIN_HOSPITAL)))
+                .toList();
+    }
+
+    private UsuarioAuth exigirAdminPlataforma(String subject) {
+        UsuarioAuth actor = usuario(subject);
+        if (actor.getRol() != RolSistema.ADMIN) {
+            throw new AccessDeniedException("Se requiere administración de plataforma");
+        }
+        return actor;
+    }
+
     private InvitacionResponse crearInvitacion(UsuarioAuth actor, Long hospitalId, CrearInvitacionRequest request) {
         Hospital hospital = hospitales.findById(hospitalId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Hospital inexistente"));
@@ -110,10 +131,44 @@ public class StaffAccessService {
         invitacion.setVenceEn(Instant.now().plus(VIGENCIA_INVITACION));
         invitacion.setInvitadaPor(actor);
         invitaciones.save(invitacion);
+        InvitationEmailPort.DeliveryResult delivery = entregarInvitacion(invitacion, token);
         auditar(hospital, actor, "INVITACION_CREADA", "invitacion:" + invitacion.getId(),
                 invitacion.getRolesSolicitados().toString());
-        // El secreto sólo se entrega en esta respuesta. Un adaptador de correo lo reemplazará en producción.
-        return aInvitacionResponse(invitacion, false, token);
+        return aInvitacionResponse(invitacion, delivery.sent(),
+                delivery.revealTokenToAdministrator() ? token : null);
+    }
+
+    @Transactional
+    public InvitacionResponse reenviarInvitacion(String subject, Long hospitalId, Long invitacionId) {
+        UsuarioAuth actor = exigirAdminHospital(subject, hospitalId);
+        InvitacionHospital invitacion = invitaciones.findById(invitacionId)
+                .filter(i -> i.getHospital().getId().equals(hospitalId))
+                .orElseThrow(() -> new RecursoNoEncontradoException("Invitación inexistente"));
+        EstadoInvitacionHospital estado = estadoActual(invitacion);
+        if (estado == EstadoInvitacionHospital.ACEPTADA || estado == EstadoInvitacionHospital.REVOCADA) {
+            throw new ConflictoDeEstadoException("La invitación ya no puede reenviarse");
+        }
+        String token = nuevoToken();
+        invitacion.setEstado(EstadoInvitacionHospital.PENDIENTE);
+        invitacion.setTokenHash(hash(token));
+        invitacion.setVenceEn(Instant.now().plus(VIGENCIA_INVITACION));
+        invitaciones.save(invitacion);
+        InvitationEmailPort.DeliveryResult delivery = entregarInvitacion(invitacion, token);
+        auditar(invitacion.getHospital(), actor, "INVITACION_REENVIADA",
+                "invitacion:" + invitacionId, delivery.sent() ? "ENVIADA" : "PENDIENTE_ENTREGA");
+        return aInvitacionResponse(invitacion, delivery.sent(),
+                delivery.revealTokenToAdministrator() ? token : null);
+    }
+
+    private InvitationEmailPort.DeliveryResult entregarInvitacion(InvitacionHospital invitacion, String token) {
+        InvitationEmailPort.DeliveryResult result = invitationEmailPort.deliver(
+                new InvitationEmailPort.InvitationEmailMessage(invitacion.getEmailNormalizado(),
+                        invitacion.getHospital().getNombre(), Set.copyOf(invitacion.getRolesSolicitados()),
+                        invitacion.getVenceEn(), token));
+        invitacion.setEmailEnviado(result.sent());
+        invitacion.setUltimoIntentoEnvio(Instant.now());
+        invitacion.setCantidadIntentosEnvio(Optional.ofNullable(invitacion.getCantidadIntentosEnvio()).orElse(0) + 1);
+        return result;
     }
 
     @Transactional(readOnly = true)
@@ -142,16 +197,20 @@ public class StaffAccessService {
         if (usuarios.findByCorreoElectronicoIgnoreCase(invitacion.getEmailNormalizado()).isPresent()) {
             throw new ConflictoDeEstadoException("La cuenta ya existe; iniciá sesión para aceptar la invitación");
         }
+        String numeroDocumento = request.numeroDocumento().replaceAll("\\D", "");
+        if (usuarios.existsByNumeroDocumento(numeroDocumento)) {
+            throw new ConflictoDeEstadoException("Ya existe una cuenta con ese número de documento");
+        }
         String auth0Id = authService.registrarUsuarioYObtenerAuth0Id(invitacion.getEmailNormalizado(), request.password());
         UsuarioAuth usuario = new UsuarioAuth();
         usuario.setId(auth0Id);
         usuario.setNombre(request.nombre().trim());
         usuario.setApellido(request.apellido().trim());
-        usuario.setNumeroDocumento(request.numeroDocumento().replaceAll("\\D", ""));
+        usuario.setNumeroDocumento(numeroDocumento);
         usuario.setTipoDocumento(request.tipoDocumento());
         usuario.setCorreoElectronico(invitacion.getEmailNormalizado());
         usuario.setRol(RolSistema.USER);
-        usuarios.save(usuario);
+        usuario = usuarios.save(usuario);
         return aceptar(invitacion, usuario);
     }
 
@@ -223,7 +282,7 @@ public class StaffAccessService {
                         a.getObjetivo(), a.getResultado())).toList();
     }
 
-    private UsuarioAuth exigirAdminHospital(String subject, Long hospitalId) {
+    public UsuarioAuth exigirAdminHospital(String subject, Long hospitalId) {
         UsuarioAuth usuario = usuario(subject);
         migrarAccesosLegados(usuario);
         MembresiaHospital membresia = membresias.findByUsuarioIdAndHospitalId(subject, hospitalId)
@@ -373,7 +432,8 @@ public class StaffAccessService {
                 i.getEmailNormalizado(), estadoActual(i), Set.copyOf(i.getRolesSolicitados()),
                 Set.copyOf(i.getEspecialidadIds()), i.getMatricula(), i.getTipoMatricula(),
                 i.getJurisdiccionMatricula(), i.getVenceEn(), i.getFechaCreacion(),
-                emailEnviado, token);
+                emailEnviado != null ? emailEnviado : i.getEmailEnviado(), i.getUltimoIntentoEnvio(),
+                i.getCantidadIntentosEnvio(), token);
     }
 
     private void auditar(Hospital hospital, UsuarioAuth actor, String accion, String objetivo, String resultado) {
