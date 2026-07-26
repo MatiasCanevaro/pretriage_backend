@@ -9,6 +9,8 @@ import java.util.List;
 @Setter
 public class HospitalCercanoDTO {
 
+    private Long idHospital;
+
     private String placeId;
 
     private String nombre;

@@ -3,8 +3,13 @@ package com.pretriage.backend.controllers;
 import com.pretriage.backend.controllers.dtos.EspecialidadMedicaDTO;
 import com.pretriage.backend.model.hospitales.EspecialidadMedica;
 import com.pretriage.backend.repositories.RepoEspecialidadesMedicas;
+import com.pretriage.backend.repositories.RepoUsuariosAuth;
+import com.pretriage.backend.services.UsuariosService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -16,9 +21,16 @@ import java.util.List;
 public class EspecialidadMedicaController {
 
     private final RepoEspecialidadesMedicas repoEspecialidadesMedicas;
+    private final UsuariosService usuariosService;
 
     @GetMapping("/api/especialidades")
-    public ResponseEntity<List<EspecialidadMedicaDTO>> obtenerEspecialidades() {
+    public ResponseEntity<List<EspecialidadMedicaDTO>> obtenerEspecialidades(
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        String auth0Id = jwt.getSubject();
+
+        usuariosService.validarSiEsUsuarioValido(auth0Id);
+
         List<EspecialidadMedicaDTO> especialidades = repoEspecialidadesMedicas.findAll().stream()
                 .sorted(Comparator.comparing(EspecialidadMedica::getNombre))
                 .map(this::mapearADTO)

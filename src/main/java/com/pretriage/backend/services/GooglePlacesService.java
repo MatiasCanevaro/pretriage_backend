@@ -1,12 +1,15 @@
 package com.pretriage.backend.services;
 
+import com.pretriage.backend.controllers.dtos.CombinacionRutasDTO;
 import com.pretriage.backend.controllers.dtos.HospitalCercanoDTO;
+import com.pretriage.backend.controllers.dtos.TiempoEstimadoArriboHospitalResponse;
 import com.pretriage.backend.controllers.dtos.googleMaps.*;
 import com.pretriage.backend.model.hospitales.Coordenada;
 import com.pretriage.backend.model.hospitales.Direccion;
 import com.pretriage.backend.model.hospitales.Hospital;
 import com.pretriage.backend.repositories.RepoCoordenadas;
 import com.pretriage.backend.repositories.RepoDirecciones;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 
 import org.slf4j.Logger;
@@ -16,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.ObjectMapper;
 
+import java.time.LocalTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -33,12 +37,22 @@ public class GooglePlacesService {
     @Value("${google.places.base-url}")
     private String PLACES_BASE_URL ;
 
+    @Value("${google.routes.base-url}")
+    private String ROUTES_BASE_URL;
+
     // Radio de búsqueda en metros (5 km). Ajustar según necesidad.
     private static final double RADIO_BUSQUEDA_METROS = 5000.0;
 
     // Máximo de resultados por búsqueda (límite de la API: 20)
     private static final int MAX_RESULTADOS = 20;
 
+    private static final Map<String, String> TRANSPORTES_PERMITIDOS_MAP = new HashMap<>( //busqueda mas rapida con un HASH MAP O(1)
+            Map.of(
+                    "transporte-publico", "transit",
+                    "vehiculo", "driving",
+                    "vehiculo-dos-ruedas", "two-wheel vehicles",
+                    "caminar", "walking",
+                    "bicicleta", "bicycling"));
     /**
      * Campo mask para Nearby Search.
      * Todos estos campos disparan el SKU "Nearby Search Pro" → 5.000 gratis/mes.
@@ -56,6 +70,14 @@ public class GooglePlacesService {
      */
     private static final String DETAILS_FIELD_MASK =
             "id,displayName,formattedAddress,location,addressComponents,types";
+
+    /**
+     * Campo mask para Compute Routes.
+     * Todos estos campos disparan el SKU "Routes: Compute Routes Essentials" → 10.000 gratis/mes.
+     * Ref: https://developers.google.com/maps/documentation/routes/web-service/compute-routes#fieldmask
+     */
+    private static final String COMPUTE_ROUTES_FIELD_MASK =
+            "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline,routes.routeLabels,routes.legs";
 
 
     @Value("${google.api.key}")
@@ -178,6 +200,79 @@ public class GooglePlacesService {
     }
 
     /**
+    *  Verifica si un {@link String} transporte del sistema es válido
+    * */
+    public boolean esTransporteValido(String transporte){
+        return TRANSPORTES_PERMITIDOS_MAP.containsKey(transporte.toLowerCase());
+    }
+
+    /**
+    *  Calcula el tiempo estimado de arribo a un hospital
+    * */
+    @Transactional
+    public List<TiempoEstimadoArriboHospitalResponse> calcularTiempoArriboHospital(
+            Hospital hospital, String transporte, Double latitud, Double longitud
+    ){
+        Coordenada coordenadaHospital = hospital.getDireccion().getCoordenada();
+
+        Map<String, Object> requestBody = Map.of(
+                "origin", Map.of(
+                        "location",
+                        Map.of(
+                                "latLng",
+                                Map.of("latitude", latitud, "longitude", longitud))),
+                "destination", Map.of(
+                        "location", Map.of(
+                                "latLng", Map.of(
+                                        "latitude", coordenadaHospital.getLatitud(),
+                                        "longitude", coordenadaHospital.getLongitud())),
+                        "placeId", hospital.getPlaceId()
+                ),
+                "travelMode", this.traducirTransportePermitido(transporte), //necesario dado que la api está en inglés
+                "units", "METRIC", // se lo pido en metros
+                "computeAlternativeRoutes", true // máximo de 3 rutas
+        );
+
+        try {
+            String responseJson = restClient.post()
+                    .uri(ROUTES_BASE_URL)
+                    .header("Content-Type", "application/json")
+                    .header("X-Goog-Api-Key", apiKey)
+                    // El field mask va en header para controlar qué datos devuelve la API
+                    // y así no disparar SKUs más caros innecesariamente.
+                    .header("X-Goog-FieldMask", COMPUTE_ROUTES_FIELD_MASK)
+                    .body(requestBody)
+                    .retrieve()
+                    .body(String.class);
+
+            GooglePlacesComputeRouteResponseDTO response =
+                    objectMapper.readValue(responseJson, GooglePlacesComputeRouteResponseDTO.class);
+
+            if (response == null || response.getRoutes().isEmpty()) {
+                log.warn("La API de Google no devolvió resultados para lat={}, lng={}", latitud, longitud);
+                throw new IllegalArgumentException("La API de Google no devolvió resultados, intente más tarde");
+            }
+
+            return this.mappearATiempoEstimadoArriboHospitalResponse(response, transporte, hospital.getId());
+
+        } catch (Exception e) {
+            log.error("Error al buscar hospitales cercanos en Google Places API: {}", e.getMessage(), e);
+            throw new IllegalArgumentException("Error en la API de Google, intente más tarde ");
+        }
+    }
+
+    /**
+    *  Transforma un {@link String} transporte del sistema a un {@link String} transporte de la API de Google
+    * */
+    private String traducirTransportePermitido(String transporteEnEspaniol) {
+        if (!TRANSPORTES_PERMITIDOS_MAP.containsKey(transporteEnEspaniol.toLowerCase())) {
+            throw new IllegalArgumentException("Transporte no permitido: " + transporteEnEspaniol);
+        }
+
+        return TRANSPORTES_PERMITIDOS_MAP.get(transporteEnEspaniol.toLowerCase());
+    }
+    
+    /**
      * Convierte un {@link GooglePlaceDetailsResponseDTO} a la entidad {@link Hospital}.
      */
     private Hospital mapearAHospital(GooglePlaceDetailsResponseDTO detalles) {
@@ -206,5 +301,65 @@ public class GooglePlacesService {
         return hospital;
     }
 
+    /**
+     * Convierte un {@link GooglePlacesComputeRouteResponseDTO} a un {@link TiempoEstimadoArriboHospitalResponse}.
+     */
+    private List<TiempoEstimadoArriboHospitalResponse> mappearATiempoEstimadoArriboHospitalResponse(
+            GooglePlacesComputeRouteResponseDTO response, String transporte, Long idHospital
+    ){
+        //busco la ruta mas optima que me devolvio la api
+        List<RouteDTO> rutas = response.getRoutes();
+
+        if(rutas.isEmpty()){
+            throw new IllegalArgumentException("La API de Google no encontró una ruta válidá para el hospital");
+        }
+
+        List<TiempoEstimadoArriboHospitalResponse> rutasDTO = new ArrayList<>();
+
+        rutas.forEach(ruta -> {
+            TiempoEstimadoArriboHospitalResponse dto = new TiempoEstimadoArriboHospitalResponse();
+            dto.setIdHospital(idHospital);
+            dto.setTransporte(transporte);//transporte en español
+
+            dto.setTiempoEstimadoArribo(
+                    this.convertDurationToTime(ruta.getDuration())
+            );
+
+            dto.setDistanciaMetros(ruta.getDistanceMeters());
+            dto.setPolylineCode(ruta.getPolyline().getEncodedPolyline());
+
+            List<RouteLegDTO> tramosRuta = ruta.getLegs();
+
+            if(!tramosRuta.isEmpty()){ //obtengo las líneas de transporte público que se usa para estimar la ruta
+                List<CombinacionRutasDTO> combinaciones = new ArrayList<>();
+                tramosRuta.forEach(
+                        leg -> leg.getSteps()
+                                .forEach(step -> {
+                                            String lineaTransportePublico = step.getTransitDetails().getTransitLine().getName();
+                                            CombinacionRutasDTO combinacionRutasDTO = new CombinacionRutasDTO();
+                                            combinacionRutasDTO.setNombreLinea(lineaTransportePublico);
+                                            combinaciones.add(combinacionRutasDTO);
+                                        }
+                                )
+                );
+
+                dto.setCombinacionesLineas(combinaciones);
+            }
+
+            rutasDTO.add(dto);
+        });
+
+        return rutasDTO;
+    }
+
+    /**
+     * Convierte un {@link String} duration a un {@link LocalTime}
+     * @param duration es el tiempo de viaje en segundos, por ejemplo "300s"
+     */
+    private LocalTime convertDurationToTime(String duration) {
+        duration = duration.replace("s", "");
+        int durationInt = Integer.parseInt(duration);
+        return LocalTime.ofSecondOfDay(durationInt);
+    }
 }
 

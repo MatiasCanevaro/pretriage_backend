@@ -24,23 +24,7 @@ The current focus is first attention only. The system does not model referral, d
 - Reception admission: supports DNI-based in-person registration, structured form triage, and entry into the same dynamic queue without using chat.
 - Estimated attention time: recalculated dynamically using queue state and active doctor sessions.
 - Real-time estimation: authenticated SSE subscriptions support periodic updates, heartbeat, and multiple connections per consultation.
-- Clinical-file storage: downloads study files from Amazon S3 only when explicitly enabled.
-
-## Optional Clinical-File Storage
-
-Amazon S3 is disabled by default so local reception, triage, queue and medical-session
-flows do not require AWS credentials. To enable downloads of clinical-study files,
-configure:
-
-```properties
-PRETRIAGE_STORAGE_S3_ENABLED=true
-AWS_S3_REGION=us-east-1
-AWS_ACCESS_KEY_ID=...
-AWS_SECRET_ACCESS_KEY=...
-```
-
-When disabled, the application starts without these variables. An attempted study
-download returns an explicit storage-disabled error.
+- Medical studies management: patients can upload, list, download, and delete medical study files (PDFs, images) stored in AWS S3. Doctors can access patient studies during attention through clinical history endpoints.
 
 ## Current Technical Stack
 

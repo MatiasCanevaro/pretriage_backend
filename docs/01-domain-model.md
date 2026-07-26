@@ -103,6 +103,23 @@ Attention states:
 
 - `EN_CURSO`
 - `FINALIZADA`
+
+## Medical Studies And File Management
+
+`EstudioClinico` represents a medical study file (PDF, image, etc.) uploaded by a patient. Important fields:
+
+- `paciente`
+- `nombreArchivo`
+- `tipoArchivo`
+- `extensionArchivo`
+- `descripcion`
+- `fechaSubida`
+- `tamanoArchivo`
+- `rutaArchivo`
+- `activo`
+
+Files are stored in AWS S3 through `GestionDeArchivosService`. The entity uses soft delete (`activo = false`) to preserve history while removing from active views. Patients can upload, list, download, and delete their own studies. Doctors can view patient studies during attention.
+
 ## Generated Diagram
 
 A Mermaid ER diagram can be generated from the JPA entity classes:

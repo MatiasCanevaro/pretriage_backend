@@ -5,11 +5,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.core.ResponseInputStream;
+import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.GetObjectRequest;
-import software.amazon.awssdk.services.s3.model.GetObjectResponse;
-import software.amazon.awssdk.services.s3.model.S3Exception;
+import software.amazon.awssdk.services.s3.model.*;
 
 import java.io.IOException;
 
@@ -46,5 +46,26 @@ public class GestionDeArchivosService {
             // Error de entrada/salida al leer los bytes del flujo
             throw new ArchivoS3Exception("Error al procesar los bytes del archivo médico :" + e.getMessage());
         }
+    }
+
+    public void subirArchivo(MultipartFile file, String fileName) {
+        PutObjectRequest putObjectRequest = PutObjectRequest.builder()
+                .bucket(this.bucketName)
+                .key(fileName)
+                .build();
+        try{
+            this.s3Client.putObject(putObjectRequest, RequestBody.fromBytes(file.getBytes()));
+        } catch (IOException exception){
+            throw new ArchivoS3Exception("No se pudo subir el archivo a s3");
+        }
+    }
+
+    public void eliminarArchivo(String rutaArchivoAEliminar){
+        DeleteObjectRequest deleteObjectRequest = DeleteObjectRequest.builder()
+                .bucket(this.bucketName)
+                .key(rutaArchivoAEliminar)
+                .build();
+
+        this.s3Client.deleteObject(deleteObjectRequest);
     }
 }

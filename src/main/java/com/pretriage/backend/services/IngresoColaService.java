@@ -18,6 +18,7 @@ public class IngresoColaService {
     private final RepoConsultasMedicas repoConsultasMedicas;
     private final RepoGestoresDeColas repoGestoresDeColas;
     private final RepoEntradasCola repoEntradasCola;
+
     private final EstimacionAtencionService estimacionAtencionService;
 
     @Transactional

@@ -33,7 +33,6 @@ class AtencionMedicoServiceTest {
     @Mock RepoMedico repoMedico;
     @Mock RepoHospitales repoHospitales;
     @Mock RepoEspecialidadesMedicas repoEspecialidadesMedicas;
-    @Mock RepoSalas repoSalas;
     @Mock RepoAsignacionesMedicoHospital repoAsignacionesMedicoHospital;
     @Mock RepoSesionesAtencionMedica repoSesionesAtencionMedica;
     @Mock RepoGestoresDeColas repoGestoresDeColas;
@@ -45,7 +44,9 @@ class AtencionMedicoServiceTest {
     @Mock tools.jackson.databind.ObjectMapper objectMapper;
     @Mock PacienteService pacienteService;
     @InjectMocks AtencionMedicoService service;
-
+    @Mock UsuariosService usuariosService;
+    @Mock SalaService salaService;
+    @Mock GestionDeArchivosService gestionDeArchivosService;
 
     @Test
     void noPermitePausarUnaSesionConConsultaTomada() {

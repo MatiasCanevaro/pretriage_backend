@@ -46,7 +46,7 @@ public class AtencionMedicoService {
     private final RepoMedico repoMedico;
     private final RepoHospitales repoHospitales;
     private final RepoEspecialidadesMedicas repoEspecialidadesMedicas;
-    private final RepoSalas repoSalas;
+
     private final RepoAsignacionesMedicoHospital repoAsignacionesMedicoHospital;
     private final RepoSesionesAtencionMedica repoSesionesAtencionMedica;
     private final RepoGestoresDeColas repoGestoresDeColas;
@@ -60,6 +60,9 @@ public class AtencionMedicoService {
 
     private final PacienteService pacienteService;
     private final GestionDeArchivosService gestionDeArchivosService;
+    private final UsuariosService usuariosService;
+    private final SalaService salaService;
+    private final EstudioClinicoService estudioClinicoService;
 
     public List<AsignacionMedicoDTO> obtenerAsignaciones(String auth0Id) {
         Medico medico = obtenerMedico(auth0Id);
@@ -68,10 +71,10 @@ public class AtencionMedicoService {
                 .toList();
     }
 
-    public List<SalaDTO> obtenerSalas(Long hospitalId, String codigoEspecialidad) {
-        return repoSalas.findByHospitalIdAndEspecialidadCodigoAndActivaTrue(hospitalId, codigoEspecialidad).stream()
-                .map(this::mapearSala)
-                .toList();
+    public List<SalaDTO> obtenerSalas(Long hospitalId, String codigoEspecialidad, String auth0Id) {
+        usuariosService.validarSiEsUsuarioValido(auth0Id);
+
+        return salaService.obtenerSalas(hospitalId, codigoEspecialidad);
     }
 
     public SesionMedicaActualDTO obtenerSesionActual(String auth0Id) {
@@ -129,10 +132,8 @@ public class AtencionMedicoService {
     public byte[] descargarArchivo(String auth0Id, Long pacienteId, Long estudioId){
         this.obtenerMedico(auth0Id);
         Paciente paciente = pacienteService.obtenerPaciente(pacienteId);
-        EstudioClinico estudioClinico = repoEstudiosClinicos.findByIdAndIdPaciente(estudioId, pacienteId)
-                .orElseThrow(() -> new NoSuchElementException("Estudio clinico inexistente"));
 
-        return gestionDeArchivosService.descargarArchivoDesdeS3(estudioClinico.getRutaArchivo());
+        return estudioClinicoService.descargarEstudioClinicoDePaciente(paciente,estudioId);
     }
 
     @Transactional
@@ -142,8 +143,7 @@ public class AtencionMedicoService {
                 .orElseThrow(() -> new NoSuchElementException("Hospital inexistente"));
         EspecialidadMedica especialidad = repoEspecialidadesMedicas.findByCodigo(codigoEspecialidad)
                 .orElseThrow(() -> new NoSuchElementException("Especialidad medica inexistente"));
-        Sala sala = repoSalas.findById(salaId)
-                .orElseThrow(() -> new NoSuchElementException("Sala inexistente"));
+        Sala sala = salaService.obtenerSala(salaId);
 
         validarAsignacion(medico, hospital, especialidad);
         validarSala(sala, hospital, especialidad);
@@ -447,12 +447,7 @@ public class AtencionMedicoService {
         return dto;
     }
 
-    private SalaDTO mapearSala(Sala sala) {
-        SalaDTO dto = new SalaDTO();
-        dto.setId(sala.getId());
-        dto.setNombre(sala.getNombre());
-        return dto;
-    }
+
 
 
     private AtencionMedicaDTO mapearAtencion(AtencionMedica atencion) {
@@ -545,14 +540,7 @@ public class AtencionMedicoService {
 
     private EstudioClinicoDTO obtenerEstudioClinicoDe(Long pacienteId, Long estudioId){
         Paciente paciente = pacienteService.obtenerPaciente(pacienteId);
-        EstudioClinico estudio = repoEstudiosClinicos.findByIdAndIdPaciente(estudioId, pacienteId)
-                .orElseThrow(() -> new NoSuchElementException("Estudio clinico inexistente"));
-
-        if(!estudio.getPaciente().getId().equals(pacienteId)){
-            throw new NoSuchElementException("No existe el estudio para el paciente "+ pacienteId);
-        }
-
-        return mapearEstudioClinico(estudio);
+        return estudioClinicoService.obtenerEstudioClinicoDePaciente(paciente, estudioId);
     }
 
     private List<EstudioClinicoDTO> obtenerUltimosEstudiosClinicosDe(Long pacienteId){
