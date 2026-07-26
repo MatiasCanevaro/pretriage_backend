@@ -136,6 +136,15 @@ POST /api/paciente/consulta/llegue
 
 ## Doctor
 
+### Recover Current Session
+
+```http
+GET /api/medico/sesiones/actual
+```
+
+Returns the authenticated doctor's active or paused session together with the
+currently called or in-attention consultation. Both values are nullable.
+
 ### Start Session
 
 ```http
@@ -180,7 +189,8 @@ POST /api/medico/sesiones/{sesionId}/consultas/{consultaId}/ausente
 GET /api/medico/sesiones/{sesionId}/pacientes-disponibles
 ```
 
-Returns ordered `EntradaCola.EN_COLA` consultations for the session hospital and specialty.
+Returns ordered `EntradaCola.EN_COLA` consultations for the session hospital and specialty,
+including the effective priority, patient name and surname. For queued patients the effective priority is the preliminary backend classification. Room fields remain null until the consultation is called.
 
 ### Attention History
 
@@ -196,6 +206,27 @@ POST /api/medico/sesiones/{sesionId}/consultas/{consultaId}/presente
 
 Creates an `AtencionMedica.EN_CURSO` historical record.
 
+### Read Pretriage And Priority Review
+
+```http
+GET /api/medico/sesiones/{sesionId}/consultas/{consultaId}/pretriaje
+```
+
+Available only to the doctor/session that owns an `EN_ATENCION` consultation.
+Returns the normalized clinical summary, preliminary and effective priorities,
+and `PENDIENTE`, `CONFIRMADA`, or `CORREGIDA` review state.
+
+### Confirm Or Correct Priority
+
+```http
+PUT /api/medico/sesiones/{sesionId}/consultas/{consultaId}/revision-prioridad
+```
+
+Confirm with `{ "decision": "CONFIRMAR" }`. Correct with
+`{ "decision": "CORREGIR", "prioridad": "NORMAL", "motivo": "optional" }`.
+The corrected priority must differ from the preliminary priority. The operation
+is idempotent for an identical payload and preserves every genuine change.
+
 ### Finish Attention
 
 ```http
@@ -203,6 +234,7 @@ POST /api/medico/sesiones/{sesionId}/consultas/{consultaId}/finalizar
 ```
 
 Finalizes the consultation, queue entry, and historical attention in one operation.
+Returns `409` until priority has been reviewed.
 
 ### Clinical History Access
 

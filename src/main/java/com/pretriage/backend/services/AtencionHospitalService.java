@@ -150,8 +150,16 @@ public class AtencionHospitalService {
 
     @Transactional
     public TiempoEstimadoAtencionResponse finalizarTriageEIngresarACola(String auth0Id, NivelDeGravedad nivelDeGravedadBot) {
+        return finalizarTriageEIngresarACola(auth0Id, nivelDeGravedadBot, null);
+    }
+
+    @Transactional
+    public TiempoEstimadoAtencionResponse finalizarTriageEIngresarACola(
+            String auth0Id, NivelDeGravedad nivelDeGravedadBot, String resumenPretriageJson) {
         Paciente paciente = this.obtenerPaciente(auth0Id);
         ConsultaMedica consultaMedica = obtenerConsultaConHospitalSeleccionado(paciente);
+        consultaMedica.setResumenPretriageJson(resumenPretriageJson);
+        repoConsultasMedicas.save(consultaMedica);
         return ingresoColaService.ingresar(consultaMedica, nivelDeGravedadBot);
     }
 

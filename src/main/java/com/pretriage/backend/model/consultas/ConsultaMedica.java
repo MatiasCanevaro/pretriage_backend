@@ -60,6 +60,9 @@ public class ConsultaMedica {
     @Enumerated(EnumType.STRING)
     private NivelDeGravedad nivelDeGravedadMedico;
 
+    @Column(columnDefinition = "TEXT")
+    private String resumenPretriageJson;
+
     @Enumerated(EnumType.STRING)
     private EstadoConsulta estadoConsulta;
 

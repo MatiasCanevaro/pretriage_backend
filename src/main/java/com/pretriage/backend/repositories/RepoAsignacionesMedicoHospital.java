@@ -12,4 +12,5 @@ public interface RepoAsignacionesMedicoHospital extends JpaRepository<Asignacion
     boolean existsByMedicoIdAndHospitalIdAndEspecialidadCodigo(Long idMedico, Long idHospital, String codigoEspecialidad);
 
     List<AsignacionMedicoHospital> findByMedicoId(Long idMedico);
+    List<AsignacionMedicoHospital> findByMedicoUsuarioAuthId(String auth0Id);
 }

@@ -1,7 +1,14 @@
 package com.pretriage.backend.services;
 
+import com.pretriage.backend.controllers.dtos.ConsultaLlamadaDTO;
 import com.pretriage.backend.controllers.dtos.EstudioClinicoDTO;
+import com.pretriage.backend.controllers.dtos.SesionMedicaActualDTO;
+import com.pretriage.backend.controllers.dtos.PretriajeConsultaDTO;
+import com.pretriage.backend.controllers.dtos.RevisionPrioridadRequest;
+import com.pretriage.backend.exceptions.ConflictoDeEstadoException;
 import com.pretriage.backend.model.consultas.*;
+import com.pretriage.backend.model.hospitales.EspecialidadMedica;
+import com.pretriage.backend.model.hospitales.Hospital;
 import com.pretriage.backend.model.hospitales.Sala;
 import com.pretriage.backend.model.personas.Medico;
 import com.pretriage.backend.model.personas.Paciente;
@@ -17,6 +24,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -31,8 +39,9 @@ class AtencionMedicoServiceTest {
     @Mock RepoEntradasCola repoEntradasCola;
     @Mock RepoConsultasMedicas repoConsultasMedicas;
     @Mock RepoAtencionesMedicas repoAtencionesMedicas;
-    @Mock RepoEstudiosClinicos repoEstudiosClinicos;
-
+    @Mock RepoRevisionesPrioridadConsulta repoRevisionesPrioridadConsulta;
+    @Mock RepoAdmisionesRecepcion repoAdmisionesRecepcion;
+    @Mock tools.jackson.databind.ObjectMapper objectMapper;
     @Mock PacienteService pacienteService;
     @InjectMocks AtencionMedicoService service;
     @Mock UsuariosService usuariosService;
@@ -56,6 +65,98 @@ class AtencionMedicoServiceTest {
 
         assertThrows(IllegalStateException.class, () -> service.pausarSesion("auth0", 20L));
     }
+
+    @Test
+    void listaUnaConsultaEnColaAunqueTodaviaNoTengaSala() {
+        Hospital hospital = new Hospital();
+        hospital.setId(1L);
+        EspecialidadMedica especialidad = new EspecialidadMedica();
+        especialidad.setId(2L);
+        GestorDeCola gestor = new GestorDeCola();
+        gestor.setId(3L);
+        Paciente paciente = new Paciente();
+        paciente.setId(4L);
+        paciente.setNombre("Ana");
+        paciente.setApellido("Pérez");
+        ConsultaMedica consulta = new ConsultaMedica();
+        consulta.setId(5L);
+        consulta.setCodigoLlamado("A-005");
+        consulta.setPaciente(paciente);
+        consulta.setEstadoConsulta(EstadoConsulta.EN_COLA);
+        consulta.setNivelDeGravedadBot(NivelDeGravedad.URGENTE);
+        EntradaCola entrada = new EntradaCola();
+        entrada.setConsultaMedica(consulta);
+        SesionAtencionMedica sesion = new SesionAtencionMedica();
+        sesion.setId(6L);
+        sesion.setHospital(hospital);
+        sesion.setEspecialidad(especialidad);
+        sesion.setEstado(EstadoSesionMedica.ACTIVA);
+
+        when(repoSesionesAtencionMedica.findByIdAndMedicoUsuarioAuthId(6L, "auth0"))
+                .thenReturn(Optional.of(sesion));
+        when(repoGestoresDeColas.findByHospitalIdAndEspecialidadId(1L, 2L))
+                .thenReturn(Optional.of(gestor));
+        when(repoEntradasCola.findByGestorDeColaIdAndEstadoOrderByPrioridadDescOrdenRelativoAscFechaHoraIngresoAsc(
+                3L, EstadoEntradaCola.EN_COLA))
+                .thenReturn(List.of(entrada));
+
+        List<ConsultaLlamadaDTO> resultado = service.listarPacientesDisponibles("auth0", 6L);
+
+        assertEquals(1, resultado.size());
+        assertEquals(5L, resultado.getFirst().getConsultaId());
+        assertEquals("Ana", resultado.getFirst().getNombrePaciente());
+        assertEquals("Pérez", resultado.getFirst().getApellidoPaciente());
+        assertEquals(EstadoConsulta.EN_COLA, resultado.getFirst().getEstadoConsulta());
+        assertEquals(NivelDeGravedad.URGENTE, resultado.getFirst().getPrioridad());
+        assertNull(resultado.getFirst().getSalaId());
+        assertNull(resultado.getFirst().getNombreSala());
+    }
+
+    @Test
+    void recuperaLaSesionYLaConsultaActualDelMedico() {
+        Medico medico = new Medico();
+        medico.setId(10L);
+        Hospital hospital = new Hospital();
+        hospital.setId(20L);
+        EspecialidadMedica especialidad = new EspecialidadMedica();
+        especialidad.setCodigo("CLINICA_MEDICA");
+        Sala sala = new Sala();
+        sala.setId(30L);
+        sala.setNombre("Consultorio 1");
+        Paciente paciente = new Paciente();
+        paciente.setId(40L);
+        ConsultaMedica consulta = new ConsultaMedica();
+        consulta.setId(50L);
+        consulta.setPaciente(paciente);
+        consulta.setMedico(medico);
+        consulta.setSala(sala);
+        consulta.setEstadoConsulta(EstadoConsulta.LLAMADO);
+        EntradaCola entrada = new EntradaCola();
+        entrada.setConsultaMedica(consulta);
+        SesionAtencionMedica sesion = new SesionAtencionMedica();
+        sesion.setId(60L);
+        sesion.setMedico(medico);
+        sesion.setHospital(hospital);
+        sesion.setEspecialidad(especialidad);
+        sesion.setSala(sala);
+        sesion.setEstado(EstadoSesionMedica.ACTIVA);
+
+        when(repoMedico.findByUsuarioAuthId("auth0")).thenReturn(Optional.of(medico));
+        when(repoSesionesAtencionMedica.findFirstByMedicoUsuarioAuthIdAndEstadoInOrderByFechaHoraInicioDesc(
+                "auth0", List.of(EstadoSesionMedica.ACTIVA, EstadoSesionMedica.PAUSADA)))
+                .thenReturn(Optional.of(sesion));
+        when(repoEntradasCola.findFirstByConsultaMedicaMedicoUsuarioAuthIdAndEstadoInOrderByFechaHoraLlamadoDesc(
+                "auth0", List.of(EstadoEntradaCola.LLAMADO, EstadoEntradaCola.EN_ATENCION)))
+                .thenReturn(Optional.of(entrada));
+
+        SesionMedicaActualDTO resultado = service.obtenerSesionActual("auth0");
+
+        assertEquals(60L, resultado.getSesion().getId());
+        assertEquals(EstadoSesionMedica.ACTIVA, resultado.getSesion().getEstado());
+        assertEquals(50L, resultado.getConsultaActual().getConsultaId());
+        assertEquals(EstadoConsulta.LLAMADO, resultado.getConsultaActual().getEstadoConsulta());
+    }
+
     @Test
     void creaLaAtencionHistoricaCuandoElPacienteConfirmaPresencia() {
         Medico medico = new Medico(); medico.setId(10L);
@@ -78,6 +179,101 @@ class AtencionMedicoServiceTest {
         assertEquals(sesion, captor.getValue().getSesionAtencionMedica());
         assertEquals(consulta, captor.getValue().getConsultaMedica());
     }
+
+    @Test
+    void confirmaLaPrioridadEnUnSoloPasoYLaDejaAuditada() {
+        ContextoAtencion contexto = contextoAtencion();
+        when(repoRevisionesPrioridadConsulta.findFirstByConsultaMedicaIdOrderByFechaHoraDescIdDesc(50L))
+                .thenReturn(Optional.empty());
+        when(repoAdmisionesRecepcion.findByConsultaMedicaId(50L)).thenReturn(Optional.empty());
+
+        PretriajeConsultaDTO resultado = service.revisarPrioridad(
+                "auth0", 20L, 50L,
+                new RevisionPrioridadRequest(DecisionRevisionPrioridad.CONFIRMAR, null, null));
+
+        assertEquals(EstadoRevisionPrioridad.CONFIRMADA, resultado.estadoRevision());
+        assertEquals(NivelDeGravedad.URGENTE, contexto.consulta().getNivelDeGravedadMedico());
+        var captor = org.mockito.ArgumentCaptor.forClass(RevisionPrioridadConsulta.class);
+        verify(repoRevisionesPrioridadConsulta).save(captor.capture());
+        assertEquals(DecisionRevisionPrioridad.CONFIRMAR, captor.getValue().getDecision());
+        assertNull(captor.getValue().getMotivo());
+    }
+
+    @Test
+    void corrigeLaPrioridadSinExigirMotivo() {
+        ContextoAtencion contexto = contextoAtencion();
+        when(repoRevisionesPrioridadConsulta.findFirstByConsultaMedicaIdOrderByFechaHoraDescIdDesc(50L))
+                .thenReturn(Optional.empty());
+        when(repoAdmisionesRecepcion.findByConsultaMedicaId(50L)).thenReturn(Optional.empty());
+
+        PretriajeConsultaDTO resultado = service.revisarPrioridad(
+                "auth0", 20L, 50L,
+                new RevisionPrioridadRequest(DecisionRevisionPrioridad.CORREGIR, NivelDeGravedad.NORMAL, " "));
+
+        assertEquals(EstadoRevisionPrioridad.CORREGIDA, resultado.estadoRevision());
+        assertEquals(NivelDeGravedad.NORMAL, contexto.consulta().getNivelDeGravedadMedico());
+    }
+
+    @Test
+    void noPermiteCorregirConLaMismaPrioridadPreliminar() {
+        contextoAtencion();
+
+        assertThrows(IllegalArgumentException.class, () -> service.revisarPrioridad(
+                "auth0", 20L, 50L,
+                new RevisionPrioridadRequest(DecisionRevisionPrioridad.CORREGIR, NivelDeGravedad.URGENTE, null)));
+        verify(repoRevisionesPrioridadConsulta, never()).save(any());
+    }
+
+    @Test
+    void noDuplicaUnaRevisionIdentica() {
+        ContextoAtencion contexto = contextoAtencion();
+        contexto.consulta().setNivelDeGravedadMedico(NivelDeGravedad.NORMAL);
+        RevisionPrioridadConsulta existente = new RevisionPrioridadConsulta();
+        existente.setDecision(DecisionRevisionPrioridad.CORREGIR);
+        existente.setPrioridadAnterior(NivelDeGravedad.URGENTE);
+        existente.setPrioridadNueva(NivelDeGravedad.NORMAL);
+        existente.setMotivo(null);
+        when(repoRevisionesPrioridadConsulta.findFirstByConsultaMedicaIdOrderByFechaHoraDescIdDesc(50L))
+                .thenReturn(Optional.of(existente));
+        when(repoAdmisionesRecepcion.findByConsultaMedicaId(50L)).thenReturn(Optional.empty());
+
+        PretriajeConsultaDTO resultado = service.revisarPrioridad(
+                "auth0", 20L, 50L,
+                new RevisionPrioridadRequest(DecisionRevisionPrioridad.CORREGIR, NivelDeGravedad.NORMAL, null));
+
+        assertEquals(EstadoRevisionPrioridad.CORREGIDA, resultado.estadoRevision());
+        verify(repoRevisionesPrioridadConsulta, never()).save(any());
+    }
+
+    @Test
+    void exigeRevisionAntesDeFinalizarLaAtencion() {
+        contextoAtencion();
+        when(repoRevisionesPrioridadConsulta.findFirstByConsultaMedicaIdOrderByFechaHoraDescIdDesc(50L))
+                .thenReturn(Optional.empty());
+
+        assertThrows(ConflictoDeEstadoException.class,
+                () -> service.finalizarConsulta("auth0", 20L, 50L));
+        verify(repoAtencionesMedicas, never()).save(any());
+    }
+
+    private ContextoAtencion contextoAtencion() {
+        Medico medico = new Medico(); medico.setId(10L);
+        Sala sala = new Sala(); sala.setId(30L);
+        Paciente paciente = new Paciente(); paciente.setId(40L);
+        ConsultaMedica consulta = new ConsultaMedica();
+        consulta.setId(50L); consulta.setMedico(medico); consulta.setSala(sala); consulta.setPaciente(paciente);
+        consulta.setNivelDeGravedadBot(NivelDeGravedad.URGENTE);
+        consulta.setEstadoConsulta(EstadoConsulta.EN_ATENCION);
+        EntradaCola entrada = new EntradaCola();
+        entrada.setConsultaMedica(consulta); entrada.setEstado(EstadoEntradaCola.EN_ATENCION);
+        SesionAtencionMedica sesion = new SesionAtencionMedica();
+        sesion.setId(20L); sesion.setMedico(medico); sesion.setSala(sala); sesion.setEstado(EstadoSesionMedica.ACTIVA);
+        when(repoSesionesAtencionMedica.findByIdAndMedicoUsuarioAuthId(20L, "auth0")).thenReturn(Optional.of(sesion));
+        when(repoEntradasCola.findByConsultaMedicaId(50L)).thenReturn(Optional.of(entrada));
+        return new ContextoAtencion(consulta);
+    }
+
+    private record ContextoAtencion(ConsultaMedica consulta) {}
 
     @Test
     void obtenerHistorialClinicoRetornaListaDeEstudioClinicoDTO() {
