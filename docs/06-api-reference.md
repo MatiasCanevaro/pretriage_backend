@@ -452,24 +452,59 @@ GET /api/estudios/{idEstudio}/file
 
 Downloads the actual file (PDF, image, etc.) for the specified study.
 
-## Rooms (Admin)
+## Hospital Configuration (Hospital Admin)
+
+All operations are scoped to the hospital in the URL and require an active
+`ADMIN_HOSPITAL` membership for that hospital.
+
+### Get Configuration
+
+```http
+GET /api/admin/hospitales/{hospitalId}/configuracion
+```
+
+Returns the hospital's enabled specialties and rooms.
+
+### Enable or Disable Specialty
+
+```http
+POST /api/admin/hospitales/{hospitalId}/configuracion/especialidades/{especialidadId}
+DELETE /api/admin/hospitales/{hospitalId}/configuracion/especialidades/{especialidadId}
+```
 
 ### Create Room
 
 ```http
-POST /api/hospitales/{hospitalId}/especialidades/{idEspecialidadMedica}/salas
+POST /api/admin/hospitales/{hospitalId}/configuracion/salas
 ```
 
 Body:
 
 ```json
 {
-  "nombre": "Sala 1"
+  "nombre": "Consultorio 3",
+  "especialidadId": 1
 }
 ```
 
-### Delete Room
+### Update Room
 
 ```http
-DELETE /api/salas/{salaId}
+PUT /api/admin/hospitales/{hospitalId}/configuracion/salas/{salaId}
+```
+
+Uses the same body as room creation.
+
+### Activate or Deactivate Room
+
+```http
+PATCH /api/admin/hospitales/{hospitalId}/configuracion/salas/{salaId}/estado
+```
+
+Body:
+
+```json
+{
+  "activa": false
+}
 ```

@@ -143,7 +143,7 @@ public class AtencionMedicoService {
                 .orElseThrow(() -> new NoSuchElementException("Hospital inexistente"));
         EspecialidadMedica especialidad = repoEspecialidadesMedicas.findByCodigo(codigoEspecialidad)
                 .orElseThrow(() -> new NoSuchElementException("Especialidad medica inexistente"));
-        Sala sala = salaService.obtenerSala(salaId);
+        Sala sala = salaService.obtenerSala(salaId, hospitalId);
 
         validarAsignacion(medico, hospital, especialidad);
         validarSala(sala, hospital, especialidad);
