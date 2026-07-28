@@ -113,3 +113,18 @@ Ejecutar la suite completa:
 
 Las pruebas de integración requieren PostgreSQL/Docker disponible. S3 permanece
 desactivado durante las pruebas salvo que se habilite explícitamente.
+
+## Integración continua
+
+GitHub Actions ejecuta `.github/workflows/ci.yml` en pull requests y pushes a
+`desarrollo` y `main`. El check `Backend CI / build-and-test` levanta un PostgreSQL
+aislado, desactiva el arranque automático de Docker Compose dentro de Spring y
+ejecuta:
+
+```bash
+./mvnw --batch-mode --no-transfer-progress clean verify
+```
+
+Configurar `Backend CI / build-and-test` como status check obligatorio en las
+reglas de protección de `desarrollo` y `main` evita integrar una rama mientras la
+compilación o las pruebas estén pendientes o fallen.
