@@ -17,18 +17,13 @@ import java.io.IOException;
 @RequiredArgsConstructor
 public class GestionDeArchivosService {
 
-
     private final ObjectProvider<S3Client> s3ClientProvider;
 
     @Value("${aws.s3.bucket-name}")
     private String bucketName;
 
     public byte[] descargarArchivoDesdeS3(String rutaArchivo){
-        S3Client s3Client = s3ClientProvider.getIfAvailable();
-        if (s3Client == null) {
-            throw new ArchivoS3Exception(
-                    "El almacenamiento de estudios clínicos en S3 está deshabilitado en este entorno");
-        }
+        S3Client s3Client = obtenerClienteS3();
 
         // 1. Construir la petición de descarga para AWS S3
         GetObjectRequest getObjectRequest = GetObjectRequest.builder()
@@ -49,23 +44,40 @@ public class GestionDeArchivosService {
     }
 
     public void subirArchivo(MultipartFile file, String fileName) {
+        S3Client s3Client = obtenerClienteS3();
         PutObjectRequest putObjectRequest = PutObjectRequest.builder()
                 .bucket(this.bucketName)
                 .key(fileName)
                 .build();
         try{
-            this.s3Client.putObject(putObjectRequest, RequestBody.fromBytes(file.getBytes()));
+            s3Client.putObject(putObjectRequest, RequestBody.fromBytes(file.getBytes()));
         } catch (IOException exception){
             throw new ArchivoS3Exception("No se pudo subir el archivo a s3");
+        } catch (S3Exception exception) {
+            throw new ArchivoS3Exception("Error al subir el archivo a AWS S3");
         }
     }
 
     public void eliminarArchivo(String rutaArchivoAEliminar){
+        S3Client s3Client = obtenerClienteS3();
         DeleteObjectRequest deleteObjectRequest = DeleteObjectRequest.builder()
                 .bucket(this.bucketName)
                 .key(rutaArchivoAEliminar)
                 .build();
 
-        this.s3Client.deleteObject(deleteObjectRequest);
+        try {
+            s3Client.deleteObject(deleteObjectRequest);
+        } catch (S3Exception exception) {
+            throw new ArchivoS3Exception("Error al eliminar el archivo de AWS S3");
+        }
+    }
+
+    private S3Client obtenerClienteS3() {
+        S3Client s3Client = s3ClientProvider.getIfAvailable();
+        if (s3Client == null) {
+            throw new ArchivoS3Exception(
+                    "El almacenamiento de estudios clínicos en S3 está deshabilitado en este entorno");
+        }
+        return s3Client;
     }
 }
