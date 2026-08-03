@@ -12,20 +12,23 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class PacienteService {
 
-
     private final RepoPacientes repoPacientes;
 
-    public Paciente obtenerPaciente(Long idPaciente){
+    public Paciente obtenerPaciente(Long idPaciente) {
         Optional<Paciente> opPaciente = repoPacientes.findById(idPaciente);
 
-        if(opPaciente.isEmpty()){
+        if (opPaciente.isEmpty()) {
             throw new PacienteNoExisteException();
         }
 
         return opPaciente.get();
     }
 
-    public Optional<Paciente> obtenerPacienteConUsuarioAuthId(String idUsuario){
+    public Optional<Paciente> obtenerPacienteConUsuarioAuthId(String idUsuario) {
         return repoPacientes.findByUsuarioAuthId(idUsuario);
+    }
+
+    public Paciente actualizarPaciente(Paciente paciente) {
+        return repoPacientes.save(paciente);
     }
 }
