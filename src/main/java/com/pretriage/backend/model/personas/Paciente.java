@@ -27,20 +27,14 @@ public class Paciente {
     @JoinColumn(name = "auth_id", referencedColumnName = "id")
     private UsuarioAuth usuarioAuth;
 
-    @OneToMany(
-            mappedBy = "paciente",
-            cascade = CascadeType.ALL,
-            orphanRemoval = true)
+    @OneToMany(mappedBy = "paciente", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Credencial> credenciales;
 
     @OneToOne
-    @JoinColumn(name="id_coordenada", referencedColumnName = "id")
+    @JoinColumn(name = "id_coordenada", referencedColumnName = "id")
     private Coordenada coordenadaActual;
 
-    @OneToMany(
-            mappedBy = "paciente",
-            cascade = CascadeType.ALL,
-            orphanRemoval = true)
+    @OneToMany(mappedBy = "paciente", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<EstudioClinico> historialClinico;
 
     private Genero generoBiologico;
@@ -62,7 +56,7 @@ public class Paciente {
     private String telefono;
     private String correoElectronico;
 
-    @OneToOne
+    @OneToOne(cascade = CascadeType.ALL)
     @JoinColumn(name = "id_direccion")
     private Direccion direccion;
 
