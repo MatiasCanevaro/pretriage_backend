@@ -10,9 +10,10 @@ import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.*;
-
+import lombok.extern.slf4j.Slf4j;
 import java.io.IOException;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class GestionDeArchivosService {
@@ -22,9 +23,10 @@ public class GestionDeArchivosService {
     @Value("${aws.s3.bucket-name}")
     private String bucketName;
 
-    public byte[] descargarArchivoDesdeS3(String rutaArchivo){
+    public byte[] descargarArchivoDesdeS3(String rutaArchivo) {
         S3Client s3Client = obtenerClienteS3();
 
+        log.info("Intentando descargar de S3 -> bucket: '{}', key: '{}'", bucketName, rutaArchivo);
         // 1. Construir la petición de descarga para AWS S3
         GetObjectRequest getObjectRequest = GetObjectRequest.builder()
                 .bucket(bucketName)
@@ -35,8 +37,11 @@ public class GestionDeArchivosService {
         try (ResponseInputStream<GetObjectResponse> s3ObjectSource = s3Client.getObject(getObjectRequest)) {
             return s3ObjectSource.readAllBytes();
         } catch (S3Exception e) {
+            log.error("Fallo S3 -> bucket: '{}', key: '{}', errorCode: '{}'",
+                    bucketName, rutaArchivo, e.awsErrorDetails().errorCode());
             // Error específico de la API de AWS S3 (ej. no existe el objeto en el bucket)
-            throw new ArchivoS3Exception("Error al descargar el archivo desde AWS S3: " + e.awsErrorDetails().errorMessage());
+            throw new ArchivoS3Exception(
+                    "Error al descargar el archivo desde AWS S3: " + e.awsErrorDetails().errorMessage());
         } catch (IOException e) {
             // Error de entrada/salida al leer los bytes del flujo
             throw new ArchivoS3Exception("Error al procesar los bytes del archivo médico :" + e.getMessage());
@@ -49,16 +54,21 @@ public class GestionDeArchivosService {
                 .bucket(this.bucketName)
                 .key(fileName)
                 .build();
-        try{
+        try {
             s3Client.putObject(putObjectRequest, RequestBody.fromBytes(file.getBytes()));
-        } catch (IOException exception){
+        } catch (IOException exception) {
             throw new ArchivoS3Exception("No se pudo subir el archivo a s3");
         } catch (S3Exception exception) {
+            log.error("Error S3 - status: {}, errorCode: {}, errorMessage: {}",
+                    exception.statusCode(),
+                    exception.awsErrorDetails() != null ? exception.awsErrorDetails().errorCode() : "N/A",
+                    exception.awsErrorDetails() != null ? exception.awsErrorDetails().errorMessage()
+                            : exception.getMessage());
             throw new ArchivoS3Exception("Error al subir el archivo a AWS S3");
         }
     }
 
-    public void eliminarArchivo(String rutaArchivoAEliminar){
+    public void eliminarArchivo(String rutaArchivoAEliminar) {
         S3Client s3Client = obtenerClienteS3();
         DeleteObjectRequest deleteObjectRequest = DeleteObjectRequest.builder()
                 .bucket(this.bucketName)

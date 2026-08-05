@@ -12,6 +12,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.http.MediaType;
 
 import java.io.File;
 import java.util.List;
@@ -22,16 +23,23 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class PacienteEstudiosMedicosController {
 
-
     private final EstudioClinicoService estudioClinicoService;
 
-    @PostMapping("/estudios")
+    @PostMapping(value = "/estudios", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Map<String, String>> subirEstudioClinico(
             @AuthenticationPrincipal Jwt jwt,
             @RequestParam("file") MultipartFile file,
-            @Valid @RequestBody EstudioClinicoDTO estudioClinicoRequest) {
+            @RequestParam("tipoArchivo") String tipoArchivo,
+            @RequestParam(value = "descripcion", required = false) String descripcion) {
 
-        estudioClinicoService.subirArchivoEstudioClinico(jwt.getSubject(), file, estudioClinicoRequest);
+        EstudioClinicoDTO dto = new EstudioClinicoDTO();
+        dto.setTipoArchivo(tipoArchivo);
+        dto.setDescripcion(descripcion);
+
+        estudioClinicoService.subirArchivoEstudioClinico(
+                jwt.getSubject(),
+                file,
+                dto);
 
         return ResponseEntity.ok(Map.of("message", "Archivo subido exitosamente"));
     }
@@ -55,16 +63,14 @@ public class PacienteEstudiosMedicosController {
     @GetMapping("/estudios/{idEstudio}")
     public ResponseEntity<EstudioClinicoDTO> obtenerUnEstudiosClinicoMetadata(
             @AuthenticationPrincipal Jwt jwt,
-            @PathVariable("idEstudio") Long idEstudio
-    ) {
+            @PathVariable("idEstudio") Long idEstudio) {
         return ResponseEntity.ok(estudioClinicoService.obtenerEstudioClinico(jwt.getSubject(), idEstudio));
     }
 
     @GetMapping("/estudios/{idEstudio}/file")
     public ResponseEntity<Resource> descargarEstudiosClinico(
             @AuthenticationPrincipal Jwt jwt,
-            @PathVariable("idEstudio") Long idEstudio
-    ) {
+            @PathVariable("idEstudio") Long idEstudio) {
 
         byte[] fileToDownload = estudioClinicoService.descargarEstudioClinico(jwt.getSubject(), idEstudio);
 
