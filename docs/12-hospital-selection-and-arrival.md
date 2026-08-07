@@ -9,11 +9,18 @@ The hospital selection flow allows patients to choose a hospital and get arrival
 ### 1. Get Nearby Hospitals
 
 ```http
-GET /api/hospitales/cercanos?latitud={lat}&longitud={lon}&especialidadId={especialidadId}
+GET /api/hospitales/cercanos?latitud={lat}&longitud={lon}&codigoEspecialidad={codigoEspecialidad}&transporte={transporte}
 ```
 
 - Filters hospitals by selected specialty and distance from patient's location.
 - Returns hospitals sorted by proximity.
+- `transporte` is optional and defaults to `transporte-publico`. Valid values:
+  - `transporte-publico`: Public transit (buses, trains, etc.)
+  - `vehiculo`: Driving/car
+  - `vehiculo-dos-ruedas`: Two-wheel vehicles (motorcycles)
+  - `caminar`: Walking
+  - `bicicleta`: Bicycling
+- Each hospital includes `tiempoEstimadoArriboMejorRuta`, the estimated arrival time of the best route (the route labeled `DEFAULT_ROUTE` by Google) for the requested transport mode. It is `null` when Google cannot compute a route for that hospital.
 - Patient reviews the list and selects one.
 
 ### 2. Select Hospital
@@ -44,39 +51,51 @@ GET /api/hospitales/{idHospital}/tiempo-arribo?latitud={lat}&longitud={lon}&modo
 Example response:
 
 ```json
- [
-    {
-      "tiempoEstimadoArribo": "01:00:00",
-      "idHospital": 1,
-      "distanciaMetros": "5000",
-      "PolylineCode": "fdsjfksda",
-      "combinacionesLineas": [
-        {
-          "nombreLinea": "Línea 85 A"
-        },
-        {
-          "nombreLinea": "Línea 101 B"
-        }
-      ],
-      "transporte": "transporte-publico"
-    },
+[
   {
-    "tiempoEstimadoArribo": "01:30:00",
+    "tiempoEstimadoArribo": "00:35:45",
     "idHospital": 1,
-    "distanciaMetros": "5000",
-    "PolylineCode": "fdsjfksdfdsaa--qQ@",
+    "distanciaMetros": 9331,
+    "PolylineCode": "vbtrEvkccJsDcFaAwAs@h@a@{@...",
     "combinacionesLineas": [
       {
-        "nombreLinea": "Línea 85 A"
+        "tipoTransporte": "caminar",
+        "indicaciones": "Dirígete al nordeste por Independencia hacia Cnel. Dorrego",
+        "nombreLinea": null
       },
       {
-        "nombreLinea": "Línea 7 B"
+        "tipoTransporte": "transporte-publico",
+        "indicaciones": "Autobús en dirección a 116 (Rojo): Once",
+        "nombreLinea": "Plaza Once (98 - 3n, 3v) - Calle 153, 2457"
+      },
+      {
+        "tipoTransporte": "caminar",
+        "indicaciones": "Dirígete al norte por Av. Hipólito Yrigoyen/RN205 hacia Riobamba",
+        "nombreLinea": null
+      }
+    ],
+    "transporte": "transporte-publico"
+  },
+  {
+    "tiempoEstimadoArribo": "00:38:41",
+    "idHospital": 1,
+    "distanciaMetros": 9987,
+    "PolylineCode": "vbtrHAwAs@h@a@{@...",
+    "combinacionesLineas": [
+      {
+        "tipoTransporte": "caminar",
+        "indicaciones": "Dirígete al suroeste por Independencia hacia Tte. Coronel Luis María Campos",
+        "nombreLinea": null
+      },
+      {
+        "tipoTransporte": "transporte-publico",
+        "indicaciones": "Autobús en dirección a R1 - Wilde - Villa Del Parque (X Ctro. Avellaneda)",
+        "nombreLinea": "Nazarre Y Cuenca - San Carlos 2070"
       }
     ],
     "transporte": "transporte-publico"
   }
-  ]
-
+]
 ```
 
 ## Response Fields
@@ -85,8 +104,11 @@ Example response:
 - `idHospital`: The destination hospital ID for this route.
 - `distanciaMetros`: Total distance of the route in meters.
 - `PolylineCode`: Google Maps encoded polyline string representing the route path. This encoding compresses multiple latitude/longitude coordinate points into a single string format that can be decoded to reconstruct the exact route geometry on a map.
-- `combinacionesLineas`: For public transport, lists the transit line names used in the route (e.g., bus lines).
-- `transporte`: The transport mode used for this route.
+- `combinacionesLineas`: One item per step of the route (`legs[].steps[]`), regardless of transport mode. Each item has:
+  - `tipoTransporte`: the system transport key for the step (`caminar`, `transporte-publico`, `vehiculo`, `bicicleta`, `vehiculo-dos-ruedas`).
+  - `indicaciones`: the navigation instruction text for the step.
+  - `nombreLinea`: transit line name (`transitDetails.transitLine.name`), present only for `transporte-publico` steps; `null` otherwise.
+- `transporte`: The transport mode used for this route (as requested in the query).
 
 ## Frontend Responsibilities
 

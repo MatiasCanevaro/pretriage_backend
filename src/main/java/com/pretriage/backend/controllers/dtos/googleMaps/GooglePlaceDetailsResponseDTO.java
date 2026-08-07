@@ -10,7 +10,6 @@ import java.util.List;
 public class GooglePlaceDetailsResponseDTO {
 
     private String id;
-    private String name;
     private LocalizedText displayName;
     private String formattedAddress;
 

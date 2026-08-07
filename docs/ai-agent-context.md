@@ -21,6 +21,15 @@ The system manages the first medical attention workflow:
 - AI triage priority mapping.
 - Auth0 token handling in local E2E scripts.
 
+## Optional Integrations
+
+- Amazon S3 is disabled by default through
+  `pretriage.storage.s3.enabled=false`.
+- Local startup must not require AWS credentials.
+- Set `PRETRIAGE_STORAGE_S3_ENABLED=true` together with `AWS_S3_REGION`,
+  `AWS_ACCESS_KEY_ID`, and `AWS_SECRET_ACCESS_KEY` only when clinical-study file
+  downloads are required.
+
 ## Source Files By Concern
 
 ### AI Chat

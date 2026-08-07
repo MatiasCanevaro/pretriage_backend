@@ -13,6 +13,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -28,6 +29,11 @@ public class MedicoController {
     @GetMapping("/api/medico/asignaciones")
     public ResponseEntity<List<AsignacionMedicoDTO>> obtenerAsignaciones(@AuthenticationPrincipal Jwt jwt) {
         return ResponseEntity.ok(atencionMedicoService.obtenerAsignaciones(jwt.getSubject()));
+    }
+
+    @GetMapping("/api/medico/sesiones/actual")
+    public ResponseEntity<SesionMedicaActualDTO> obtenerSesionActual(@AuthenticationPrincipal Jwt jwt) {
+        return ResponseEntity.ok(atencionMedicoService.obtenerSesionActual(jwt.getSubject()));
     }
 
     @GetMapping("/api/hospitales/{hospitalId}/salas")
@@ -153,6 +159,24 @@ public class MedicoController {
             @PathVariable Long sesionId,
             @PathVariable Long consultaId) {
         return ResponseEntity.ok(atencionMedicoService.marcarAusente(jwt.getSubject(), sesionId, consultaId));
+    }
+
+    @GetMapping("/api/medico/sesiones/{sesionId}/consultas/{consultaId}/pretriaje")
+    public ResponseEntity<PretriajeConsultaDTO> obtenerPretriaje(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable Long sesionId,
+            @PathVariable Long consultaId) {
+        return ResponseEntity.ok(atencionMedicoService.obtenerPretriaje(jwt.getSubject(), sesionId, consultaId));
+    }
+
+    @PutMapping("/api/medico/sesiones/{sesionId}/consultas/{consultaId}/revision-prioridad")
+    public ResponseEntity<PretriajeConsultaDTO> revisarPrioridad(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable Long sesionId,
+            @PathVariable Long consultaId,
+            @RequestBody @Valid RevisionPrioridadRequest request) {
+        return ResponseEntity.ok(atencionMedicoService.revisarPrioridad(
+                jwt.getSubject(), sesionId, consultaId, request));
     }
 
     @PostMapping("/api/medico/sesiones/{sesionId}/consultas/{consultaId}/finalizar")

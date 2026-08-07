@@ -7,7 +7,7 @@ import lombok.Setter;
 @Setter
 public class TransitLineDTO {
 
-    private String name; // nombre completo de la linea del transporte público
+    private String name; // ejemplo: "Plaza Once (98 - 3n, 3v) - Calle 153, 2457"
 
-    private String nameShort; // nombre corto de la linea del transporte público
+    private String nameShort; // ejemplo: "98"
 }

@@ -7,11 +7,15 @@ import lombok.Setter;
 @Setter
 public class RouteLegStepDTO {
 
-    private String duration;
+    private String staticDuration;
 
     private Integer distanceMeters;
 
     private PolylineDTO polyline;
 
-    private RouteLegStepTransitDetailsDTO transitDetails;
+    private RouteLegStepTransitDetailsDTO transitDetails;// puede ser null
+
+    private NavigationInstructionDTO navigationInstruction;
+
+    private TravelMode travelMode;
 }

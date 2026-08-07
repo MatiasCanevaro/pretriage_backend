@@ -1,12 +1,20 @@
 package com.pretriage.backend.services;
 
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 import com.pretriage.backend.controllers.dtos.AtencionMedicaDTO;
 import com.pretriage.backend.controllers.dtos.AsignacionMedicoDTO;
 import com.pretriage.backend.controllers.dtos.ConsultaLlamadaDTO;
 import com.pretriage.backend.controllers.dtos.EstudioClinicoDTO;
+import com.pretriage.backend.controllers.dtos.PretriajeConsultaDTO;
+import com.pretriage.backend.controllers.dtos.RevisionPrioridadDTO;
+import com.pretriage.backend.controllers.dtos.RevisionPrioridadRequest;
 import com.pretriage.backend.controllers.dtos.SalaDTO;
 import com.pretriage.backend.controllers.dtos.SesionAtencionMedicaDTO;
+import com.pretriage.backend.controllers.dtos.SesionMedicaActualDTO;
+import com.pretriage.backend.controllers.dtos.TriageResultDTO;
 import com.pretriage.backend.exceptions.ArchivoS3Exception;
+import com.pretriage.backend.exceptions.ConflictoDeEstadoException;
 import com.pretriage.backend.model.consultas.*;
 import com.pretriage.backend.model.hospitales.EspecialidadMedica;
 import com.pretriage.backend.model.hospitales.Hospital;
@@ -25,6 +33,7 @@ import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -44,6 +53,10 @@ public class AtencionMedicoService {
     private final RepoEntradasCola repoEntradasCola;
     private final RepoConsultasMedicas repoConsultasMedicas;
     private final RepoAtencionesMedicas repoAtencionesMedicas;
+    private final RepoEstudiosClinicos repoEstudiosClinicos;
+    private final RepoRevisionesPrioridadConsulta repoRevisionesPrioridadConsulta;
+    private final RepoAdmisionesRecepcion repoAdmisionesRecepcion;
+    private final ObjectMapper objectMapper;
 
     private final PacienteService pacienteService;
     private final GestionDeArchivosService gestionDeArchivosService;
@@ -62,6 +75,22 @@ public class AtencionMedicoService {
         usuariosService.validarSiEsUsuarioValido(auth0Id);
 
         return salaService.obtenerSalas(hospitalId, codigoEspecialidad);
+    }
+
+    public SesionMedicaActualDTO obtenerSesionActual(String auth0Id) {
+        obtenerMedico(auth0Id);
+        SesionAtencionMedicaDTO sesion = repoSesionesAtencionMedica
+                .findFirstByMedicoUsuarioAuthIdAndEstadoInOrderByFechaHoraInicioDesc(
+                        auth0Id, SESIONES_RESERVAN_RECURSOS)
+                .map(this::mapearSesion)
+                .orElse(null);
+        ConsultaLlamadaDTO consultaActual = repoEntradasCola
+                .findFirstByConsultaMedicaMedicoUsuarioAuthIdAndEstadoInOrderByFechaHoraLlamadoDesc(
+                        auth0Id, List.of(EstadoEntradaCola.LLAMADO, EstadoEntradaCola.EN_ATENCION))
+                .map(EntradaCola::getConsultaMedica)
+                .map(this::mapearConsultaLlamada)
+                .orElse(null);
+        return new SesionMedicaActualDTO(sesion, consultaActual);
     }
 
     public List<ConsultaLlamadaDTO> listarPacientesDisponibles(String auth0Id, Long sesionId) {
@@ -114,7 +143,7 @@ public class AtencionMedicoService {
                 .orElseThrow(() -> new NoSuchElementException("Hospital inexistente"));
         EspecialidadMedica especialidad = repoEspecialidadesMedicas.findByCodigo(codigoEspecialidad)
                 .orElseThrow(() -> new NoSuchElementException("Especialidad medica inexistente"));
-        Sala sala = salaService.obtenerSala(salaId);
+        Sala sala = salaService.obtenerSala(salaId, hospitalId);
 
         validarAsignacion(medico, hospital, especialidad);
         validarSala(sala, hospital, especialidad);
@@ -209,6 +238,69 @@ public class AtencionMedicoService {
     }
 
     @Transactional
+    public PretriajeConsultaDTO obtenerPretriaje(String auth0Id, Long sesionId, Long consultaId) {
+        SesionAtencionMedica sesion = obtenerSesionActiva(auth0Id, sesionId);
+        EntradaCola entrada = obtenerEntradaDeConsulta(consultaId);
+        validarConsultaTomadaPorSesion(entrada.getConsultaMedica(), sesion);
+        validarEstadoEntrada(entrada, EstadoEntradaCola.EN_ATENCION);
+        return mapearPretriaje(entrada.getConsultaMedica());
+    }
+
+    @Transactional
+    public PretriajeConsultaDTO revisarPrioridad(
+            String auth0Id, Long sesionId, Long consultaId, RevisionPrioridadRequest request) {
+        SesionAtencionMedica sesion = obtenerSesionActiva(auth0Id, sesionId);
+        EntradaCola entrada = obtenerEntradaDeConsulta(consultaId);
+        validarConsultaTomadaPorSesion(entrada.getConsultaMedica(), sesion);
+        validarEstadoEntrada(entrada, EstadoEntradaCola.EN_ATENCION);
+
+        ConsultaMedica consulta = entrada.getConsultaMedica();
+        NivelDeGravedad preliminar = consulta.getNivelDeGravedadBot();
+        if (preliminar == null) {
+            throw new ConflictoDeEstadoException("La consulta no tiene una prioridad preliminar");
+        }
+
+        NivelDeGravedad nuevaPrioridad;
+        if (request.decision() == DecisionRevisionPrioridad.CONFIRMAR) {
+            nuevaPrioridad = preliminar;
+        } else {
+            if (request.prioridad() == null) {
+                throw new IllegalArgumentException("Debe indicar la prioridad corregida");
+            }
+            if (request.prioridad() == preliminar) {
+                throw new IllegalArgumentException("La prioridad corregida debe ser distinta de la preliminar");
+            }
+            nuevaPrioridad = request.prioridad();
+        }
+
+        String motivo = normalizarMotivo(request.motivo());
+        RevisionPrioridadConsulta ultima = repoRevisionesPrioridadConsulta
+                .findFirstByConsultaMedicaIdOrderByFechaHoraDescIdDesc(consultaId)
+                .orElse(null);
+        if (ultima != null
+                && ultima.getDecision() == request.decision()
+                && ultima.getPrioridadNueva() == nuevaPrioridad
+                && Objects.equals(ultima.getMotivo(), motivo)) {
+            return mapearPretriaje(consulta, ultima);
+        }
+
+        RevisionPrioridadConsulta revision = new RevisionPrioridadConsulta();
+        revision.setConsultaMedica(consulta);
+        revision.setMedico(sesion.getMedico());
+        revision.setDecision(request.decision());
+        revision.setPrioridadAnterior(consulta.getNivelDeGravedadMedico() == null
+                ? preliminar : consulta.getNivelDeGravedadMedico());
+        revision.setPrioridadNueva(nuevaPrioridad);
+        revision.setMotivo(motivo);
+        revision.setFechaHora(LocalDateTime.now());
+        repoRevisionesPrioridadConsulta.save(revision);
+
+        consulta.setNivelDeGravedadMedico(nuevaPrioridad);
+        repoConsultasMedicas.save(consulta);
+        return mapearPretriaje(consulta, revision);
+    }
+
+    @Transactional
     public ConsultaLlamadaDTO marcarAusente(String auth0Id, Long sesionId, Long consultaId) {
         SesionAtencionMedica sesion = obtenerSesionActiva(auth0Id, sesionId);
         EntradaCola entrada = obtenerEntradaDeConsulta(consultaId);
@@ -231,6 +323,11 @@ public class AtencionMedicoService {
         EntradaCola entrada = obtenerEntradaDeConsulta(consultaId);
         validarConsultaTomadaPorSesion(entrada.getConsultaMedica(), sesion);
         validarEstadoEntrada(entrada, EstadoEntradaCola.EN_ATENCION);
+
+        if (repoRevisionesPrioridadConsulta
+                .findFirstByConsultaMedicaIdOrderByFechaHoraDescIdDesc(consultaId).isEmpty()) {
+            throw new ConflictoDeEstadoException("Debe confirmar o corregir la prioridad antes de finalizar");
+        }
 
         ConsultaMedica consulta = entrada.getConsultaMedica();
         entrada.setEstado(EstadoEntradaCola.FINALIZADA);
@@ -372,10 +469,64 @@ public class AtencionMedicoService {
         dto.setConsultaId(consulta.getId());
         dto.setCodigoLlamado(consulta.getCodigoLlamado());
         dto.setPacienteId(consulta.getPaciente().getId());
-        dto.setSalaId(consulta.getSala().getId());
-        dto.setNombreSala(consulta.getSala().getNombre());
+        dto.setNombrePaciente(consulta.getPaciente().getNombre());
+        dto.setApellidoPaciente(consulta.getPaciente().getApellido());
+        Sala sala = consulta.getSala();
+        if (sala != null) {
+            dto.setSalaId(sala.getId());
+            dto.setNombreSala(sala.getNombre());
+        }
+        dto.setPrioridad(consulta.getNivelDeGravedadMedico() == null
+                ? consulta.getNivelDeGravedadBot()
+                : consulta.getNivelDeGravedadMedico());
         dto.setEstadoConsulta(consulta.getEstadoConsulta());
         return dto;
+    }
+
+    private PretriajeConsultaDTO mapearPretriaje(ConsultaMedica consulta) {
+        RevisionPrioridadConsulta ultima = repoRevisionesPrioridadConsulta
+                .findFirstByConsultaMedicaIdOrderByFechaHoraDescIdDesc(consulta.getId())
+                .orElse(null);
+        return mapearPretriaje(consulta, ultima);
+    }
+
+    private PretriajeConsultaDTO mapearPretriaje(
+            ConsultaMedica consulta, RevisionPrioridadConsulta ultima) {
+        EstadoRevisionPrioridad estado = ultima == null
+                ? EstadoRevisionPrioridad.PENDIENTE
+                : (ultima.getDecision() == DecisionRevisionPrioridad.CONFIRMAR
+                    ? EstadoRevisionPrioridad.CONFIRMADA : EstadoRevisionPrioridad.CORREGIDA);
+        return new PretriajeConsultaDTO(
+                consulta.getId(),
+                consulta.getNivelDeGravedadBot(),
+                consulta.getNivelDeGravedadMedico() == null
+                        ? consulta.getNivelDeGravedadBot() : consulta.getNivelDeGravedadMedico(),
+                estado,
+                leerResumenPretriaje(consulta),
+                ultima == null ? null : new RevisionPrioridadDTO(
+                        ultima.getId(), ultima.getDecision(), ultima.getPrioridadAnterior(),
+                        ultima.getPrioridadNueva(), ultima.getMotivo(), ultima.getFechaHora()));
+    }
+
+    private TriageResultDTO leerResumenPretriaje(ConsultaMedica consulta) {
+        String resumen = consulta.getResumenPretriageJson();
+        if (resumen == null || resumen.isBlank()) {
+            resumen = repoAdmisionesRecepcion.findByConsultaMedicaId(consulta.getId())
+                    .map(admision -> admision.getResultadoTriageJson())
+                    .orElse(null);
+        }
+        if (resumen == null || resumen.isBlank()) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(resumen, TriageResultDTO.class);
+        } catch (JacksonException exception) {
+            throw new IllegalStateException("No se pudo leer el resumen de pretriaje", exception);
+        }
+    }
+
+    private String normalizarMotivo(String motivo) {
+        return motivo == null || motivo.isBlank() ? null : motivo.trim();
     }
 
     @Transactional

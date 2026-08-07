@@ -17,6 +17,9 @@ public interface RepoSesionesAtencionMedica extends JpaRepository<SesionAtencion
 
     Optional<SesionAtencionMedica> findByIdAndMedicoUsuarioAuthId(Long id, String auth0Id);
 
+    Optional<SesionAtencionMedica> findFirstByMedicoUsuarioAuthIdAndEstadoInOrderByFechaHoraInicioDesc(
+            String auth0Id, Collection<EstadoSesionMedica> estados);
+
     int countByHospitalIdAndEspecialidadIdAndEstado(Long idHospital, Long idEspecialidad, EstadoSesionMedica estado);
 }
 

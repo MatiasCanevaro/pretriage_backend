@@ -6,18 +6,13 @@ import com.pretriage.backend.controllers.dtos.TiempoEstimadoArriboHospitalRespon
 import com.pretriage.backend.controllers.dtos.TiempoEstimadoAtencionResponse;
 import com.pretriage.backend.exceptions.AtencionEnCursoException;
 import com.pretriage.backend.model.consultas.ConsultaMedica;
-import com.pretriage.backend.model.consultas.EntradaCola;
 import com.pretriage.backend.model.consultas.EstadoConsulta;
-import com.pretriage.backend.model.consultas.EstadoEntradaCola;
-import com.pretriage.backend.model.consultas.GestorDeCola;
 import com.pretriage.backend.model.consultas.NivelDeGravedad;
 import com.pretriage.backend.model.hospitales.EspecialidadMedica;
 import com.pretriage.backend.model.hospitales.Hospital;
 import com.pretriage.backend.model.personas.Paciente;
 import com.pretriage.backend.repositories.RepoConsultasMedicas;
-import com.pretriage.backend.repositories.RepoEntradasCola;
 import com.pretriage.backend.repositories.RepoEspecialidadesMedicas;
-import com.pretriage.backend.repositories.RepoGestoresDeColas;
 import com.pretriage.backend.repositories.RepoHospitales;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -67,8 +62,11 @@ public class AtencionHospitalService {
     private final PacienteService pacienteService;
     private final GooglePlacesService googlePlacesService;
 
-    public List<HospitalCercanoDTO> buscarHospitalesCercanos(Double latitud, Double longitud, String codigoEspecialidad, String auth0Id) {
-        this.obtenerPaciente(auth0Id);//valida si es un paciente válido
+    public List<HospitalCercanoDTO> buscarHospitalesCercanos(Double latitud, Double longitud, String codigoEspecialidad,
+            String transporte, String auth0Id) {
+        this.obtenerPaciente(auth0Id);// valida si es un paciente válido
+
+        String transporteEfectivo = transporte != null ? transporte : "transporte-publico";
 
         EspecialidadMedica especialidad = obtenerEspecialidad(codigoEspecialidad);
         List<HospitalCercanoDTO> hospitalesCercanos = googlePlacesService.buscarHospitales(latitud, longitud);
@@ -90,6 +88,11 @@ public class AtencionHospitalService {
                 .map(hospitalCercano -> {
                     Hospital hospital = hospitalesPorPlaceId.get(hospitalCercano.getPlaceId());
                     hospitalCercano.setIdHospital(hospital.getId());
+
+                    hospitalCercano.setTiempoEstimadoArriboMejorRuta(
+                            googlePlacesService.calcularTiempoEstimadoArriboMejorRuta(
+                                    hospital, transporteEfectivo, latitud, longitud));
+
                     return completarEspecialidades(hospitalCercano, hospital);
                 })
                 .toList();
@@ -104,8 +107,8 @@ public class AtencionHospitalService {
         Optional<Hospital> opHospital = repoHospitales.findByPlaceId(placeId);
         Hospital hospital;
 
-        if(opHospital.isEmpty()){
-            hospital= googlePlacesService.obtenerHospitalDesdeGoogle(placeId);
+        if (opHospital.isEmpty()) {
+            hospital = googlePlacesService.obtenerHospitalDesdeGoogle(placeId);
             if (hospital == null) {
                 throw new NoSuchElementException("Hospital inexistente");
             }
@@ -142,28 +145,36 @@ public class AtencionHospitalService {
     }
 
     @Transactional
-    public TiempoEstimadoAtencionResponse obtenerTiempoEstimadoDeAtencion(String auth0Id){
+    public TiempoEstimadoAtencionResponse obtenerTiempoEstimadoDeAtencion(String auth0Id) {
         Paciente paciente = this.obtenerPaciente(auth0Id);
         ConsultaMedica consultaMedica = obtenerConsultaConHospitalSeleccionado(paciente);
         return calcularTiempoEstimadoDeAtencion(consultaMedica);
     }
 
     @Transactional
-    public TiempoEstimadoAtencionResponse finalizarTriageEIngresarACola(String auth0Id, NivelDeGravedad nivelDeGravedadBot) {
+    public TiempoEstimadoAtencionResponse finalizarTriageEIngresarACola(String auth0Id,
+            NivelDeGravedad nivelDeGravedadBot) {
+        return finalizarTriageEIngresarACola(auth0Id, nivelDeGravedadBot, null);
+    }
+
+    @Transactional
+    public TiempoEstimadoAtencionResponse finalizarTriageEIngresarACola(
+            String auth0Id, NivelDeGravedad nivelDeGravedadBot, String resumenPretriageJson) {
         Paciente paciente = this.obtenerPaciente(auth0Id);
         ConsultaMedica consultaMedica = obtenerConsultaConHospitalSeleccionado(paciente);
+        consultaMedica.setResumenPretriageJson(resumenPretriageJson);
+        repoConsultasMedicas.save(consultaMedica);
         return ingresoColaService.ingresar(consultaMedica, nivelDeGravedadBot);
     }
 
     @Transactional
     public List<TiempoEstimadoArriboHospitalResponse> calcularTiempoArriboHospital(
-            String auth0Id, Long idHospital, String transporte, Double latitud, Double longitud
-    ) {
-        this.obtenerPaciente(auth0Id);//valido que sea paciente
+            String auth0Id, Long idHospital, String transporte, Double latitud, Double longitud) {
+        this.obtenerPaciente(auth0Id);// valido que sea paciente
 
         Hospital hospital = this.obtenerHospital(idHospital);
 
-        if(!googlePlacesService.esTransporteValido(transporte)){
+        if (!googlePlacesService.esTransporteValido(transporte)) {
             throw new IllegalArgumentException("Transporte no valido");
         }
 
@@ -171,11 +182,12 @@ public class AtencionHospitalService {
     }
 
     private ConsultaMedica obtenerConsultaConHospitalSeleccionado(Paciente paciente) {
-        Optional<ConsultaMedica> opConsultaMedica =
-                repoConsultasMedicas.findFirstByPacienteIdAndEstadoConsultaIn(paciente.getId(), ESTADOS_CONSULTA_CON_HOSPITAL);
+        Optional<ConsultaMedica> opConsultaMedica = repoConsultasMedicas
+                .findFirstByPacienteIdAndEstadoConsultaIn(paciente.getId(), ESTADOS_CONSULTA_CON_HOSPITAL);
 
-        if(opConsultaMedica.isEmpty()){
-            throw new NoSuchElementException("Se debe seleccionar primero un hospital o finalizar el pretriage para estimar su tiempo de atencion");
+        if (opConsultaMedica.isEmpty()) {
+            throw new NoSuchElementException(
+                    "Se debe seleccionar primero un hospital o finalizar el pretriage para estimar su tiempo de atencion");
         }
         return opConsultaMedica.get();
     }
@@ -184,11 +196,11 @@ public class AtencionHospitalService {
         return estimacionAtencionService.calcularPara(consultaMedica);
     }
 
-    private Paciente obtenerPaciente(String auth0Id){
+    private Paciente obtenerPaciente(String auth0Id) {
         Optional<Paciente> opPaciente = pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id);
 
-        if(opPaciente.isEmpty()){
-            throw  new AccessDeniedException("No tiene permisos para seleccionar el hospital de otro paciente");
+        if (opPaciente.isEmpty()) {
+            throw new AccessDeniedException("No tiene permisos para seleccionar el hospital de otro paciente");
         }
 
         return opPaciente.get();
@@ -202,8 +214,9 @@ public class AtencionHospitalService {
     private void validarHospitalAtiendeEspecialidad(Hospital hospital, EspecialidadMedica especialidad) {
         List<EspecialidadMedica> especialidadesHospital = hospital.getEspecialidades();
 
-        if(especialidadesHospital.isEmpty()){
-            throw new NoSuchElementException("En el hospital seleccionado no se cargaron las especialidades o no cuenta con ninguna especialidad en urgencias");
+        if (especialidadesHospital.isEmpty()) {
+            throw new NoSuchElementException(
+                    "En el hospital seleccionado no se cargaron las especialidades o no cuenta con ninguna especialidad en urgencias");
         }
 
         boolean atiendeEspecialidad = especialidadesHospital.stream()
@@ -228,12 +241,11 @@ public class AtencionHospitalService {
         return dto;
     }
 
-    private Hospital obtenerHospital(Long idHospital){
+    private Hospital obtenerHospital(Long idHospital) {
         Optional<Hospital> opHospital = repoHospitales.findById(idHospital);
-        if(opHospital.isEmpty()){
+        if (opHospital.isEmpty()) {
             throw new NoSuchElementException("No existe el Hospital con id: " + idHospital);
         }
         return opHospital.get();
     }
 }
-

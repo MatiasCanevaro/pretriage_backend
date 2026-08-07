@@ -31,6 +31,9 @@ public interface RepoEntradasCola extends JpaRepository<EntradaCola, Long> {
 
     boolean existsByConsultaMedicaMedicoIdAndEstadoIn(Long medicoId, Collection<EstadoEntradaCola> estados);
 
+    Optional<EntradaCola> findFirstByConsultaMedicaMedicoUsuarioAuthIdAndEstadoInOrderByFechaHoraLlamadoDesc(
+            String auth0Id, Collection<EstadoEntradaCola> estados);
+
     List<EntradaCola> findByEstadoAndFechaHoraSalidaTemporalBefore(EstadoEntradaCola estado, LocalDateTime limite);
 
     List<EntradaCola> findByEstadoAndTipoPausaAndFechaHoraLimiteRespuestaBefore(EstadoEntradaCola estado, TipoPausaCola tipoPausa, LocalDateTime fechaHoraLimiteRespuesta);

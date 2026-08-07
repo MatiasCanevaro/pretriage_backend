@@ -1,0 +1,66 @@
+name: Backend CI
+
+on:
+  pull_request:
+    branches:
+      - desarrollo
+      - main
+  push:
+    branches:
+      - desarrollo
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: build-and-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SPRING_DOCKER_COMPOSE_ENABLED: "false"
+      JPA_DDL_AUTO: create-drop
+      AUTH0_M2M_CLIENT_ID: ci-placeholder
+      AUTH0_M2M_CLIENT_SECRET: ci-placeholder
+      AUTH0_M2M_SCOPE: read:users
+      AUTH0_APP_CLIENT_ID: ci-placeholder
+      GOOGLE_MAPS_API_KEY: ci-placeholder
+      PRETRIAGE_STORAGE_S3_ENABLED: "false"
+
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: pretriage_db
+          POSTGRES_USER: myuser
+          POSTGRES_PASSWORD: how5are#you2
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U myuser -d pretriage_db"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Make Maven wrapper executable
+        run: chmod +x mvnw
+
+      - name: Build and test
+        run: ./mvnw --batch-mode --no-transfer-progress clean verify

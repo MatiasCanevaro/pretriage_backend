@@ -11,9 +11,9 @@ import java.util.Optional;
 public interface RepoSalas extends JpaRepository<Sala, Long> {
 
     List<Sala> findByHospitalIdAndEspecialidadCodigoAndActivaTrue(Long idHospital, String codigoEspecialidad);
-
-
-    Optional<Sala> findByNombre(String nombreSalaABuscar);
-
-    Optional<Sala> findByIdAndActivaTrue(Long idSala);
+    List<Sala> findByHospitalIdOrderByNombreAsc(Long hospitalId);
+    Optional<Sala> findByIdAndHospitalId(Long id, Long hospitalId);
+    boolean existsByHospitalIdAndNombreIgnoreCase(Long hospitalId, String nombre);
+    boolean existsByHospitalIdAndNombreIgnoreCaseAndIdNot(Long hospitalId, String nombre, Long id);
+    boolean existsByHospitalIdAndEspecialidadIdAndActivaTrue(Long hospitalId, Long especialidadId);
 }

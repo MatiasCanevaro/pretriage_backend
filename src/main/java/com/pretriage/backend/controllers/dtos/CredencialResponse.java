@@ -18,4 +18,6 @@ public class CredencialResponse {
     private String plan;
 
     private LocalDate fechaVencimiento;
+
+    private String nombreObraSocial;
 }

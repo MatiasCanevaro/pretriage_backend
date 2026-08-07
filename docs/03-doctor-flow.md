@@ -5,13 +5,14 @@
 ```mermaid
 flowchart TD
     A[Doctor logs in] --> B[Sees assigned hospitals and specialties]
-    B --> C[Chooses hospital and room]
+    B --> C[Chooses specialty and room in the selected hospital]
     C --> D[Starts active session]
     D --> E[Calls next patient from queue]
     E --> F{Patient responds?}
     F -->|Yes| G[Patient enters attention]
     F -->|No| H[Doctor marks absent]
-    G --> I[Doctor finishes attention]
+    G --> I[Doctor reviews preliminary priority]
+    I --> K[Doctor finishes attention]
     H --> J[Patient waiting/delayed flow]
 ```
 
@@ -23,6 +24,8 @@ flowchart TD
 - To change specialty, close the current session and start another.
 - A room can be used by one doctor at a time.
 - A doctor can have one active or paused session at a time.
+- After a reload or new login, the active or paused session and any `LLAMADO` or
+  `EN_ATENCION` consultation are recovered from the backend.
 - A paused session continues reserving the doctor and room, although it does not count as estimation capacity.
 - A doctor cannot pause or close a session while a consultation is LLAMADO or EN_ATENCION.
 - A doctor cannot call another patient while a previous patient is still LLAMADO or EN_ATENCION.
@@ -60,12 +63,27 @@ If patient does not respond:
 
 When attention finishes:
 
+- The doctor must first confirm the preliminary priority or correct it.
+- Confirmation is a one-click action. A correction requires a different priority; its short reason is optional.
+- Each genuine review change creates an append-only `RevisionPrioridadConsulta` record with doctor, previous and new priority, decision, optional reason, and timestamp.
+- Repeating the exact same review is idempotent and does not duplicate history.
+- The current effective value is also stored in `ConsultaMedica.nivelDeGravedadMedico` for direct reads. Reviewing it does not reorder an entry that is already `EN_ATENCION`.
+- Priority can be changed again while attention remains open, but never after finalization.
 - `EntradaCola` and `ConsultaMedica` become `FINALIZADA`.
 - The linked `AtencionMedica` becomes `FINALIZADA` and stores its end time.
 
+The authorized clinical summary and review state are available at
+`GET /api/medico/sesiones/{sesionId}/consultas/{consultaId}/pretriaje`.
+`PUT /api/medico/sesiones/{sesionId}/consultas/{consultaId}/revision-prioridad`
+accepts `CONFIRMAR`, or `CORREGIR` with a required different `prioridad` and an
+optional `motivo` of at most 500 characters. Finalization returns `409` while
+the review is pending.
+
 ## Queue Visibility And History
 
-- `GET /api/medico/sesiones/{sesionId}/pacientes-disponibles` lists ordered `EN_COLA` patients for the session hospital and specialty.
+- `GET /api/medico/sesiones/actual` returns the authenticated doctor's active or
+  paused session and their currently called or in-attention consultation, if present.
+- `GET /api/medico/sesiones/{sesionId}/pacientes-disponibles` lists ordered `EN_COLA` patients for the session hospital and specialty, including the preliminary priority and the patient name and surname authorized for the attending doctor. A room is not present until the patient is called.
 - `GET /api/medico/atenciones` returns the authenticated doctor's historical attention records.
 
 ## Clinical History Access
