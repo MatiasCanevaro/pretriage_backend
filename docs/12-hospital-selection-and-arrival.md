@@ -9,11 +9,18 @@ The hospital selection flow allows patients to choose a hospital and get arrival
 ### 1. Get Nearby Hospitals
 
 ```http
-GET /api/hospitales/cercanos?latitud={lat}&longitud={lon}&especialidadId={especialidadId}
+GET /api/hospitales/cercanos?latitud={lat}&longitud={lon}&codigoEspecialidad={codigoEspecialidad}&transporte={transporte}
 ```
 
 - Filters hospitals by selected specialty and distance from patient's location.
 - Returns hospitals sorted by proximity.
+- `transporte` is optional and defaults to `transporte-publico`. Valid values:
+  - `transporte-publico`: Public transit (buses, trains, etc.)
+  - `vehiculo`: Driving/car
+  - `vehiculo-dos-ruedas`: Two-wheel vehicles (motorcycles)
+  - `caminar`: Walking
+  - `bicicleta`: Bicycling
+- Each hospital includes `tiempoEstimadoArriboMejorRuta`, the estimated arrival time of the best route (the route labeled `DEFAULT_ROUTE` by Google) for the requested transport mode. It is `null` when Google cannot compute a route for that hospital.
 - Patient reviews the list and selects one.
 
 ### 2. Select Hospital

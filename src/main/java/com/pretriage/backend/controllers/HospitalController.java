@@ -25,10 +25,11 @@ public class HospitalController {
             @RequestParam Double latitud,
             @RequestParam Double longitud,
             @RequestParam String codigoEspecialidad,
+            @RequestParam(required = false, defaultValue = "transporte-publico") String transporte,
             @AuthenticationPrincipal Jwt jwt
     ){
         return ResponseEntity.ok(atencionHospitalService
-                .buscarHospitalesCercanos(latitud, longitud, codigoEspecialidad, jwt.getSubject()));
+                .buscarHospitalesCercanos(latitud, longitud, codigoEspecialidad, transporte, jwt.getSubject()));
     }
 
     @PostMapping("/api/atencion/hospital")

@@ -27,6 +27,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
@@ -183,11 +184,93 @@ public class AtencionHospitalServiceTest {
         when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0idPaciente))
                 .thenReturn(Optional.of(new Paciente()));
 
-        List<HospitalCercanoDTO> hospitales = service.buscarHospitalesCercanos(-34.6, -58.4, codigoEspecialidad,auth0idPaciente);
+        List<HospitalCercanoDTO> hospitales = service.buscarHospitalesCercanos(-34.6, -58.4, codigoEspecialidad,
+                "caminar", auth0idPaciente);
 
         assertEquals(1, hospitales.size());
         assertEquals("hospital2", hospitales.getFirst().getPlaceId());
         assertEquals(codigoEspecialidad, hospitales.getFirst().getEspecialidades().getFirst().getCodigo());
+    }
+
+    @Test
+    void seCompletaElTiempoEstimadoArriboMejorRutaEnHospitalesCercanos(){
+        String auth0idPaciente = "auth0|Paciente";
+        String codigoEspecialidad = "PEDIATRIA";
+        String transporte = "vehiculo";
+        EspecialidadMedica especialidad = crearEspecialidad(30L, codigoEspecialidad);
+        Hospital hospitalDisponible = crearHospital(20L, "hospital2", especialidad);
+
+        HospitalCercanoDTO hospital2 = crearHospitalCercano("hospital2");
+
+        LocalTime tiempoEsperado = LocalTime.of(0, 25, 0);
+
+        when(repoEspecialidadesMedicas.findByCodigo(codigoEspecialidad)).thenReturn(Optional.of(especialidad));
+        when(googlePlacesService.buscarHospitales(-34.6, -58.4)).thenReturn(List.of(hospital2));
+        when(repoHospitales.findByPlaceIdInAndEspecialidadesCodigo(List.of("hospital2"), codigoEspecialidad))
+                .thenReturn(List.of(hospitalDisponible));
+        when(googlePlacesService.calcularTiempoEstimadoArriboMejorRuta(hospitalDisponible, transporte, -34.6, -58.4))
+                .thenReturn(tiempoEsperado);
+
+        when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0idPaciente))
+                .thenReturn(Optional.of(new Paciente()));
+
+        List<HospitalCercanoDTO> hospitales = service.buscarHospitalesCercanos(-34.6, -58.4, codigoEspecialidad,
+                transporte, auth0idPaciente);
+
+        assertEquals(1, hospitales.size());
+        assertEquals(tiempoEsperado, hospitales.getFirst().getTiempoEstimadoArriboMejorRuta());
+    }
+
+    @Test
+    void siNoSeEspecificaTransporteSeUsaElPredeterminado(){
+        String auth0idPaciente = "auth0|Paciente";
+        String codigoEspecialidad = "PEDIATRIA";
+        EspecialidadMedica especialidad = crearEspecialidad(30L, codigoEspecialidad);
+        Hospital hospitalDisponible = crearHospital(20L, "hospital2", especialidad);
+
+        HospitalCercanoDTO hospital2 = crearHospitalCercano("hospital2");
+
+        when(repoEspecialidadesMedicas.findByCodigo(codigoEspecialidad)).thenReturn(Optional.of(especialidad));
+        when(googlePlacesService.buscarHospitales(-34.6, -58.4)).thenReturn(List.of(hospital2));
+        when(repoHospitales.findByPlaceIdInAndEspecialidadesCodigo(List.of("hospital2"), codigoEspecialidad))
+                .thenReturn(List.of(hospitalDisponible));
+        when(googlePlacesService.calcularTiempoEstimadoArriboMejorRuta(hospitalDisponible, "transporte-publico", -34.6,
+                -58.4)).thenReturn(LocalTime.of(0, 15, 0));
+
+        when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0idPaciente))
+                .thenReturn(Optional.of(new Paciente()));
+
+        List<HospitalCercanoDTO> hospitales = service.buscarHospitalesCercanos(-34.6, -58.4, codigoEspecialidad,
+                null, auth0idPaciente);
+
+        assertEquals(1, hospitales.size());
+        assertEquals(LocalTime.of(0, 15, 0), hospitales.getFirst().getTiempoEstimadoArriboMejorRuta());
+    }
+
+    @Test
+    void siNoSePuedeCalcularElTiempoDeArriboElCampoQuedaNull(){
+        String auth0idPaciente = "auth0|Paciente";
+        String codigoEspecialidad = "PEDIATRIA";
+        EspecialidadMedica especialidad = crearEspecialidad(30L, codigoEspecialidad);
+        Hospital hospitalDisponible = crearHospital(20L, "hospital2", especialidad);
+
+        HospitalCercanoDTO hospital2 = crearHospitalCercano("hospital2");
+
+        when(repoEspecialidadesMedicas.findByCodigo(codigoEspecialidad)).thenReturn(Optional.of(especialidad));
+        when(googlePlacesService.buscarHospitales(-34.6, -58.4)).thenReturn(List.of(hospital2));
+        when(repoHospitales.findByPlaceIdInAndEspecialidadesCodigo(List.of("hospital2"), codigoEspecialidad))
+                .thenReturn(List.of(hospitalDisponible));
+        when(googlePlacesService.calcularTiempoEstimadoArriboMejorRuta(hospitalDisponible, "transporte-publico", -34.6,
+                -58.4)).thenReturn(null);
+
+        when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0idPaciente))
+                .thenReturn(Optional.of(new Paciente()));
+
+        List<HospitalCercanoDTO> hospitales = service.buscarHospitalesCercanos(-34.6, -58.4, codigoEspecialidad,
+                "transporte-publico", auth0idPaciente);
+
+        assertEquals(1, hospitales.size());
+        assertNull(hospitales.getFirst().getTiempoEstimadoArriboMejorRuta());
     }
 
     @Test

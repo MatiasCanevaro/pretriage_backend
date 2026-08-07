@@ -3,6 +3,7 @@ package com.pretriage.backend.controllers.dtos;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.time.LocalTime;
 import java.util.List;
 
 @Getter
@@ -18,5 +19,7 @@ public class HospitalCercanoDTO {
     private String direccion;
 
     private List<EspecialidadMedicaDTO> especialidades;
+
+    private LocalTime tiempoEstimadoArriboMejorRuta;
 
 }

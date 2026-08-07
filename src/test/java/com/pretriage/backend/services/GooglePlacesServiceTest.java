@@ -467,6 +467,134 @@ public class GooglePlacesServiceTest {
     }
 
     @Test
+    void sePuedeCalcularElTiempoEstimadoArriboDeLaMejorRuta(){
+        Hospital hospital = new Hospital();
+        hospital.setId(1L);
+        hospital.setPlaceId("hospital1");
+
+        Coordenada coordenada = new Coordenada();
+        coordenada.setLatitud(-34.6);
+        coordenada.setLongitud(-58.4);
+
+        Direccion direccion = new Direccion();
+        direccion.setCoordenada(coordenada);
+        hospital.setDireccion(direccion);
+
+        wireMockServer.stubFor(post(urlEqualTo("/directions/v2:computeRoutes"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                            {
+                              "routes": [
+                                {
+                                  "duration": "300s",
+                                  "routeLabels": ["DEFAULT_ROUTE"]
+                                },
+                                {
+                                  "duration": "200s",
+                                  "routeLabels": ["FUEL_EFFICIENT"]
+                                }
+                              ]
+                            }
+                            """)));
+
+        LocalTime tiempo =
+                service.calcularTiempoEstimadoArriboMejorRuta(hospital, "transporte-publico", -34.61, -58.41);
+
+        assertEquals(LocalTime.of(0, 5, 0), tiempo);
+    }
+
+    @Test
+    void quedaNullElTiempoEstimadoDeLaMejorRutaCuandoNoHayRutaDefault(){
+        Hospital hospital = new Hospital();
+        hospital.setId(1L);
+        hospital.setPlaceId("hospital1");
+
+        Coordenada coordenada = new Coordenada();
+        coordenada.setLatitud(-34.6);
+        coordenada.setLongitud(-58.4);
+
+        Direccion direccion = new Direccion();
+        direccion.setCoordenada(coordenada);
+        hospital.setDireccion(direccion);
+
+        wireMockServer.stubFor(post(urlPathEqualTo("/directions/v2:computeRoutes"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                            {
+                              "routes": [
+                                {
+                                  "duration": "300s",
+                                  "routeLabels": ["FUEL_EFFICIENT"]
+                                }
+                              ]
+                            }
+                            """)));
+
+        LocalTime tiempo =
+                service.calcularTiempoEstimadoArriboMejorRuta(hospital, "transporte-publico", -34.61, -58.41);
+
+        assertNull(tiempo);
+    }
+
+    @Test
+    void quedaNullElTiempoEstimadoDeLaMejorRutaCuandoLaApiNoDevuelveRutas() {
+        Hospital hospital = new Hospital();
+        hospital.setId(1L);
+        hospital.setPlaceId("hospital1");
+
+        Coordenada coordenada = new Coordenada();
+        coordenada.setLatitud(-34.6);
+        coordenada.setLongitud(-58.4);
+
+        Direccion direccion = new Direccion();
+        direccion.setCoordenada(coordenada);
+        hospital.setDireccion(direccion);
+
+        wireMockServer.stubFor(post(urlPathEqualTo("/directions/v2:computeRoutes"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                            {
+                              "routes": []
+                            }
+                            """)));
+
+        LocalTime tiempo =
+                service.calcularTiempoEstimadoArriboMejorRuta(hospital, "transporte-publico", -34.61, -58.41);
+
+        assertNull(tiempo);
+    }
+
+    @Test
+    void quedaNullElTiempoEstimadoDeLaMejorRutaCuandoLaApiDevuelveError(){
+        Hospital hospital = new Hospital();
+        hospital.setId(1L);
+        hospital.setPlaceId("hospital1");
+
+        Coordenada coordenada = new Coordenada();
+        coordenada.setLatitud(-34.6);
+        coordenada.setLongitud(-58.4);
+
+        Direccion direccion = new Direccion();
+        direccion.setCoordenada(coordenada);
+        hospital.setDireccion(direccion);
+
+        wireMockServer.stubFor(post(urlPathEqualTo("/directions/v2:computeRoutes"))
+                .willReturn(aResponse()
+                        .withStatus(500)));
+
+        LocalTime tiempo =
+                service.calcularTiempoEstimadoArriboMejorRuta(hospital, "transporte-publico", -34.61, -58.41);
+
+        assertNull(tiempo);
+    }
+
+    @Test
     void sePuedeVerificarTransporteValido(){
         assertTrue(service.esTransporteValido("transporte-publico"));
         assertTrue(service.esTransporteValido("vehiculo"));

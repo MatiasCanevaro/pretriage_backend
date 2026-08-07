@@ -212,6 +212,57 @@ public class GooglePlacesService {
     @Transactional
     public List<TiempoEstimadoArriboHospitalResponse> calcularTiempoArriboHospital(
             Hospital hospital, String transporte, Double latitud, Double longitud) {
+        try {
+            GooglePlacesComputeRouteResponseDTO response =
+                    consultarRutasComputeRoutes(hospital, transporte, latitud, longitud);
+
+            if (response == null || response.getRoutes().isEmpty()) {
+                log.warn("La API de Google no devolvió resultados para lat={}, lng={}", latitud, longitud);
+                throw new IllegalArgumentException("La API de Google no devolvió resultados, intente más tarde");
+            }
+
+            return this.mappearATiempoEstimadoArriboHospitalResponse(response, transporte, hospital.getId());
+
+        } catch (Exception e) {
+            log.error("Error al buscar hospitales cercanos en Google Places API: {}", e.getMessage(), e);
+            throw new IllegalArgumentException("Error en la API de Google, intente más tarde ");
+        }
+    }
+
+    /**
+     * Calcula el tiempo estimado de arribo de la mejor ruta (la etiquetada
+     * como {@code DEFAULT_ROUTE}) para un hospital.
+     *
+     * Devuelve {@code null} si la API falla, no devuelve rutas o ninguna ruta
+     * es la preferida, para no romper la lista de hospitales cercanos.
+     *
+     * @return el tiempo estimado de la ruta preferida o {@code null} si no se
+     *         puede calcular.
+     */
+    public LocalTime calcularTiempoEstimadoArriboMejorRuta(
+            Hospital hospital, String transporte, Double latitud, Double longitud) {
+        try {
+            GooglePlacesComputeRouteResponseDTO response =
+                    consultarRutasComputeRoutes(hospital, transporte, latitud, longitud);
+
+            RouteDTO rutaPreferida = obtenerRutaPreferida(response);
+            if (rutaPreferida == null) {
+                return null;
+            }
+
+            return this.convertDurationToTime(rutaPreferida.getDuration());
+        } catch (Exception e) {
+            log.warn("No se pudo calcular la mejor ruta de arribo para el hospital {}: {}", hospital.getId(),
+                    e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Construye el body del POST a Compute Routes para un hospital.
+     */
+    private Map<String, Object> construirBodyComputeRoutes(
+            Hospital hospital, String transporte, Double latitud, Double longitud) {
         Direccion direccion = hospital.getDireccion();
         Map<String, Object> destinationMapRequest;
 
@@ -228,7 +279,7 @@ public class GooglePlacesService {
                     "placeId", hospital.getPlaceId());
         }
 
-        Map<String, Object> requestBody = Map.of(
+        return Map.of(
                 "origin", Map.of(
                         "location",
                         Map.of(
@@ -239,33 +290,45 @@ public class GooglePlacesService {
                 "units", "METRIC", // se lo pido en metros
                 "computeAlternativeRoutes", true // máximo de 3 rutas
         );
+    }
 
-        try {
-            String responseJson = restClient.post()
-                    .uri(ROUTES_BASE_URL)
-                    .header("Content-Type", "application/json")
-                    .header("X-Goog-Api-Key", apiKey)
-                    // El field mask va en header para controlar qué datos devuelve la API
-                    // y así no disparar SKUs más caros innecesariamente.
-                    .header("X-Goog-FieldMask", COMPUTE_ROUTES_FIELD_MASK)
-                    .body(requestBody)
-                    .retrieve()
-                    .body(String.class);
+    /**
+     * Llama a la API Compute Routes y devuelve el response parseado.
+     *
+     * Las excepciones HTTP o de parseo se propagan al llamador, que decide
+     * cómo tratarlas.
+     */
+    private GooglePlacesComputeRouteResponseDTO consultarRutasComputeRoutes(
+            Hospital hospital, String transporte, Double latitud, Double longitud) {
+        String responseJson = restClient.post()
+                .uri(ROUTES_BASE_URL)
+                .header("Content-Type", "application/json")
+                .header("X-Goog-Api-Key", apiKey)
+                // El field mask va en header para controlar qué datos devuelve la API
+                // y así no disparar SKUs más caros innecesariamente.
+                .header("X-Goog-FieldMask", COMPUTE_ROUTES_FIELD_MASK)
+                .body(construirBodyComputeRoutes(hospital, transporte, latitud, longitud))
+                .retrieve()
+                .body(String.class);
 
-            GooglePlacesComputeRouteResponseDTO response = objectMapper.readValue(responseJson,
-                    GooglePlacesComputeRouteResponseDTO.class);
+        return objectMapper.readValue(responseJson, GooglePlacesComputeRouteResponseDTO.class);
+    }
 
-            if (response == null || response.getRoutes().isEmpty()) {
-                log.warn("La API de Google no devolvió resultados para lat={}, lng={}", latitud, longitud);
-                throw new IllegalArgumentException("La API de Google no devolvió resultados, intente más tarde");
-            }
-
-            return this.mappearATiempoEstimadoArriboHospitalResponse(response, transporte, hospital.getId());
-
-        } catch (Exception e) {
-            log.error("Error al buscar hospitales cercanos en Google Places API: {}", e.getMessage(), e);
-            throw new IllegalArgumentException("Error en la API de Google, intente más tarde ");
+    /**
+     * Busca la ruta etiquetada como {@code RouteLabel.DEFAULT_ROUTE}, que es la
+     * ruta "óptima" que Google propone por defecto.
+     *
+     * @return la ruta preferida o {@code null} si no existe.
+     */
+    private RouteDTO obtenerRutaPreferida(GooglePlacesComputeRouteResponseDTO response) {
+        if (response == null || response.getRoutes() == null) {
+            return null;
         }
+        return response.getRoutes().stream()
+                .filter(ruta -> ruta.getRouteLabels() != null
+                        && ruta.getRouteLabels().contains(RouteLabel.DEFAULT_ROUTE))
+                .findFirst()
+                .orElse(null);
     }
 
     /**

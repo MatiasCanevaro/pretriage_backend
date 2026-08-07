@@ -36,10 +36,10 @@ Returns available medical specialties.
 ### Nearby Hospitals Filtered By Specialty
 
 ```http
-GET /api/hospitales/cercanos?latitud=-34.6&longitud=-58.4&codigoEspecialidad=CLINICA_MEDICA
+GET /api/hospitales/cercanos?latitud=-34.6&longitud=-58.4&codigoEspecialidad=CLINICA_MEDICA&transporte=transporte-publico
 ```
 
-Returns nearby hospitals that support the selected specialty.
+Returns nearby hospitals that support the selected specialty. Each hospital includes `tiempoEstimadoArriboMejorRuta` (estimated arrival time of the best route for the transport mode; `transporte` is optional, defaults to `transporte-publico`, and the field is null when no route can be computed).
 
 ### Select Hospital
 

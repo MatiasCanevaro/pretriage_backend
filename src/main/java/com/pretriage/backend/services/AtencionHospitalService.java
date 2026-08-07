@@ -63,8 +63,10 @@ public class AtencionHospitalService {
     private final GooglePlacesService googlePlacesService;
 
     public List<HospitalCercanoDTO> buscarHospitalesCercanos(Double latitud, Double longitud, String codigoEspecialidad,
-            String auth0Id) {
+            String transporte, String auth0Id) {
         this.obtenerPaciente(auth0Id);// valida si es un paciente válido
+
+        String transporteEfectivo = transporte != null ? transporte : "transporte-publico";
 
         EspecialidadMedica especialidad = obtenerEspecialidad(codigoEspecialidad);
         List<HospitalCercanoDTO> hospitalesCercanos = googlePlacesService.buscarHospitales(latitud, longitud);
@@ -86,6 +88,11 @@ public class AtencionHospitalService {
                 .map(hospitalCercano -> {
                     Hospital hospital = hospitalesPorPlaceId.get(hospitalCercano.getPlaceId());
                     hospitalCercano.setIdHospital(hospital.getId());
+
+                    hospitalCercano.setTiempoEstimadoArriboMejorRuta(
+                            googlePlacesService.calcularTiempoEstimadoArriboMejorRuta(
+                                    hospital, transporteEfectivo, latitud, longitud));
+
                     return completarEspecialidades(hospitalCercano, hospital);
                 })
                 .toList();
