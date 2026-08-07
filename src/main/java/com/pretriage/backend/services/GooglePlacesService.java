@@ -7,8 +7,6 @@ import com.pretriage.backend.controllers.dtos.googleMaps.*;
 import com.pretriage.backend.model.hospitales.Coordenada;
 import com.pretriage.backend.model.hospitales.Direccion;
 import com.pretriage.backend.model.hospitales.Hospital;
-import com.pretriage.backend.repositories.RepoCoordenadas;
-import com.pretriage.backend.repositories.RepoDirecciones;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 
@@ -29,13 +27,13 @@ public class GooglePlacesService {
 
     private static final Logger log = LoggerFactory.getLogger(GooglePlacesService.class);
 
-   private final DireccionService direccionService;
+    private final DireccionService direccionService;
     private final RestClient restClient = RestClient.create();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     // Base URL de la Places API (New)
     @Value("${google.places.base-url}")
-    private String PLACES_BASE_URL ;
+    private String PLACES_BASE_URL;
 
     @Value("${google.routes.base-url}")
     private String ROUTES_BASE_URL;
@@ -46,43 +44,45 @@ public class GooglePlacesService {
     // Máximo de resultados por búsqueda (límite de la API: 20)
     private static final int MAX_RESULTADOS = 20;
 
-    private static final Map<String, String> TRANSPORTES_PERMITIDOS_MAP = new HashMap<>( //busqueda mas rapida con un HASH MAP O(1)
+    private static final Map<String, TravelMode> TRANSPORTES_PERMITIDOS_MAP = new HashMap<>( // busqueda mas rapida con
+                                                                                             // un
+            // HASH MAP O(1)
             Map.of(
-                    "transporte-publico", "transit",
-                    "vehiculo", "driving",
-                    "vehiculo-dos-ruedas", "two-wheel vehicles",
-                    "caminar", "walking",
-                    "bicicleta", "bicycling"));
+                    "transporte-publico", TravelMode.TRANSIT,
+                    "vehiculo", TravelMode.DRIVE,
+                    "vehiculo-dos-ruedas", TravelMode.TWO_WHEELER,
+                    "caminar", TravelMode.WALK,
+                    "bicicleta", TravelMode.BICYCLE));
     /**
      * Campo mask para Nearby Search.
      * Todos estos campos disparan el SKU "Nearby Search Pro" → 5.000 gratis/mes.
-     * Ref: https://developers.google.com/maps/documentation/places/web-service/nearby-search#fieldmask
+     * Ref:
+     * https://developers.google.com/maps/documentation/places/web-service/nearby-search#fieldmask
      */
-    private static final String NEARBY_FIELD_MASK =
-            "places.id,places.displayName,places.formattedAddress,places.location,places.types";
+    private static final String NEARBY_FIELD_MASK = "places.id,places.displayName,places.formattedAddress,places.location,places.types";
 
     /**
      * Campo mask para Place Details.
      * - formattedAddress, location, addressComponents, types → Essentials SKU
      * - displayName → sube al tier Pro SKU → 5.000 gratis/mes
-     * Si se quiere máximo ahorro, eliminar displayName y quedarse solo con Essentials (10.000 gratis/mes).
-     * Ref: https://developers.google.com/maps/documentation/places/web-service/place-details#fieldmask
+     * Si se quiere máximo ahorro, eliminar displayName y quedarse solo con
+     * Essentials (10.000 gratis/mes).
+     * Ref:
+     * https://developers.google.com/maps/documentation/places/web-service/place-details#fieldmask
      */
-    private static final String DETAILS_FIELD_MASK =
-            "id,displayName,formattedAddress,location,addressComponents,types";
+    private static final String DETAILS_FIELD_MASK = "id,displayName,formattedAddress,location,addressComponents,types";
 
     /**
      * Campo mask para Compute Routes.
-     * Todos estos campos disparan el SKU "Routes: Compute Routes Essentials" → 10.000 gratis/mes.
-     * Ref: https://developers.google.com/maps/documentation/routes/web-service/compute-routes#fieldmask
+     * Todos estos campos disparan el SKU "Routes: Compute Routes Essentials" →
+     * 10.000 gratis/mes.
+     * Ref:
+     * https://developers.google.com/maps/documentation/routes/web-service/compute-routes#fieldmask
      */
-    private static final String COMPUTE_ROUTES_FIELD_MASK =
-            "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline,routes.routeLabels,routes.legs";
-
+    private static final String COMPUTE_ROUTES_FIELD_MASK = "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline,routes.routeLabels,routes.legs";
 
     @Value("${google.api.key}")
     private String apiKey;
-
 
     public List<HospitalCercanoDTO> buscarHospitales(Double latitud, Double longitud) {
 
@@ -91,17 +91,13 @@ public class GooglePlacesService {
         Map<String, Object> requestBody = Map.of(
                 "includedTypes", List.of("hospital"),
                 "maxResultCount", MAX_RESULTADOS,
-                "rankPreference", "DISTANCE",  // ordena por distancia, no popularidad
+                "rankPreference", "DISTANCE", // ordena por distancia, no popularidad
                 "locationRestriction", Map.of(
                         "circle", Map.of(
                                 "center", Map.of(
                                         "latitude", latitud,
-                                        "longitude", longitud
-                                ),
-                                "radius", RADIO_BUSQUEDA_METROS
-                        )
-                )
-        );
+                                        "longitude", longitud),
+                                "radius", RADIO_BUSQUEDA_METROS)));
 
         try {
             String responseJson = restClient.post()
@@ -115,8 +111,8 @@ public class GooglePlacesService {
                     .retrieve()
                     .body(String.class);
 
-            GooglePlacesNearbyResponseDTO response =
-                    objectMapper.readValue(responseJson, GooglePlacesNearbyResponseDTO.class);
+            GooglePlacesNearbyResponseDTO response = objectMapper.readValue(responseJson,
+                    GooglePlacesNearbyResponseDTO.class);
 
             if (response == null || response.getPlaces() == null) {
                 log.warn("La API de Google no devolvió resultados para lat={}, lng={}", latitud, longitud);
@@ -159,15 +155,16 @@ public class GooglePlacesService {
         return hospitalCercanoDTO;
     }
 
-
     /**
      * Obtiene los detalles de un hospital a partir de su Google Place ID,
      * usando Place Details (New).
      *
      * GET https://places.googleapis.com/v1/places/{placeId}
      *
-     * @param placeId el identificador único del lugar en Google (ej: "ChIJN1t_tDeuEmsRUsoyG83frY4")
-     * @return un {@link Hospital} con los datos del lugar, o {@code null} si ocurre un error
+     * @param placeId el identificador único del lugar en Google (ej:
+     *                "ChIJN1t_tDeuEmsRUsoyG83frY4")
+     * @return un {@link Hospital} con los datos del lugar, o {@code null} si ocurre
+     *         un error
      */
     public Hospital obtenerHospitalDesdeGoogle(String placeId) {
 
@@ -183,8 +180,8 @@ public class GooglePlacesService {
                     .retrieve()
                     .body(String.class);
 
-            GooglePlaceDetailsResponseDTO detalles =
-                    objectMapper.readValue(responseJson, GooglePlaceDetailsResponseDTO.class);
+            GooglePlaceDetailsResponseDTO detalles = objectMapper.readValue(responseJson,
+                    GooglePlaceDetailsResponseDTO.class);
 
             if (detalles == null) {
                 log.warn("Google Places API no devolvió detalles para placeId={}", placeId);
@@ -200,19 +197,18 @@ public class GooglePlacesService {
     }
 
     /**
-    *  Verifica si un {@link String} transporte del sistema es válido
-    * */
-    public boolean esTransporteValido(String transporte){
+     * Verifica si un {@link String} transporte del sistema es válido
+     */
+    public boolean esTransporteValido(String transporte) {
         return TRANSPORTES_PERMITIDOS_MAP.containsKey(transporte.toLowerCase());
     }
 
     /**
-    *  Calcula el tiempo estimado de arribo a un hospital
-    * */
+     * Calcula el tiempo estimado de arribo a un hospital
+     */
     @Transactional
     public List<TiempoEstimadoArriboHospitalResponse> calcularTiempoArriboHospital(
-            Hospital hospital, String transporte, Double latitud, Double longitud
-    ){
+            Hospital hospital, String transporte, Double latitud, Double longitud) {
         Coordenada coordenadaHospital = hospital.getDireccion().getCoordenada();
 
         Map<String, Object> requestBody = Map.of(
@@ -225,10 +221,11 @@ public class GooglePlacesService {
                         "location", Map.of(
                                 "latLng", Map.of(
                                         "latitude", coordenadaHospital.getLatitud(),
-                                        "longitude", coordenadaHospital.getLongitud())),
-                        //"placeId", hospital.getPlaceId() // si pongo latitud y longitud no es necesario poner el placeId
+                                        "longitude", coordenadaHospital.getLongitud()))// ,
+                // "placeId", hospital.getPlaceId() // si pongo latitud y longitud no es
+                // necesario poner el placeId
                 ),
-                "travelMode", this.traducirTransportePermitido(transporte), //necesario dado que la api está en inglés
+                "travelMode", this.traducirTransportePermitido(transporte), // necesario dado que la api está en inglés
                 "units", "METRIC", // se lo pido en metros
                 "computeAlternativeRoutes", true // máximo de 3 rutas
         );
@@ -245,8 +242,8 @@ public class GooglePlacesService {
                     .retrieve()
                     .body(String.class);
 
-            GooglePlacesComputeRouteResponseDTO response =
-                    objectMapper.readValue(responseJson, GooglePlacesComputeRouteResponseDTO.class);
+            GooglePlacesComputeRouteResponseDTO response = objectMapper.readValue(responseJson,
+                    GooglePlacesComputeRouteResponseDTO.class);
 
             if (response == null || response.getRoutes().isEmpty()) {
                 log.warn("La API de Google no devolvió resultados para lat={}, lng={}", latitud, longitud);
@@ -262,18 +259,35 @@ public class GooglePlacesService {
     }
 
     /**
-    *  Transforma un {@link String} transporte del sistema a un {@link String} transporte de la API de Google
-    * */
-    private String traducirTransportePermitido(String transporteEnEspaniol) {
+     * Transforma un {@link String} transporte del sistema a un {@link String}
+     * transporte de la API de Google Maps
+     */
+    private TravelMode traducirTransportePermitido(String transporteEnEspaniol) {
         if (!TRANSPORTES_PERMITIDOS_MAP.containsKey(transporteEnEspaniol.toLowerCase())) {
             throw new IllegalArgumentException("Transporte no permitido: " + transporteEnEspaniol);
         }
 
         return TRANSPORTES_PERMITIDOS_MAP.get(transporteEnEspaniol.toLowerCase());
     }
-    
+
     /**
-     * Convierte un {@link GooglePlaceDetailsResponseDTO} a la entidad {@link Hospital}.
+     * Transforma un {@link TravelMode} de la Api de google maps a
+     * un modo transporte del sistema {@link String}
+     */
+    private String pasarAEspaniolTransporte(TravelMode transporteApiGoogleMaps) {
+        for (Map.Entry<String, TravelMode> entry : TRANSPORTES_PERMITIDOS_MAP.entrySet()) {
+            if (entry.getValue().compareTo(transporteApiGoogleMaps) == 0) {
+                return entry.getKey();
+            }
+        }
+        throw new IllegalArgumentException(
+                "No se encontró un modo de transporte en español para el modo de transporte de la API de Google Maps: "
+                        + transporteApiGoogleMaps);
+    }
+
+    /**
+     * Convierte un {@link GooglePlaceDetailsResponseDTO} a la entidad
+     * {@link Hospital}.
      */
     private Hospital mapearAHospital(GooglePlaceDetailsResponseDTO detalles) {
         Hospital hospital = new Hospital();
@@ -282,19 +296,18 @@ public class GooglePlacesService {
         hospital.setNombre(
                 detalles.getDisplayName() != null
                         ? detalles.getDisplayName().getText()
-                        : "Nombre no disponible"
-        );
+                        : "Nombre no disponible");
 
-
-        Direccion direccion = direccionService.buscarOCrearDireccion(detalles.getAddressComponents(), detalles.getLocation(), detalles.getId());
+        Direccion direccion = direccionService.buscarOCrearDireccion(detalles.getAddressComponents(),
+                detalles.getLocation(), detalles.getId());
 
         hospital.setDireccion(direccion);
-
 
         // Extraer país y ciudad de los addressComponents si están disponibles
         if (detalles.getAddressComponents() != null) {
             for (AddressComponent comp : detalles.getAddressComponents()) {
-                if (comp.getTypes() == null) continue;
+                if (comp.getTypes() == null)
+                    continue;
             }
         }
 
@@ -302,15 +315,15 @@ public class GooglePlacesService {
     }
 
     /**
-     * Convierte un {@link GooglePlacesComputeRouteResponseDTO} a un {@link TiempoEstimadoArriboHospitalResponse}.
+     * Convierte un {@link GooglePlacesComputeRouteResponseDTO} a un
+     * {@link TiempoEstimadoArriboHospitalResponse}.
      */
     private List<TiempoEstimadoArriboHospitalResponse> mappearATiempoEstimadoArriboHospitalResponse(
-            GooglePlacesComputeRouteResponseDTO response, String transporte, Long idHospital
-    ){
-        //busco la ruta mas optima que me devolvio la api
+            GooglePlacesComputeRouteResponseDTO response, String transporte, Long idHospital) {
+        // busco la ruta mas optima que me devolvio la api
         List<RouteDTO> rutas = response.getRoutes();
 
-        if(rutas.isEmpty()){
+        if (rutas.isEmpty()) {
             throw new IllegalArgumentException("La API de Google no encontró una ruta válidá para el hospital");
         }
 
@@ -319,30 +332,36 @@ public class GooglePlacesService {
         rutas.forEach(ruta -> {
             TiempoEstimadoArriboHospitalResponse dto = new TiempoEstimadoArriboHospitalResponse();
             dto.setIdHospital(idHospital);
-            dto.setTransporte(transporte);//transporte en español
+            dto.setTransporte(transporte);// transporte en español
 
             dto.setTiempoEstimadoArribo(
-                    this.convertDurationToTime(ruta.getDuration())
-            );
+                    this.convertDurationToTime(ruta.getDuration()));
 
             dto.setDistanciaMetros(ruta.getDistanceMeters());
             dto.setPolylineCode(ruta.getPolyline().getEncodedPolyline());
 
             List<RouteLegDTO> tramosRuta = ruta.getLegs();
 
-            if(!tramosRuta.isEmpty()){ //obtengo las líneas de transporte público que se usa para estimar la ruta
+            if (!tramosRuta.isEmpty()) { // obtengo los pasos que se usan para estimar la ruta
                 List<CombinacionRutasDTO> combinaciones = new ArrayList<>();
                 tramosRuta.forEach(
                         leg -> leg.getSteps()
-                                .forEach(step -> {// TODO esta mal, hay que modificarlo, puede devolver caminantas hasta la parada, por lo qeu transitDetails puede ser null
-                                        // tal vez conviene: stepsOverview.multiModalSegments[] en lugar de steps
-                                            String lineaTransportePublico = step.getTransitDetails().getTransitLine().getName();
-                                            CombinacionRutasDTO combinacionRutasDTO = new CombinacionRutasDTO();
-                                            combinacionRutasDTO.setNombreLinea(lineaTransportePublico);
-                                            combinaciones.add(combinacionRutasDTO);
-                                        }
-                                )
-                );
+                                .forEach(step -> {
+                                    TravelMode travelMode = step.getTravelMode();
+                                    CombinacionRutasDTO combinacionRutasDTO = new CombinacionRutasDTO();
+
+                                    if (travelMode == TravelMode.TRANSIT) {
+                                        String lineaTransportePublico = step.getTransitDetails().getTransitLine()
+                                                .getName();
+                                        combinacionRutasDTO.setNombreLinea(lineaTransportePublico);
+                                    }
+
+                                    combinacionRutasDTO.setTipoTransporte(
+                                            this.pasarAEspaniolTransporte(step.getTravelMode()));
+                                    combinacionRutasDTO
+                                            .setIndicaciones(step.getNavigationInstruction().getInstructions());
+                                    combinaciones.add(combinacionRutasDTO);
+                                }));
 
                 dto.setCombinacionesLineas(combinaciones);
             }
@@ -355,6 +374,7 @@ public class GooglePlacesService {
 
     /**
      * Convierte un {@link String} duration a un {@link LocalTime}
+     * 
      * @param duration es el tiempo de viaje en segundos, por ejemplo "300s"
      */
     private LocalTime convertDurationToTime(String duration) {
@@ -363,4 +383,3 @@ public class GooglePlacesService {
         return LocalTime.ofSecondOfDay(durationInt);
     }
 }
-

@@ -13,7 +13,9 @@ public class RouteLegStepDTO {
 
     private PolylineDTO polyline;
 
-    private RouteLegStepTransitDetailsDTO transitDetails;
+    private RouteLegStepTransitDetailsDTO transitDetails;// puede ser null
 
-    private RouteLegStepNavigationInstructionDTO navigationInstruction; 
+    private NavigationInstructionDTO navigationInstruction;
+
+    private TravelMode travelMode;
 }
