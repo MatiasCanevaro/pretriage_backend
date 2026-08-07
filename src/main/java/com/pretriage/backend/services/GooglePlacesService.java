@@ -226,7 +226,7 @@ public class GooglePlacesService {
                                 "latLng", Map.of(
                                         "latitude", coordenadaHospital.getLatitud(),
                                         "longitude", coordenadaHospital.getLongitud())),
-                        "placeId", hospital.getPlaceId()
+                        //"placeId", hospital.getPlaceId() // si pongo latitud y longitud no es necesario poner el placeId
                 ),
                 "travelMode", this.traducirTransportePermitido(transporte), //necesario dado que la api está en inglés
                 "units", "METRIC", // se lo pido en metros
@@ -334,7 +334,8 @@ public class GooglePlacesService {
                 List<CombinacionRutasDTO> combinaciones = new ArrayList<>();
                 tramosRuta.forEach(
                         leg -> leg.getSteps()
-                                .forEach(step -> {
+                                .forEach(step -> {// TODO esta mal, hay que modificarlo, puede devolver caminantas hasta la parada, por lo qeu transitDetails puede ser null
+                                        // tal vez conviene: stepsOverview.multiModalSegments[] en lugar de steps
                                             String lineaTransportePublico = step.getTransitDetails().getTransitLine().getName();
                                             CombinacionRutasDTO combinacionRutasDTO = new CombinacionRutasDTO();
                                             combinacionRutasDTO.setNombreLinea(lineaTransportePublico);

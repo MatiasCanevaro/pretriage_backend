@@ -9,7 +9,6 @@ import java.util.List;
 @Setter
 public class GooglePlaceDTO {
     private String id;
-    private String name;
     private LocalizedText displayName;
     private String formattedAddress;
     private LatLng location;
