@@ -4,6 +4,7 @@ import com.github.tomakehurst.wiremock.core.Admin;
 import com.pretriage.backend.controllers.dtos.CredencialRequest;
 import com.pretriage.backend.controllers.dtos.CredencialResponse;
 import com.pretriage.backend.controllers.dtos.ObraSocialDTO;
+import com.pretriage.backend.exceptions.CredencialInvalidaException;
 import com.pretriage.backend.exceptions.ObraSocialNoExisteException;
 import com.pretriage.backend.exceptions.ObraSocialYaExisteException;
 import com.pretriage.backend.model.hospitales.Credencial;
@@ -13,6 +14,7 @@ import com.pretriage.backend.model.personas.RolSistema;
 import com.pretriage.backend.model.personas.UsuarioAuth;
 import com.pretriage.backend.repositories.RepoCredenciales;
 import com.pretriage.backend.repositories.RepoObraSociales;
+import com.pretriage.backend.services.validadoresObrasociales.FabricaValidadoresCredencialesObraSocial;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -26,6 +28,8 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -43,6 +47,12 @@ class CredencialServiceTest {
 
     @Mock
     private RepoCredenciales repoCredenciales;
+
+    @Mock
+    private ValidacionCredencialObraSocialService validacionCredencialObraSocialService;
+
+    @Mock
+    private FabricaValidadoresCredencialesObraSocial fabricaValidadoresCredencialesObraSocial;
 
     @InjectMocks
     private CredencialService service;
@@ -589,6 +599,154 @@ class CredencialServiceTest {
                 () -> service.editarCredencialRecepcionista(999L, 1L, recepcionistaAuth0Id, new CredencialRequest()),
                 "Debería lanzar AccessDeniedException al intentar editar credencial inexistente como recepcionista"
         );
+    }
+
+    @Test
+    void rechazaCredencialInvalidaAlCargarPaciente() {
+
+        UsuarioAuth usuario = new UsuarioAuth();
+        usuario.setId("auth0|paciente");
+
+        Paciente paciente = new Paciente();
+        paciente.setUsuarioAuth(usuario);
+        paciente.setId(1L);
+
+        ObraSocial obraSocial = new ObraSocial();
+        obraSocial.setId(2L);
+        obraSocial.setNombre("OSDE");
+
+        CredencialRequest request = new CredencialRequest();
+        request.setNombreObraSocial("OSDE");
+        request.setNumeroAfiliado("123456");
+        request.setPlan("210");
+        request.setFechaVencimiento(LocalDate.now().plusYears(1));
+
+        when(pacienteService.obtenerPacienteConUsuarioAuthId("auth0|paciente"))
+                .thenReturn(Optional.of(paciente));
+
+        when(repoObraSociales.findByNombreEqualsIgnoreCaseAndVirgenteTrue("OSDE"))
+                .thenReturn(Optional.of(obraSocial));
+
+        doThrow(new CredencialInvalidaException())
+                .when(validacionCredencialObraSocialService)
+                .validarCredencialObraSocial(any(), any(), any());
+
+        assertThrows(CredencialInvalidaException.class,
+                () -> service.cargarCredencialPaciente("auth0|paciente", request));
+
+        verify(repoCredenciales, never()).save(any(Credencial.class));
+    }
+
+    @Test
+    void rechazaCredencialInvalidaAlCargarRecepcionista() {
+
+        String recepcionistaAuth0Id = "auth0|recepcionista";
+
+        Paciente paciente = new Paciente();
+        paciente.setId(1L);
+
+        ObraSocial obraSocial = new ObraSocial();
+        obraSocial.setId(2L);
+        obraSocial.setNombre("OSDE");
+
+        CredencialRequest request = new CredencialRequest();
+        request.setNombreObraSocial("OSDE");
+        request.setNumeroAfiliado("123456");
+        request.setPlan("210");
+        request.setFechaVencimiento(LocalDate.now().plusYears(1));
+
+        when(recepcionistaService.esRecepcionistaConUsuarioId(recepcionistaAuth0Id))
+                .thenReturn(true);
+
+        when(pacienteService.obtenerPaciente(1L))
+                .thenReturn(paciente);
+
+        when(repoObraSociales.findByNombreEqualsIgnoreCaseAndVirgenteTrue("OSDE"))
+                .thenReturn(Optional.of(obraSocial));
+
+        doThrow(new CredencialInvalidaException())
+                .when(validacionCredencialObraSocialService)
+                .validarCredencialObraSocial(any(), any(), any());
+
+        assertThrows(CredencialInvalidaException.class,
+                () -> service.cargarCredencialRecepcionista(recepcionistaAuth0Id, 1L, request));
+
+        verify(repoCredenciales, never()).save(any(Credencial.class));
+    }
+
+    @Test
+    void rechazaCredencialInvalidaAlEditarPaciente() {
+
+        UsuarioAuth usuario = new UsuarioAuth();
+        usuario.setId("auth0|paciente");
+
+        Paciente paciente = new Paciente();
+        paciente.setUsuarioAuth(usuario);
+        paciente.setId(1L);
+
+        Credencial credencial = new Credencial();
+        credencial.setId(1L);
+        credencial.setPaciente(paciente);
+
+        CredencialRequest request = new CredencialRequest();
+        request.setNombreObraSocial("OSDE");
+        request.setNumeroAfiliado("654321");
+        request.setPlan("321");
+        request.setFechaVencimiento(LocalDate.now().plusYears(2));
+
+        when(pacienteService.obtenerPacienteConUsuarioAuthId("auth0|paciente"))
+                .thenReturn(Optional.of(paciente));
+
+        when(repoCredenciales.findById(1L))
+                .thenReturn(Optional.of(credencial));
+
+        doThrow(new CredencialInvalidaException())
+                .when(validacionCredencialObraSocialService)
+                .validarCredencialObraSocial(any(), any(), any());
+
+        assertThrows(CredencialInvalidaException.class,
+                () -> service.editarCredencialPaciente(1L, "auth0|paciente", request));
+
+        verify(repoCredenciales, never()).save(any(Credencial.class));
+    }
+
+    @Test
+    void rechazaCredencialInvalidaAlEditarRecepcionista() {
+
+        String recepcionistaAuth0Id = "auth0|recepcionista";
+
+        Paciente paciente = new Paciente();
+        paciente.setId(1L);
+
+        Credencial credencial = new Credencial();
+        credencial.setId(1L);
+        credencial.setPaciente(paciente);
+
+        CredencialRequest request = new CredencialRequest();
+        request.setNombreObraSocial("OSDE");
+        request.setNumeroAfiliado("999888");
+        request.setPlan("777");
+        request.setFechaVencimiento(LocalDate.now().plusYears(1));
+
+        when(recepcionistaService.esRecepcionistaConUsuarioId(recepcionistaAuth0Id))
+                .thenReturn(true);
+
+        when(pacienteService.obtenerPaciente(1L))
+                .thenReturn(paciente);
+
+        when(repoCredenciales.findById(1L))
+                .thenReturn(Optional.of(credencial));
+
+        doThrow(new CredencialInvalidaException())
+                .when(validacionCredencialObraSocialService)
+                .validarCredencialObraSocial(any(), any(), any());
+
+        assertThrows(CredencialInvalidaException.class,
+                () -> service.editarCredencialRecepcionista(1L, 1L, recepcionistaAuth0Id, request));
+
+        verify(repoCredenciales, never()).save(any(Credencial.class));
+
+        verify(repoCredenciales, never()).save(any(Credencial.class));
     }
 
     @Test

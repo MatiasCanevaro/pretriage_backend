@@ -12,6 +12,8 @@ import com.pretriage.backend.model.personas.Paciente;
 import com.pretriage.backend.model.personas.RolSistema;
 import com.pretriage.backend.model.personas.UsuarioAuth;
 import com.pretriage.backend.repositories.*;
+import com.pretriage.backend.services.validadoresObrasociales.FabricaValidadoresCredencialesObraSocial;
+import com.pretriage.backend.services.validadoresObrasociales.ValidadorCredencialObraSocial;
 import jakarta.transaction.Transactional;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +33,8 @@ public class CredencialService {
     private final RecepcionistaService recepcionistaService;
     private final RepoObraSociales repoObraSociales;
     private final RepoCredenciales repoCredenciales;
+    private final ValidacionCredencialObraSocialService validacionCredencialObraSocialService;
+    private final FabricaValidadoresCredencialesObraSocial fabricaValidadoresCredencialesObraSocial;
 
     public void cargarCredencialPaciente(
             String auth0IdPaciente,
@@ -49,14 +53,14 @@ public class CredencialService {
         return this.obtenerCredencialesDePaciente(paciente.getId());
     }
 
-
-    public List<CredencialResponse> obtenerCredencialesPacienteRecepcionista(String authoIdRecepcionista, Long idPaciente){
+    public List<CredencialResponse> obtenerCredencialesPacienteRecepcionista(String authoIdRecepcionista,
+            Long idPaciente) {
         this.verificarSiEsRecepcionista(authoIdRecepcionista);
 
         return this.obtenerCredencialesDePaciente(idPaciente);
     }
 
-    private List<CredencialResponse> obtenerCredencialesDePaciente(Long idPaciente){
+    private List<CredencialResponse> obtenerCredencialesDePaciente(Long idPaciente) {
         return repoCredenciales
                 .findByPacienteId(idPaciente)
                 .stream()
@@ -64,7 +68,8 @@ public class CredencialService {
                 .toList();
     }
 
-    public void cargarCredencialRecepcionista(String auth0IdRecepcionista, Long idPaciente, @Valid CredencialRequest request) {
+    public void cargarCredencialRecepcionista(String auth0IdRecepcionista, Long idPaciente,
+            @Valid CredencialRequest request) {
 
         verificarSiEsRecepcionista(auth0IdRecepcionista);
 
@@ -77,7 +82,7 @@ public class CredencialService {
 
         Optional<Paciente> opPaciente = pacienteService
                 .obtenerPacienteConUsuarioAuthId(auth0IdPaciente);
-        if(opPaciente.isEmpty()){
+        if (opPaciente.isEmpty()) {
             throw new AccessDeniedException(
                     "No tiene permisos para cargar la credencial");
         } else {
@@ -85,12 +90,11 @@ public class CredencialService {
         }
     }
 
-
     private void verificarSiEsRecepcionista(String auth0IdRecepcionista) {
 
         boolean esRecepcionista = recepcionistaService
                 .esRecepcionistaConUsuarioId(auth0IdRecepcionista);
-        if(!esRecepcionista){
+        if (!esRecepcionista) {
             throw new AccessDeniedException(
                     "No tiene permisos para cargar la credencial");
         }
@@ -103,10 +107,11 @@ public class CredencialService {
                 .orElseThrow(ObraSocialNoExisteException::new);
     }
 
-
-    private void cargarCredencial(CredencialRequest request, Paciente paciente){
+    private void cargarCredencial(CredencialRequest request, Paciente paciente) {
         ObraSocial obraSocial = obtenerObraSocial(
                 request.getNombreObraSocial());
+
+        validarCredencial(request, paciente);
 
         Credencial credencial = new Credencial();
         credencial.setObraSocial(obraSocial);
@@ -118,13 +123,20 @@ public class CredencialService {
         repoCredenciales.save(credencial);
     }
 
+    private void validarCredencial(CredencialRequest request, Paciente paciente) {
+        ValidadorCredencialObraSocial validador = fabricaValidadoresCredencialesObraSocial
+                .obtenerValidador(request.getNombreObraSocial());
+
+        validacionCredencialObraSocialService
+                .validarCredencialObraSocial(request, paciente, validador);
+    }
 
     @Transactional
     public void eliminarCredencial(Long idCredencial, String auth0IdPaciente) {
 
         Paciente paciente = obtenerPaciente(auth0IdPaciente);
 
-        this.obtenerCredencialYVerificarPermiso(paciente.getId(),idCredencial);
+        this.obtenerCredencialYVerificarPermiso(paciente.getId(), idCredencial);
 
         repoCredenciales.deleteById(idCredencial);
     }
@@ -139,14 +151,15 @@ public class CredencialService {
 
     @Transactional
     public void editarCredencialPaciente(
-            Long idCredencial, 
-            String auth0IdPaciente, 
-            CredencialRequest request
-    ) {
+            Long idCredencial,
+            String auth0IdPaciente,
+            CredencialRequest request) {
 
         Paciente paciente = obtenerPaciente(auth0IdPaciente);
 
-        Credencial credencial = this.obtenerCredencialYVerificarPermiso(paciente.getId(),idCredencial);
+        Credencial credencial = this.obtenerCredencialYVerificarPermiso(paciente.getId(), idCredencial);
+
+        validarCredencial(request, paciente);
 
         ObraSocial obraSocial = obtenerObraSocial(
                 request.getNombreObraSocial());
@@ -161,13 +174,15 @@ public class CredencialService {
 
     @Transactional
     public void editarCredencialRecepcionista(
-            Long idCredencial, 
-            Long idPaciente, 
-            String auth0IdRecepcionista, 
-            CredencialRequest request
-    ) {
+            Long idCredencial,
+            Long idPaciente,
+            String auth0IdRecepcionista,
+            CredencialRequest request) {
 
-        Credencial credencial = this.obtenerCredencialYVerificarPermisoRecepcionista(auth0IdRecepcionista, idPaciente, idCredencial);
+        Credencial credencial = this.obtenerCredencialYVerificarPermisoRecepcionista(auth0IdRecepcionista, idPaciente,
+                idCredencial);
+
+        this.validarCredencial(request, credencial.getPaciente());
 
         ObraSocial obraSocial = this.obtenerObraSocial(
                 request.getNombreObraSocial());
@@ -181,37 +196,37 @@ public class CredencialService {
     }
 
     @Transactional
-    public ObraSocial cargarObraSocialAdmin(String auth0id, @NonNull ObraSocialDTO request){
+    public ObraSocial cargarObraSocialAdmin(String auth0id, @NonNull ObraSocialDTO request) {
         this.verificarSiEsAdmin(auth0id);
 
-        if(this.repoObraSociales.findByNombreEqualsIgnoreCaseAndVirgenteTrue(request.getNombre()).isPresent()){
+        if (this.repoObraSociales.findByNombreEqualsIgnoreCaseAndVirgenteTrue(request.getNombre()).isPresent()) {
             throw new ObraSocialYaExisteException();
         } else {
             ObraSocial obraSocial = new ObraSocial();
             obraSocial.setNombre(request.getNombre());
-           return repoObraSociales.save(obraSocial);
+            return repoObraSociales.save(obraSocial);
         }
     }
 
     @Transactional
-    public void eliminarObraSocial(String auth0Id, Long idObraSocial){
+    public void eliminarObraSocial(String auth0Id, Long idObraSocial) {
         this.verificarSiEsAdmin(auth0Id);
 
         ObraSocial obraSocial = repoObraSociales.findById(idObraSocial)
                 .orElseThrow(ObraSocialNoExisteException::new);
 
-        obraSocial.setVirgente(false); //borrado lógico
+        obraSocial.setVirgente(false); // borrado lógico
         repoObraSociales.save(obraSocial);
     }
 
     @Transactional
-    private Credencial obtenerCredencialYVerificarPermiso(Long idPaciente, Long idCredencial){
+    private Credencial obtenerCredencialYVerificarPermiso(Long idPaciente, Long idCredencial) {
 
         Credencial credencial = repoCredenciales.findById(idCredencial)
                 .orElseThrow(() -> new AccessDeniedException(
                         "No tiene permisos para editar la credencial"));
 
-        if(!credencial.getPaciente().getId().equals(idPaciente)) {
+        if (!credencial.getPaciente().getId().equals(idPaciente)) {
             throw new AccessDeniedException(
                     "No tiene permisos para editar esta credencial");
         }
@@ -220,7 +235,8 @@ public class CredencialService {
     }
 
     @Transactional
-    private Credencial obtenerCredencialYVerificarPermisoRecepcionista(String auth0IdRecepcionista, Long idPaciente, Long idCredencial){
+    private Credencial obtenerCredencialYVerificarPermisoRecepcionista(String auth0IdRecepcionista, Long idPaciente,
+            Long idCredencial) {
         verificarSiEsRecepcionista(auth0IdRecepcionista);
 
         Paciente paciente = pacienteService.obtenerPaciente(idPaciente);
@@ -229,7 +245,7 @@ public class CredencialService {
                 .orElseThrow(() -> new AccessDeniedException(
                         "No tiene permisos para editar la credencial"));
 
-        if(!credencial.getPaciente().getId().equals(paciente.getId())) {
+        if (!credencial.getPaciente().getId().equals(paciente.getId())) {
             throw new AccessDeniedException(
                     "No tiene permisos para editar esta credencial");
         }
@@ -238,10 +254,10 @@ public class CredencialService {
     }
 
     @Transactional
-    private void verificarSiEsAdmin(String auth0Id){ // asumo que los admins son recepcionistas
+    private void verificarSiEsAdmin(String auth0Id) { // asumo que los admins son recepcionistas
         UsuarioAuth recepcionistaUser = recepcionistaService
                 .obtenerUsuarioAuth(auth0Id);
-        if(!recepcionistaUser.getRol().equals(RolSistema.ADMIN)){
+        if (!recepcionistaUser.getRol().equals(RolSistema.ADMIN)) {
             throw new AccessDeniedException(
                     "No tiene permisos para cargar la credencial");
         }

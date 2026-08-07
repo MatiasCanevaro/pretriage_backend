@@ -25,6 +25,7 @@ The current focus is first attention only. The system does not model referral, d
 - Estimated attention time: recalculated dynamically using queue state and active doctor sessions.
 - Real-time estimation: authenticated SSE subscriptions support periodic updates, heartbeat, and multiple connections per consultation.
 - Medical studies management: patients can upload, list, download, and delete medical study files (PDFs, images) stored in AWS S3. Doctors can access patient studies during attention through clinical history endpoints.
+- Health insurance credentials: patients and receptionists can load, list, update, and delete credentials. Load and update validate the health insurance at runtime selecting the validator for the requested obra social (`FabricaValidadoresCredencialesObraSocial`). Only a demo mock (`OSDE`) exists; real integrations with the health insurance companies are out of scope and can be plugged in by implementing `ValidadorCredencialObraSocial`.
 
 ## Current Technical Stack
 

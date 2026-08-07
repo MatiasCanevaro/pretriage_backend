@@ -289,6 +289,27 @@ See docs/09-reception-admission.md for the complete reception API and rules.
 
 ## Health Insurance (Patient)
 
+> Credential load and update operations validate the health insurance in runtime:
+> `CredencialService` resolves the validator for the requested obra social through
+> `FabricaValidadoresCredencialesObraSocial` and passes it to
+> `ValidacionCredencialObraSocialService` (polymorphism by parameter).
+> Each implementation of `ValidadorCredencialObraSocial` declares the obra social
+> it covers via `getObraSocial()`. Real integrations with each health insurance
+> are out of scope; the only implementation is `MockValidadorCredencialObraSocial`
+> (demo, covers `OSDE` and always accepts the credential).
+> If no validator is configured for the requested obra social, the API responds
+> `400` with `{ "error": "No hay un validador configurado para la obra social ..." }`.
+> If the selected validator rejects the credential, the API responds `400` with
+> `{ "error": "La credencial de obra social no es válida" }` and nothing is persisted.
+
+#### Add a real validator
+
+1. Implement `ValidadorCredencialObraSocial` (e.g. `ValidadorCredencialIOMA`).
+2. Annotate it with `@Component`/`@Service` and return the obra social name from
+   `getObraSocial()` (e.g. `"IOMA"`).
+3. From then on, `FabricaValidadoresCredencialesObraSocial` picks that
+   implementation automatically for that obra social; no other wiring is needed.
+
 ### List Credentials
 
 ```http
@@ -360,6 +381,10 @@ DELETE /api/obrasocial/{idObraSocial}
 ```
 
 ## Health Insurance (Receptionist)
+
+> Applies the same runtime-resolved credential validation as the patient flow on
+> load and update operations. See the patient section above for behavior and error
+> format.
 
 ### List Patient Credentials
 

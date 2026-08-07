@@ -14,7 +14,7 @@ import java.util.NoSuchElementException;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    @ExceptionHandler({CredencialValidaYaExisteException.class, PacienteNoExisteException.class,
+    @ExceptionHandler({CredencialValidaYaExisteException.class, CredencialInvalidaException.class, ObraSocialSinValidadorException.class, PacienteNoExisteException.class,
             NoSePudoCrearUsuario.class, NoSePudoEstimarElHorarioDeAtencion.class, ChatFinalizadoException.class,
             NoSePudoObtenerHospital.class, ObraSocialYaExisteException.class, ObraSocialNoExisteException.class,
             RecepcionistaNoExisteException.class,
