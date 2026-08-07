@@ -140,12 +140,15 @@ public class GooglePlacesService {
                 ? place.getDisplayName().getText()
                 : "Nombre no disponible";
 
-        Double lat = null;
-        Double lng = null;
-        if (place.getLocation() != null) {
-            lat = place.getLocation().getLatitude();
-            lng = place.getLocation().getLongitude();
-        }
+        /*
+         * //comento porque no se usa pero lo dejo por las dudas
+         * Double lat = null;
+         * Double lng = null;
+         * if (place.getLocation() != null) {
+         * lat = place.getLocation().getLatitude();
+         * lng = place.getLocation().getLongitude();
+         * }
+         */
 
         HospitalCercanoDTO hospitalCercanoDTO = new HospitalCercanoDTO();
         hospitalCercanoDTO.setDireccion(place.getFormattedAddress());
@@ -209,7 +212,21 @@ public class GooglePlacesService {
     @Transactional
     public List<TiempoEstimadoArriboHospitalResponse> calcularTiempoArriboHospital(
             Hospital hospital, String transporte, Double latitud, Double longitud) {
-        Coordenada coordenadaHospital = hospital.getDireccion().getCoordenada();
+        Direccion direccion = hospital.getDireccion();
+        Map<String, Object> destinationMapRequest;
+
+        if (direccion != null && direccion.getCoordenada() != null) {
+            Coordenada coordenadaHospital = direccion.getCoordenada();
+
+            destinationMapRequest = Map.of(
+                    "location", Map.of(
+                            "latLng", Map.of(
+                                    "latitude", coordenadaHospital.getLatitud(),
+                                    "longitude", coordenadaHospital.getLongitud())));
+        } else {
+            destinationMapRequest = Map.of(
+                    "placeId", hospital.getPlaceId());
+        }
 
         Map<String, Object> requestBody = Map.of(
                 "origin", Map.of(
@@ -217,14 +234,7 @@ public class GooglePlacesService {
                         Map.of(
                                 "latLng",
                                 Map.of("latitude", latitud, "longitude", longitud))),
-                "destination", Map.of(
-                        "location", Map.of(
-                                "latLng", Map.of(
-                                        "latitude", coordenadaHospital.getLatitud(),
-                                        "longitude", coordenadaHospital.getLongitud()))// ,
-                // "placeId", hospital.getPlaceId() // si pongo latitud y longitud no es
-                // necesario poner el placeId
-                ),
+                "destination", destinationMapRequest,
                 "travelMode", this.traducirTransportePermitido(transporte), // necesario dado que la api está en inglés
                 "units", "METRIC", // se lo pido en metros
                 "computeAlternativeRoutes", true // máximo de 3 rutas
