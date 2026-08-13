@@ -10,7 +10,7 @@ The current focus is first attention only. The system does not model referral, d
 
 - Patient: selects specialty and hospital, completes AI triage, enters queue, checks state and estimated attention time.
 - Doctor: starts an attention session at an assigned hospital/specialty/room, calls patients, marks absences, pauses or closes the session.
-- Hospital admin: manages scoped staff memberships and invitations. Room, specialty and assignment administration remains incremental.
+- Hospital admin: manages scoped staff memberships and invitations, and hospital configuration (enabled specialties and rooms). Assignment administration remains incremental.
 - AI triage bot: collects symptoms and produces structured triage output used to assign priority.
 
 ## Core Modules

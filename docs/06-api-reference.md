@@ -4,6 +4,34 @@ This is a practical reference for the main flows. It is not a full OpenAPI repla
 
 ## Auth
 
+### Register
+
+```http
+POST /api/register
+```
+
+Public self-registration. Only patient accounts are allowed; staff or admin
+roles are rejected with `403`.
+
+Body:
+
+```json
+{
+  "nombre": "Juan",
+  "apellido": "Perez",
+  "numeroDocumento": "30111222",
+  "tipoDocumento": "DNI",
+  "tipoUsuario": "Paciente",
+  "email": "user@example.com",
+  "password": "secret",
+  "rol": "USER"
+}
+```
+
+Creates the Auth0 account and the local patient record. The password must
+contain between 8 and 72 characters including uppercase, lowercase, numeric and
+symbol characters.
+
 ### Login
 
 ```http
@@ -26,10 +54,10 @@ Returns token data.
 ### List Specialties
 
 ```http
-GET /api/especialidades-medicas
+GET /api/especialidades
 ```
 
-Returns available medical specialties.
+Returns available medical specialties sorted by name.
 
 ## Hospitals
 
@@ -63,6 +91,50 @@ GET /api/hospitales/{idHospital}/tiempo-arribo?transporte=transporte-publico&lat
 ```
 
 Returns list with routes with estimated travel time from patient's location to the specified hospital.
+
+## User Profile
+
+### Get Profile
+
+```http
+GET /api/perfil
+```
+
+Returns the authenticated patient profile: identity, document, birth date,
+genders, contact, stored address, weight and height.
+
+### Update Profile
+
+```http
+PUT /api/perfil
+```
+
+Body:
+
+```json
+{
+  "nombre": "Juan",
+  "apellido": "Perez",
+  "tipoDocumento": "DNI",
+  "numeroDocumento": "30111222",
+  "fechaNacimiento": "1990-05-10",
+  "generoBiologico": "MASCULINO",
+  "generoConElQueSeIdentifica": "MASCULINO",
+  "email": "user@example.com",
+  "telefono": "1155551234",
+  "calle": "Av. Siempre Viva",
+  "alturaDireccion": "742",
+  "piso": "3",
+  "codigoPostal": "1414",
+  "ciudad": "CABA",
+  "provincia": "Buenos Aires",
+  "peso": 75.5,
+  "alturaPersona": 180
+}
+```
+
+If the patient has no stored address, a `Direccion` is created; otherwise the
+stored address is updated with the submitted values.
 
 ## Estimated Attention Time
 
@@ -135,6 +207,22 @@ POST /api/paciente/consulta/llegue
 ```
 
 ## Doctor
+
+### List Assignments
+
+```http
+GET /api/medico/asignaciones
+```
+
+Returns the authenticated doctor's hospital and specialty assignments.
+
+### List Rooms
+
+```http
+GET /api/hospitales/{hospitalId}/salas?codigoEspecialidad={codigoEspecialidad}
+```
+
+Returns the active rooms of a hospital for the given specialty.
 
 ### Recover Current Session
 

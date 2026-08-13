@@ -81,6 +81,8 @@ the review is pending.
 
 ## Queue Visibility And History
 
+- `GET /api/medico/asignaciones` returns the doctor's hospital and specialty assignments.
+- `GET /api/hospitales/{hospitalId}/salas?codigoEspecialidad={codigoEspecialidad}` returns the active rooms of a hospital for the given specialty.
 - `GET /api/medico/sesiones/actual` returns the authenticated doctor's active or
   paused session and their currently called or in-attention consultation, if present.
 - `GET /api/medico/sesiones/{sesionId}/pacientes-disponibles` lists ordered `EN_COLA` patients for the session hospital and specialty, including the preliminary priority and the patient name and surname authorized for the attending doctor. A room is not present until the patient is called.

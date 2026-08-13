@@ -36,11 +36,11 @@ POST /api/atencion/hospital
 ### 3. Get Arrival Time Estimates
 
 ```http
-GET /api/hospitales/{idHospital}/tiempo-arribo?latitud={lat}&longitud={lon}&modoTransporte={modoTransporte}
+GET /api/hospitales/{idHospital}/tiempo-arribo?latitud={lat}&longitud={lon}&transporte={transporte}
 ```
 
 - Returns multiple route options to reach the selected hospital.
-- `modoTransporte` must be one of the following valid values:
+- `transporte` is required and must be one of the following valid values:
   - `transporte-publico`: Public transit (buses, trains, etc.)
   - `vehiculo`: Driving/car
   - `vehiculo-dos-ruedas`: Two-wheel vehicles (motorcycles)
@@ -141,7 +141,7 @@ POST /api/paciente/consulta/llegue
 
 ## Public Transport Considerations
 
-When `modoTransporte` indicates public transport:
+When `transporte` indicates public transport:
 
 - Multiple routes may be returned (different bus lines, combinations, etc.).
 - Real-time delays are not accounted for in estimates.

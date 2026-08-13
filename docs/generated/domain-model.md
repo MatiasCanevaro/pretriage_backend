@@ -36,6 +36,7 @@ python scripts\generate_domain_diagram.py
 - `ObraSocial`: `src/main/java/com/pretriage/backend/model/hospitales/ObraSocial.java`
 - `Paciente`: `src/main/java/com/pretriage/backend/model/personas/Paciente.java`
 - `Recepcionista`: `src/main/java/com/pretriage/backend/model/personas/Recepcionista.java`
+- `RevisionPrioridadConsulta`: `src/main/java/com/pretriage/backend/model/consultas/RevisionPrioridadConsulta.java`
 - `Sala`: `src/main/java/com/pretriage/backend/model/hospitales/Sala.java`
 - `SesionAtencionMedica`: `src/main/java/com/pretriage/backend/model/consultas/SesionAtencionMedica.java`
 - `SesionRecepcion`: `src/main/java/com/pretriage/backend/model/recepcion/SesionRecepcion.java`
@@ -66,6 +67,9 @@ erDiagram
         Instant venceEn
         Instant fechaCreacion
         Instant fechaAceptacion
+        Boolean emailEnviado
+        Instant ultimoIntentoEnvio
+        Integer cantidadIntentosEnvio
     }
     MEMBRESIA_HOSPITAL {
         Long id
@@ -99,6 +103,7 @@ erDiagram
         String codigoLlamado
         NivelDeGravedad nivelDeGravedadBot
         NivelDeGravedad nivelDeGravedadMedico
+        String resumenPretriageJson
         EstadoConsulta estadoConsulta
     }
     ENTRADA_COLA {
@@ -126,6 +131,14 @@ erDiagram
     }
     GESTOR_DE_COLA {
         Long id
+    }
+    REVISION_PRIORIDAD_CONSULTA {
+        Long id
+        DecisionRevisionPrioridad decision
+        NivelDeGravedad prioridadAnterior
+        NivelDeGravedad prioridadNueva
+        String motivo
+        LocalDateTime fechaHora
     }
     SESION_ATENCION_MEDICA {
         Long id
@@ -262,6 +275,8 @@ erDiagram
     GESTOR_DE_COLA }o--|| ESPECIALIDAD_MEDICA : especialidad
     GESTOR_DE_COLA ||--o{ CONSULTA_MEDICA : consultasEnEspera
     GESTOR_DE_COLA ||--o{ ENTRADA_COLA : entradas
+    REVISION_PRIORIDAD_CONSULTA }o--|| CONSULTA_MEDICA : consultaMedica
+    REVISION_PRIORIDAD_CONSULTA }o--|| MEDICO : medico
     SESION_ATENCION_MEDICA }o--|| MEDICO : medico
     SESION_ATENCION_MEDICA }o--|| HOSPITAL : hospital
     SESION_ATENCION_MEDICA }o--|| ESPECIALIDAD_MEDICA : especialidad
@@ -283,7 +298,9 @@ erDiagram
     MEDICO ||--o{ CREDENCIAL_PROFESIONAL : credencialesProfesionales
     MEDICO ||--o{ ASIGNACION_MEDICO_HOSPITAL : asignaciones
     PACIENTE ||--|| USUARIO_AUTH : usuarioAuth
+    PACIENTE ||--o{ CREDENCIAL : credenciales
     PACIENTE ||--|| COORDENADA : coordenadaActual
+    PACIENTE ||--o{ ESTUDIO_CLINICO : historialClinico
     PACIENTE ||--|| DIRECCION : direccion
     RECEPCIONISTA ||--|| USUARIO_AUTH : usuarioAuth
     ADMISION_RECEPCION ||--|| CONSULTA_MEDICA : consultaMedica
