@@ -84,6 +84,11 @@ Body:
 }
 ```
 
+Assigns the hospital and specialty to the active consultation and enters it into
+the queue (`EN_COLA` + `EntradaCola`) with default priority (`NORMAL`). The AI
+triage chat is optional; when it finishes, the queue priority is updated with the
+pretriage result.
+
 ### Calculate Arrival Time to Hospital
 
 ```http

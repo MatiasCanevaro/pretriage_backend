@@ -42,4 +42,34 @@ class IngresoColaServiceTest {
         assertEquals(1L, captor.getValue().getOrdenRelativo());
         assertEquals(EstadoConsulta.EN_COLA, consulta.getEstadoConsulta());
     }
+
+    @Test
+    void consultaYaEnColaActualizaLaPrioridadDeLaEntradaExistente() {
+        Hospital hospital = new Hospital(); hospital.setId(1L);
+        EspecialidadMedica especialidad = new EspecialidadMedica(); especialidad.setId(2L);
+        ConsultaMedica consulta = new ConsultaMedica(); consulta.setId(3L); consulta.setHospital(hospital); consulta.setEspecialidad(especialidad);
+        GestorDeCola gestor = new GestorDeCola(); gestor.setId(4L); gestor.setHospital(hospital); gestor.setEspecialidad(especialidad);
+        EntradaCola existente = new EntradaCola();
+        existente.setGestorDeCola(gestor);
+        existente.setConsultaMedica(consulta);
+        existente.setEstado(EstadoEntradaCola.EN_COLA);
+        existente.setPrioridad(2);
+        existente.setOrdenRelativo(7L);
+        when(repoGestoresDeColas.findByHospitalIdAndEspecialidadId(1L, 2L)).thenReturn(Optional.of(gestor));
+        when(repoEntradasCola.findByConsultaMedicaId(3L)).thenReturn(Optional.of(existente));
+        when(repoEntradasCola.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        TiempoEstimadoAtencionResponse esperado = new TiempoEstimadoAtencionResponse();
+        when(estimacionAtencionService.calcularPara(consulta)).thenReturn(esperado);
+
+        assertSame(esperado, service.ingresar(consulta, NivelDeGravedad.URGENTE));
+
+        ArgumentCaptor<EntradaCola> captor = ArgumentCaptor.forClass(EntradaCola.class);
+        verify(repoEntradasCola).save(captor.capture());
+        assertEquals(EstadoEntradaCola.EN_COLA, captor.getValue().getEstado());
+        assertEquals(3, captor.getValue().getPrioridad());
+        assertEquals(7L, captor.getValue().getOrdenRelativo());
+        assertEquals(EstadoConsulta.EN_COLA, consulta.getEstadoConsulta());
+        assertEquals(NivelDeGravedad.URGENTE, consulta.getNivelDeGravedadBot());
+        verify(repoEntradasCola, never()).findFirstByGestorDeColaIdOrderByOrdenRelativoDesc(any());
+    }
 }

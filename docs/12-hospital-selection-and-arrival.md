@@ -31,7 +31,8 @@ POST /api/atencion/hospital
 
 - Patient confirms their hospital choice.
 - Creates or updates the consultation with the selected hospital.
-- Does not yet enter the queue.
+- Enters the consultation into the queue (`EN_COLA` + `EntradaCola`) immediately with default priority (`NORMAL`).
+- The AI triage chat is optional: if the patient completes it later, the existing `EntradaCola` priority is updated with the pretriage result.
 
 ### 3. Get Arrival Time Estimates
 
@@ -129,15 +130,21 @@ The backend:
 
 ## Queue Entry
 
-Queue entry happens when the patient marks arrival from the frontend:
+The consultation enters the queue at hospital selection (`POST /api/atencion/hospital`):
+
+- The consultation becomes `EN_COLA` and an `EntradaCola` is created with default priority.
+- Queue position and estimated attention time are calculated based on current queue state.
+- The AI triage chat is optional; when it finishes, the `EntradaCola` priority is updated with the pretriage result.
+
+Patients who temporarily left the queue return through:
 
 ```http
 POST /api/paciente/consulta/llegue
 ```
 
 - This is independent of the arrival time estimation.
-- The patient can enter the queue regardless of whether they followed the estimated time.
-- Queue position and estimated attention time are calculated at this moment based on current queue state.
+- The patient can return to the queue regardless of whether they followed the estimated time.
+- Queue position and estimated attention time are recalculated at this moment based on current queue state.
 
 ## Public Transport Considerations
 

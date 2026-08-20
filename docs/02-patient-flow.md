@@ -6,10 +6,10 @@
 flowchart TD
     A[Patient starts attention] --> B[Selects medical specialty]
     B --> C[Gets nearby hospitals filtered by specialty]
-    C --> D[Selects hospital]
-    D --> E[Starts AI triage chat]
+    C --> D[Selects hospital and enters specialty queue]
+    D --> E[Optionally starts AI triage chat]
     E --> F[AI assigns triage priority]
-    F --> G[Consultation enters specialty queue]
+    F --> G[Queue priority updated]
     G --> H[Patient checks dynamic estimated attention time]
 ```
 
@@ -18,13 +18,13 @@ flowchart TD
 1. Patient selects a medical specialty.
 2. Backend retrieves nearby hospitals from Google Places and filters by specialty stored locally.
 3. Patient selects a hospital by `placeId` and `codigoEspecialidad`.
-4. Backend creates or updates the active `ConsultaMedica`.
-5. Patient starts chat.
-6. Bot asks clinical questions.
-7. When triage finishes, `Chat.resultadoTriageJson` is stored.
-8. `nivelDeGravedadBot` is mapped from AI priority.
-9. The consultation becomes `EN_COLA`.
-10. An `EntradaCola` is created or reused.
+4. Backend creates or updates the active `ConsultaMedica` with the selected hospital and specialty.
+5. The consultation enters the queue immediately: `EN_COLA` state and an `EntradaCola` with default priority are created.
+6. Patient starts chat (optional).
+7. Bot asks clinical questions.
+8. When triage finishes, `Chat.resultadoTriageJson` is stored.
+9. `nivelDeGravedadBot` is mapped from AI priority.
+10. The existing `EntradaCola` priority is updated with the pretriage result.
 11. Estimated attention time is returned dynamically.
 
 ## Waiting And Absence Rules

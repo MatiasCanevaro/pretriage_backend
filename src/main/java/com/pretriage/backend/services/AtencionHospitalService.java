@@ -121,8 +121,7 @@ public class AtencionHospitalService {
 
         consultaMedica.setHospital(hospital);
         consultaMedica.setEspecialidad(especialidad);
-        consultaMedica.setEstadoConsulta(EstadoConsulta.HOSPITAL_SELECCIONADO);
-        repoConsultasMedicas.save(consultaMedica);
+        ingresoColaService.ingresar(consultaMedica, NivelDeGravedad.NORMAL);
     }
 
     private ConsultaMedica obtenerOCrearConsultaParaSeleccionarHospital(Paciente paciente) {

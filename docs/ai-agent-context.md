@@ -7,11 +7,10 @@ This file gives future AI agents enough context to work on the project without r
 The system manages the first medical attention workflow:
 
 1. Patient chooses medical specialty.
-2. Patient chooses hospital that supports that specialty.
-3. AI triage collects symptoms and assigns priority.
-4. Patient enters hospital/specialty queue.
-5. Doctors start sessions in rooms and call patients.
-6. Estimated attention time is recalculated dynamically.
+2. Patient chooses hospital that supports that specialty and enters the hospital/specialty queue with default priority.
+3. Optional AI triage collects symptoms and assigns priority, updating the queue priority.
+4. Doctors start sessions in rooms and call patients.
+5. Estimated attention time is recalculated dynamically.
 
 ## High Risk Areas
 
@@ -83,6 +82,7 @@ The system manages the first medical attention workflow:
 
 - `EntradaCola` is the queue source of truth.
 - A queue is scoped by hospital and specialty.
+- Hospital selection enters the consultation into the queue directly; the AI triage is optional and only updates the queue priority.
 - Estimated attention time is dynamic and should be recalculated on every request.
 - Only `EntradaCola.EN_COLA` counts for waiting estimation.
 - Doctor sessions count for capacity only when `EstadoSesionMedica.ACTIVA`.

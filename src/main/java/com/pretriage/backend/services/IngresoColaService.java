@@ -39,17 +39,20 @@ public class IngresoColaService {
                 });
         gestor.agregarConsultaMedicaALaCola(consulta);
         repoGestoresDeColas.save(gestor);
-        repoEntradasCola.findByConsultaMedicaId(consulta.getId()).orElseGet(() -> {
-            EntradaCola entrada = new EntradaCola();
-            entrada.setGestorDeCola(gestor);
-            entrada.setConsultaMedica(consulta);
-            entrada.setEstado(EstadoEntradaCola.EN_COLA);
-            entrada.setPrioridad(gestor.obtenerPrioridad(prioridad));
-            entrada.setOrdenRelativo(repoEntradasCola.findFirstByGestorDeColaIdOrderByOrdenRelativoDesc(gestor.getId())
-                    .map(actual -> actual.getOrdenRelativo() + 1).orElse(1L));
-            entrada.setFechaHoraIngreso(LocalDateTime.now());
-            return repoEntradasCola.save(entrada);
-        });
+        EntradaCola entrada = repoEntradasCola.findByConsultaMedicaId(consulta.getId())
+                .orElseGet(() -> {
+                    EntradaCola nueva = new EntradaCola();
+                    nueva.setGestorDeCola(gestor);
+                    nueva.setConsultaMedica(consulta);
+                    nueva.setOrdenRelativo(repoEntradasCola
+                            .findFirstByGestorDeColaIdOrderByOrdenRelativoDesc(gestor.getId())
+                            .map(actual -> actual.getOrdenRelativo() + 1).orElse(1L));
+                    nueva.setFechaHoraIngreso(LocalDateTime.now());
+                    return nueva;
+                });
+        entrada.setEstado(EstadoEntradaCola.EN_COLA);
+        entrada.setPrioridad(gestor.obtenerPrioridad(prioridad));
+        repoEntradasCola.save(entrada);
         return estimacionAtencionService.calcularPara(consulta);
     }
 }

@@ -76,18 +76,18 @@ public class AtencionHospitalServiceTest {
         when(repoConsultasMedicas.findFirstByPacienteIdAndEstadoConsultaIn(eq(paciente.getId()), any()))
                 .thenReturn(Optional.of(consultaMedica));
         when(repoHospitales.findByPlaceId(placeId)).thenReturn(Optional.of(hospital));
+        when(ingresoColaService.ingresar(consultaMedica, NivelDeGravedad.NORMAL)).thenAnswer(inv -> {
+            consultaMedica.setNivelDeGravedadBot(NivelDeGravedad.NORMAL);
+            consultaMedica.setEstadoConsulta(EstadoConsulta.EN_COLA);
+            return new TiempoEstimadoAtencionResponse();
+        });
 
         service.seleccionarHospital(auth0Id, placeId, codigoEspecialidad);
 
-        ArgumentCaptor<ConsultaMedica> consultaCaptor = ArgumentCaptor.forClass(ConsultaMedica.class);
-        verify(repoConsultasMedicas).save(consultaCaptor.capture());
-
-        ConsultaMedica consultaGuardada = consultaCaptor.getValue();
-        assertSame(consultaMedica, consultaGuardada);
-        assertSame(hospital, consultaGuardada.getHospital());
-        assertSame(especialidad, consultaGuardada.getEspecialidad());
-        assertEquals(EstadoConsulta.HOSPITAL_SELECCIONADO, consultaGuardada.getEstadoConsulta());
-        verifyNoInteractions(repoGestorDeCola);
+        assertSame(hospital, consultaMedica.getHospital());
+        assertSame(especialidad, consultaMedica.getEspecialidad());
+        assertEquals(EstadoConsulta.EN_COLA, consultaMedica.getEstadoConsulta());
+        verify(ingresoColaService).ingresar(consultaMedica, NivelDeGravedad.NORMAL);
     }
 
     @Test
@@ -147,6 +147,11 @@ public class AtencionHospitalServiceTest {
         TiempoEstimadoAtencionResponse responseEsperada = new TiempoEstimadoAtencionResponse();
         responseEsperada.setPosicionEnCola(2);
         responseEsperada.setPacientesAntes(1);
+        when(ingresoColaService.ingresar(consultaPaciente, NivelDeGravedad.NORMAL)).thenAnswer(inv -> {
+            consultaPaciente.setNivelDeGravedadBot(NivelDeGravedad.NORMAL);
+            consultaPaciente.setEstadoConsulta(EstadoConsulta.EN_COLA);
+            return new TiempoEstimadoAtencionResponse();
+        });
         when(ingresoColaService.ingresar(consultaPaciente, NivelDeGravedad.URGENTE)).thenAnswer(inv -> {
             consultaPaciente.setNivelDeGravedadBot(NivelDeGravedad.URGENTE);
             consultaPaciente.setEstadoConsulta(EstadoConsulta.EN_COLA);
@@ -163,6 +168,7 @@ public class AtencionHospitalServiceTest {
         assertEquals(EstadoConsulta.EN_COLA, consultaPaciente.getEstadoConsulta());
         assertEquals(NivelDeGravedad.URGENTE, consultaPaciente.getNivelDeGravedadBot());
         assertSame(responseEsperada, response);
+        verify(ingresoColaService).ingresar(consultaPaciente, NivelDeGravedad.NORMAL);
         verify(ingresoColaService).ingresar(consultaPaciente, NivelDeGravedad.URGENTE);
     }
 
@@ -295,7 +301,7 @@ public class AtencionHospitalServiceTest {
                 () -> service.seleccionarHospital(auth0Id, placeId, codigoEspecialidad));
 
         verify(repoHospitales, never()).save(any());
-        verifyNoInteractions(repoGestorDeCola);
+        verifyNoInteractions(repoGestorDeCola, ingresoColaService);
         verify(repoConsultasMedicas, never()).save(any());
     }
 
