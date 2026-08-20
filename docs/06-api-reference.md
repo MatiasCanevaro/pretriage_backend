@@ -89,6 +89,27 @@ the queue (`EN_COLA` + `EntradaCola`) with default priority (`NORMAL`). The AI
 triage chat is optional; when it finishes, the queue priority is updated with the
 pretriage result.
 
+### Get Selected Hospital
+
+```http
+GET /api/atencion/hospital
+```
+
+Returns the hospital selected in the active consultation of the authenticated
+patient, together with its formatted address. `direccion` is `null` when the
+hospital has no stored `Direccion`.
+
+Example response:
+
+```json
+{
+  "idHospital": 1,
+  "placeId": "google-place-id",
+  "nombre": "Hospital Central",
+  "direccion": "Av. Siempre Viva 742, CABA, Buenos Aires"
+}
+```
+
 ### Calculate Arrival Time to Hospital
 
 ```http

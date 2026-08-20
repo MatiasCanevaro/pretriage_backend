@@ -2,12 +2,14 @@ package com.pretriage.backend.services;
 
 import com.pretriage.backend.controllers.dtos.EspecialidadMedicaDTO;
 import com.pretriage.backend.controllers.dtos.HospitalCercanoDTO;
+import com.pretriage.backend.controllers.dtos.HospitalSeleccionadoResponse;
 import com.pretriage.backend.controllers.dtos.TiempoEstimadoArriboHospitalResponse;
 import com.pretriage.backend.controllers.dtos.TiempoEstimadoAtencionResponse;
 import com.pretriage.backend.exceptions.AtencionEnCursoException;
 import com.pretriage.backend.model.consultas.ConsultaMedica;
 import com.pretriage.backend.model.consultas.EstadoConsulta;
 import com.pretriage.backend.model.consultas.NivelDeGravedad;
+import com.pretriage.backend.model.hospitales.Direccion;
 import com.pretriage.backend.model.hospitales.EspecialidadMedica;
 import com.pretriage.backend.model.hospitales.Hospital;
 import com.pretriage.backend.model.personas.Paciente;
@@ -26,6 +28,7 @@ import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -148,6 +151,35 @@ public class AtencionHospitalService {
         Paciente paciente = this.obtenerPaciente(auth0Id);
         ConsultaMedica consultaMedica = obtenerConsultaConHospitalSeleccionado(paciente);
         return calcularTiempoEstimadoDeAtencion(consultaMedica);
+    }
+
+    @Transactional
+    public HospitalSeleccionadoResponse obtenerHospitalSeleccionado(String auth0Id) {
+        Paciente paciente = this.obtenerPaciente(auth0Id);
+        ConsultaMedica consultaMedica = obtenerConsultaConHospitalSeleccionado(paciente);
+        Hospital hospital = consultaMedica.getHospital();
+
+        HospitalSeleccionadoResponse response = new HospitalSeleccionadoResponse();
+        response.setIdHospital(hospital.getId());
+        response.setPlaceId(hospital.getPlaceId());
+        response.setNombre(hospital.getNombre());
+        response.setDireccion(formatearDireccion(hospital.getDireccion()));
+        return response;
+    }
+
+    private String formatearDireccion(Direccion direccion) {
+        if (direccion == null) {
+            return null;
+        }
+        String calleYAltura = Stream.of(direccion.getCalle(), direccion.getAltura())
+                .filter(componente -> componente != null && !componente.isBlank())
+                .collect(Collectors.joining(" "));
+        return Stream.concat(
+                Stream.of(calleYAltura),
+                Stream.of(direccion.getPiso(), direccion.getCodigoPostal(), direccion.getCiudad(),
+                        direccion.getProvincia()))
+                .filter(componente -> componente != null && !componente.isBlank())
+                .collect(Collectors.joining(", "));
     }
 
     @Transactional

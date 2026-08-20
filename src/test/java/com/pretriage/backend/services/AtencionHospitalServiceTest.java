@@ -1,6 +1,7 @@
 package com.pretriage.backend.services;
 
 import com.pretriage.backend.controllers.dtos.HospitalCercanoDTO;
+import com.pretriage.backend.controllers.dtos.HospitalSeleccionadoResponse;
 import com.pretriage.backend.controllers.dtos.TiempoEstimadoAtencionResponse;
 import com.pretriage.backend.exceptions.AtencionEnCursoException;
 import com.pretriage.backend.exceptions.NoSePudoEstimarElHorarioDeAtencion;
@@ -9,6 +10,7 @@ import com.pretriage.backend.model.consultas.EntradaCola;
 import com.pretriage.backend.model.consultas.EstadoConsulta;
 import com.pretriage.backend.model.consultas.GestorDeCola;
 import com.pretriage.backend.model.consultas.NivelDeGravedad;
+import com.pretriage.backend.model.hospitales.Direccion;
 import com.pretriage.backend.model.hospitales.EspecialidadMedica;
 import com.pretriage.backend.model.hospitales.Hospital;
 import com.pretriage.backend.model.personas.Paciente;
@@ -385,6 +387,69 @@ public class AtencionHospitalServiceTest {
                 .thenReturn(Optional.empty());
 
         assertThrows(NoSuchElementException.class, () -> service.obtenerTiempoEstimadoDeAtencion(auth0Id));
+    }
+
+    @Test
+    void sePuedeObtenerHospitalSeleccionadoConDireccionFormateada() {
+        String auth0Id = "auth0|123";
+        Paciente paciente = crearPaciente(1L);
+        EspecialidadMedica especialidad = crearEspecialidad(30L, "PEDIATRIA");
+        Hospital hospital = crearHospital(10L, "place_1", especialidad);
+        hospital.setNombre("Hospital Central");
+
+        Direccion direccion = new Direccion();
+        direccion.setCalle("Av. Siempre Viva");
+        direccion.setAltura("742");
+        direccion.setCiudad("CABA");
+        direccion.setProvincia("Buenos Aires");
+        hospital.setDireccion(direccion);
+
+        ConsultaMedica consulta = new ConsultaMedica();
+        consulta.setHospital(hospital);
+
+        when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id)).thenReturn(Optional.of(paciente));
+        when(repoConsultasMedicas.findFirstByPacienteIdAndEstadoConsultaIn(eq(paciente.getId()), any()))
+                .thenReturn(Optional.of(consulta));
+
+        HospitalSeleccionadoResponse response = service.obtenerHospitalSeleccionado(auth0Id);
+
+        assertEquals(10L, response.getIdHospital());
+        assertEquals("place_1", response.getPlaceId());
+        assertEquals("Hospital Central", response.getNombre());
+        assertEquals("Av. Siempre Viva 742, CABA, Buenos Aires", response.getDireccion());
+    }
+
+    @Test
+    void seDevuelveDireccionNullSiElHospitalSeleccionadoNoTieneDireccion() {
+        String auth0Id = "auth0|123";
+        Paciente paciente = crearPaciente(1L);
+        EspecialidadMedica especialidad = crearEspecialidad(30L, "PEDIATRIA");
+        Hospital hospital = crearHospital(10L, "place_1", especialidad);
+        hospital.setNombre("Hospital Central");
+
+        ConsultaMedica consulta = new ConsultaMedica();
+        consulta.setHospital(hospital);
+
+        when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id)).thenReturn(Optional.of(paciente));
+        when(repoConsultasMedicas.findFirstByPacienteIdAndEstadoConsultaIn(eq(paciente.getId()), any()))
+                .thenReturn(Optional.of(consulta));
+
+        HospitalSeleccionadoResponse response = service.obtenerHospitalSeleccionado(auth0Id);
+
+        assertEquals("Hospital Central", response.getNombre());
+        assertNull(response.getDireccion());
+    }
+
+    @Test
+    void noSePuedeObtenerHospitalSeleccionadoSinHospitalElegido() {
+        String auth0Id = "auth0|123";
+        Paciente paciente = crearPaciente(1L);
+
+        when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id)).thenReturn(Optional.of(paciente));
+        when(repoConsultasMedicas.findFirstByPacienteIdAndEstadoConsultaIn(eq(paciente.getId()), any()))
+                .thenReturn(Optional.empty());
+
+        assertThrows(NoSuchElementException.class, () -> service.obtenerHospitalSeleccionado(auth0Id));
     }
 
     @Test

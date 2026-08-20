@@ -34,6 +34,16 @@ POST /api/atencion/hospital
 - Enters the consultation into the queue (`EN_COLA` + `EntradaCola`) immediately with default priority (`NORMAL`).
 - The AI triage chat is optional: if the patient completes it later, the existing `EntradaCola` priority is updated with the pretriage result.
 
+### 2.5 Get Selected Hospital
+
+```http
+GET /api/atencion/hospital
+```
+
+- Returns the hospital selected in the active consultation of the authenticated patient: `idHospital`, `placeId`, `nombre`, and the formatted `direccion` (street, number, floor, postal code, city, province, joined with `, `, skipping empty components).
+- `direccion` is `null` when the hospital has no stored `Direccion`.
+- Returns an error if the patient has no consultation with a selected hospital.
+
 ### 3. Get Arrival Time Estimates
 
 ```http

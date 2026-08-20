@@ -1,6 +1,7 @@
 package com.pretriage.backend.controllers;
 
 import com.pretriage.backend.controllers.dtos.HospitalCercanoDTO;
+import com.pretriage.backend.controllers.dtos.HospitalSeleccionadoResponse;
 import com.pretriage.backend.controllers.dtos.SeleccionHospitalRequest;
 import com.pretriage.backend.controllers.dtos.TiempoEstimadoArriboHospitalResponse;
 import com.pretriage.backend.controllers.dtos.TiempoEstimadoAtencionResponse;
@@ -44,6 +45,14 @@ public class HospitalController {
                 request.getPlaceId(),
                 request.getCodigoEspecialidad());
         return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/api/atencion/hospital")
+    public ResponseEntity<HospitalSeleccionadoResponse> obtenerHospitalSeleccionado(
+            @AuthenticationPrincipal Jwt jwt
+    ){
+        String auth0Id = jwt.getSubject();
+        return ResponseEntity.ok(atencionHospitalService.obtenerHospitalSeleccionado(auth0Id));
     }
 
     @GetMapping("/api/atencion/tiempo-estimado")
