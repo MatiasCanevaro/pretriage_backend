@@ -6,6 +6,7 @@ import com.pretriage.backend.model.consultas.ConsultaMedica;
 import com.pretriage.backend.model.consultas.EntradaCola;
 import com.pretriage.backend.model.consultas.EstadoEntradaCola;
 import com.pretriage.backend.model.consultas.EstadoSesionMedica;
+import com.pretriage.backend.model.hospitales.Sala;
 import com.pretriage.backend.repositories.RepoEntradasCola;
 import com.pretriage.backend.repositories.RepoSesionesAtencionMedica;
 import lombok.RequiredArgsConstructor;
@@ -19,8 +20,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class EstimacionAtencionService {
 
-    private static final String MENSAJE_SIN_MEDICOS_ACTIVOS =
-            "No hay medicos atendiendo esta especialidad en este momento. La hora es una estimacion tentativa.";
+    private static final String MENSAJE_SIN_MEDICOS_ACTIVOS = "No hay medicos atendiendo esta especialidad en este momento. La hora es una estimacion tentativa.";
 
     private final RepoEntradasCola repoEntradasCola;
     private final RepoSesionesAtencionMedica repoSesionesAtencionMedica;
@@ -52,13 +52,20 @@ public class EstimacionAtencionService {
 
         TiempoEstimadoAtencionResponse response = new TiempoEstimadoAtencionResponse();
         response.setConsultaId(consultaMedica.getId());
-        response.setFechaHoraAtencionEstimada(LocalDateTime.now().plusMinutes((long) bloquesEspera * minutosPromedioAtencion));
+        response.setFechaHoraAtencionEstimada(
+                LocalDateTime.now().plusMinutes((long) bloquesEspera * minutosPromedioAtencion));
         response.setHayMedicosActivos(medicosActivos > 0);
         response.setMedicosActivos(medicosActivos);
         response.setMedicosParaEstimacion(medicosParaEstimacion);
         response.setPacientesAntes(posicionBaseCero);
         response.setPosicionEnCola(posicionBaseCero + 1);
         response.setMinutosPromedioAtencion(minutosPromedioAtencion);
+
+        Sala sala = consultaMedica.getSala(); // se hace set cuando el medico lo llama
+        if (sala != null) {
+            response.setCodigoSala(sala.getNombre());
+        }
+
         if (medicosActivos == 0) {
             response.setMensaje(MENSAJE_SIN_MEDICOS_ACTIVOS);
         }
