@@ -76,4 +76,13 @@ public class ConsultaMedica {
         this.estadoConsulta = EstadoConsulta.PENDIENTE;
     }
 
+    /**
+     * Oculta el message chain {@code getSala().getNombre()} y centraliza la semántica
+     * de "código de sala" — en el dominio actual el código es {@link com.pretriage.backend.model.hospitales.Sala#getNombre()}.
+     * Retorna {@code null} si aún no hay sala asignada (solo presente en LLAMADO/EN_ATENCION).
+     */
+    public String getCodigoSala() {
+        return sala != null ? sala.getNombre() : null;
+    }
+
 }

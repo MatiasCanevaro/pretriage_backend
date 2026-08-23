@@ -28,7 +28,6 @@ import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -148,38 +147,22 @@ public class AtencionHospitalService {
 
     @Transactional
     public TiempoEstimadoAtencionResponse obtenerTiempoEstimadoDeAtencion(String auth0Id) {
-        Paciente paciente = this.obtenerPaciente(auth0Id);
-        ConsultaMedica consultaMedica = obtenerConsultaConHospitalSeleccionado(paciente);
+        ConsultaMedica consultaMedica = obtenerConsultaConHospitalSeleccionado(auth0Id);
         return calcularTiempoEstimadoDeAtencion(consultaMedica);
     }
 
     @Transactional
     public HospitalSeleccionadoResponse obtenerHospitalSeleccionado(String auth0Id) {
-        Paciente paciente = this.obtenerPaciente(auth0Id);
-        ConsultaMedica consultaMedica = obtenerConsultaConHospitalSeleccionado(paciente);
+        ConsultaMedica consultaMedica = obtenerConsultaConHospitalSeleccionado(auth0Id);
         Hospital hospital = consultaMedica.getHospital();
 
         HospitalSeleccionadoResponse response = new HospitalSeleccionadoResponse();
         response.setIdHospital(hospital.getId());
         response.setPlaceId(hospital.getPlaceId());
         response.setNombre(hospital.getNombre());
-        response.setDireccion(formatearDireccion(hospital.getDireccion()));
+        Direccion direccion = hospital.getDireccion();
+        response.setDireccion(direccion != null ? direccion.formateada() : null);
         return response;
-    }
-
-    private String formatearDireccion(Direccion direccion) {
-        if (direccion == null) {
-            return null;
-        }
-        String calleYAltura = Stream.of(direccion.getCalle(), direccion.getAltura())
-                .filter(componente -> componente != null && !componente.isBlank())
-                .collect(Collectors.joining(" "));
-        return Stream.concat(
-                Stream.of(calleYAltura),
-                Stream.of(direccion.getPiso(), direccion.getCodigoPostal(), direccion.getCiudad(),
-                        direccion.getProvincia()))
-                .filter(componente -> componente != null && !componente.isBlank())
-                .collect(Collectors.joining(", "));
     }
 
     @Transactional
@@ -210,6 +193,11 @@ public class AtencionHospitalService {
         }
 
         return googlePlacesService.calcularTiempoArriboHospital(hospital, transporte, latitud, longitud);
+    }
+
+    private ConsultaMedica obtenerConsultaConHospitalSeleccionado(String auth0Id) {
+        Paciente paciente = obtenerPaciente(auth0Id);
+        return obtenerConsultaConHospitalSeleccionado(paciente);
     }
 
     private ConsultaMedica obtenerConsultaConHospitalSeleccionado(Paciente paciente) {

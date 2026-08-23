@@ -5,8 +5,6 @@ import lombok.Setter;
 
 import java.time.LocalDateTime;
 
-import com.pretriage.backend.model.hospitales.Sala;
-
 @Getter
 @Setter
 public class TiempoEstimadoAtencionResponse {

@@ -36,3 +36,18 @@ build/
 
 ## codebase MCP ##
 .codebase-memory
+
+## opencode - MCPs local ocultos ##
+.opencode/
+
+## agents - MCPs and skills ##
+.agents/
+
+## Obsidian - Obsidian config ##
+docs/.obsidian/
+
+## Inyection Data for manual tests ##
+src/main/java/com/pretriage/backend/config/UserTestInyection.java
+
+## skill config ##
+skills-lock.json

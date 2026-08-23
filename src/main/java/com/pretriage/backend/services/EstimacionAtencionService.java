@@ -6,7 +6,6 @@ import com.pretriage.backend.model.consultas.ConsultaMedica;
 import com.pretriage.backend.model.consultas.EntradaCola;
 import com.pretriage.backend.model.consultas.EstadoEntradaCola;
 import com.pretriage.backend.model.consultas.EstadoSesionMedica;
-import com.pretriage.backend.model.hospitales.Sala;
 import com.pretriage.backend.repositories.RepoEntradasCola;
 import com.pretriage.backend.repositories.RepoSesionesAtencionMedica;
 import lombok.RequiredArgsConstructor;
@@ -60,11 +59,7 @@ public class EstimacionAtencionService {
         response.setPacientesAntes(posicionBaseCero);
         response.setPosicionEnCola(posicionBaseCero + 1);
         response.setMinutosPromedioAtencion(minutosPromedioAtencion);
-
-        Sala sala = consultaMedica.getSala(); // se hace set cuando el medico lo llama
-        if (sala != null) {
-            response.setCodigoSala(sala.getNombre());
-        }
+        response.setCodigoSala(consultaMedica.getCodigoSala());
 
         if (medicosActivos == 0) {
             response.setMensaje(MENSAJE_SIN_MEDICOS_ACTIVOS);
