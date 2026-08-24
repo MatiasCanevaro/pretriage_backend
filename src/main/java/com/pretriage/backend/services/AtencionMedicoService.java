@@ -35,6 +35,8 @@ import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 
+import org.springframework.data.domain.PageRequest;
+
 @Service
 @RequiredArgsConstructor
 public class AtencionMedicoService {
@@ -124,9 +126,9 @@ public class AtencionMedicoService {
         return this.obtenerEstudioClinicoDe(pacienteId, estudioId);
     }
 
-    public List<EstudioClinicoDTO> obtenerUltimosEstudiosClinicos(String auth0Id, Long pacienteId) {
+    public List<EstudioClinicoDTO> obtenerUltimosEstudiosClinicos(String auth0Id, Long pacienteId, int limite) {
         this.obtenerMedico(auth0Id);
-        return this.obtenerUltimosEstudiosClinicosDe(pacienteId);
+        return this.obtenerUltimosEstudiosClinicosDe(pacienteId, limite);
     }
 
     public byte[] descargarArchivo(String auth0Id, Long pacienteId, Long estudioId){
@@ -543,11 +545,15 @@ public class AtencionMedicoService {
         return estudioClinicoService.obtenerEstudioClinicoDePaciente(paciente, estudioId);
     }
 
-    private List<EstudioClinicoDTO> obtenerUltimosEstudiosClinicosDe(Long pacienteId){
-        Paciente paciente = pacienteService.obtenerPaciente(pacienteId);
-
-        return paciente.getHistorialClinico().stream()
-                .filter(estudioClinico -> estudioClinico.getFechaSubida().isAfter(LocalDateTime.now()))
+    private List<EstudioClinicoDTO> obtenerUltimosEstudiosClinicosDe(Long pacienteId, int limite){
+        if (limite < 1) {
+            throw new IllegalArgumentException("El limite debe ser mayor a cero");
+        }
+        pacienteService.obtenerPaciente(pacienteId);
+        return repoEstudiosClinicos
+                .findByPacienteIdAndActivoTrueOrderByFechaSubidaDesc(
+                        pacienteId, PageRequest.of(0, limite))
+                .stream()
                 .map(this::mapearEstudioClinico)
                 .toList();
     }

@@ -110,9 +110,10 @@ public class MedicoController {
     @GetMapping("/api/medico/pacientes/{pacienteId}/ultimos-reportes")
     public ResponseEntity<List<EstudioClinicoDTO>> obtenerHistorialClinicoMasActuales(
             @AuthenticationPrincipal Jwt jwt,
-            @PathVariable Long pacienteId
+            @PathVariable Long pacienteId,
+            @RequestParam(defaultValue = "5") int limite
     ){
-        return ResponseEntity.ok(atencionMedicoService.obtenerUltimosEstudiosClinicos(jwt.getSubject(), pacienteId));
+        return ResponseEntity.ok(atencionMedicoService.obtenerUltimosEstudiosClinicos(jwt.getSubject(), pacienteId, limite));
     }
 
     @GetMapping("/api/medico/pacientes/{pacienteId}/historial-clinico/{estudioId}/archivo")
