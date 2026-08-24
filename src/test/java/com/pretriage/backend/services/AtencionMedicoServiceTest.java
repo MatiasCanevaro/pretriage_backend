@@ -347,7 +347,7 @@ class AtencionMedicoServiceTest {
         when(repoEstudiosClinicos.findByPacienteIdAndActivoTrueOrderByFechaSubidaDesc(eq(pacienteId), any(Pageable.class)))
                 .thenReturn(List.of(e1, e2));
 
-        List<EstudioClinicoDTO> resultado = service.obtenerUltimosEstudiosClinicos("auth0", pacienteId);
+        List<EstudioClinicoDTO> resultado = service.obtenerUltimosEstudiosClinicos("auth0", pacienteId, 5);
 
         assertEquals(2, resultado.size());
         assertEquals("reciente.pdf", resultado.getFirst().getNombreArchivo());
@@ -368,7 +368,7 @@ class AtencionMedicoServiceTest {
         when(repoEstudiosClinicos.findByPacienteIdAndActivoTrueOrderByFechaSubidaDesc(eq(pacienteId), any(Pageable.class)))
                 .thenReturn(List.of());
 
-        List<EstudioClinicoDTO> resultado = service.obtenerUltimosEstudiosClinicos("auth0", pacienteId);
+        List<EstudioClinicoDTO> resultado = service.obtenerUltimosEstudiosClinicos("auth0", pacienteId, 5);
 
         assertEquals(0, resultado.size());
     }
@@ -377,7 +377,36 @@ class AtencionMedicoServiceTest {
     void obtenerUltimosEstudiosClinicosExigeMedicoValido() {
         when(repoMedico.findByUsuarioAuthId("auth0")).thenReturn(Optional.empty());
 
-        assertThrows(AccessDeniedException.class, () -> service.obtenerUltimosEstudiosClinicos("auth0", 99L));
+        assertThrows(AccessDeniedException.class, () -> service.obtenerUltimosEstudiosClinicos("auth0", 99L, 5));
+        verify(repoEstudiosClinicos, never()).findByPacienteIdAndActivoTrueOrderByFechaSubidaDesc(any(), any());
+    }
+
+    @Test
+    void obtenerUltimosEstudiosClinicosRespetaElLimitePersonalizado() {
+        Long pacienteId = 1L;
+        Medico medico = new Medico(); medico.setId(10L);
+        Paciente paciente = new Paciente(); paciente.setId(pacienteId);
+
+        when(repoMedico.findByUsuarioAuthId("auth0")).thenReturn(Optional.of(medico));
+        when(pacienteService.obtenerPaciente(pacienteId)).thenReturn(paciente);
+        when(repoEstudiosClinicos.findByPacienteIdAndActivoTrueOrderByFechaSubidaDesc(eq(pacienteId), any(Pageable.class)))
+                .thenReturn(List.of());
+
+        service.obtenerUltimosEstudiosClinicos("auth0", pacienteId, 10);
+
+        org.mockito.ArgumentCaptor<Pageable> captor = org.mockito.ArgumentCaptor.forClass(Pageable.class);
+        verify(repoEstudiosClinicos).findByPacienteIdAndActivoTrueOrderByFechaSubidaDesc(eq(pacienteId), captor.capture());
+        assertEquals(10, captor.getValue().getPageSize());
+    }
+
+    @Test
+    void rechazaLimiteMenorAUno() {
+        Long pacienteId = 1L;
+        Medico medico = new Medico(); medico.setId(10L);
+        when(repoMedico.findByUsuarioAuthId("auth0")).thenReturn(Optional.of(medico));
+
+        assertThrows(IllegalArgumentException.class, () -> service.obtenerUltimosEstudiosClinicos("auth0", pacienteId, 0));
+        assertThrows(IllegalArgumentException.class, () -> service.obtenerUltimosEstudiosClinicos("auth0", pacienteId, -1));
         verify(repoEstudiosClinicos, never()).findByPacienteIdAndActivoTrueOrderByFechaSubidaDesc(any(), any());
     }
 }

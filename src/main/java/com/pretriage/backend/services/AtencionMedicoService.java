@@ -45,8 +45,6 @@ public class AtencionMedicoService {
             EstadoSesionMedica.ACTIVA,
             EstadoSesionMedica.PAUSADA);
 
-    private static final int CANTIDAD_ULTIMOS_ESTUDIOS = 5;
-
     private final RepoMedico repoMedico;
     private final RepoHospitales repoHospitales;
     private final RepoEspecialidadesMedicas repoEspecialidadesMedicas;
@@ -128,9 +126,9 @@ public class AtencionMedicoService {
         return this.obtenerEstudioClinicoDe(pacienteId, estudioId);
     }
 
-    public List<EstudioClinicoDTO> obtenerUltimosEstudiosClinicos(String auth0Id, Long pacienteId) {
+    public List<EstudioClinicoDTO> obtenerUltimosEstudiosClinicos(String auth0Id, Long pacienteId, int limite) {
         this.obtenerMedico(auth0Id);
-        return this.obtenerUltimosEstudiosClinicosDe(pacienteId);
+        return this.obtenerUltimosEstudiosClinicosDe(pacienteId, limite);
     }
 
     public byte[] descargarArchivo(String auth0Id, Long pacienteId, Long estudioId){
@@ -547,11 +545,14 @@ public class AtencionMedicoService {
         return estudioClinicoService.obtenerEstudioClinicoDePaciente(paciente, estudioId);
     }
 
-    private List<EstudioClinicoDTO> obtenerUltimosEstudiosClinicosDe(Long pacienteId){
+    private List<EstudioClinicoDTO> obtenerUltimosEstudiosClinicosDe(Long pacienteId, int limite){
+        if (limite < 1) {
+            throw new IllegalArgumentException("El limite debe ser mayor a cero");
+        }
         pacienteService.obtenerPaciente(pacienteId);
         return repoEstudiosClinicos
                 .findByPacienteIdAndActivoTrueOrderByFechaSubidaDesc(
-                        pacienteId, PageRequest.of(0, CANTIDAD_ULTIMOS_ESTUDIOS))
+                        pacienteId, PageRequest.of(0, limite))
                 .stream()
                 .map(this::mapearEstudioClinico)
                 .toList();
