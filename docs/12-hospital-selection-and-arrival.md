@@ -9,11 +9,14 @@ The hospital selection flow allows patients to choose a hospital and get arrival
 ### 1. Get Nearby Hospitals
 
 ```http
-GET /api/hospitales/cercanos?latitud={lat}&longitud={lon}&codigoEspecialidad={codigoEspecialidad}&transporte={transporte}
+GET /api/hospitales/cercanos?latitud={lat}&longitud={lon}&codigoEspecialidad={codigoEspecialidad}&transporte={transporte}&ordenarPor={ordenarPor}
 ```
 
 - Filters hospitals by selected specialty and distance from patient's location.
-- Returns hospitals sorted by proximity.
+- Returns only hospitals available for attention (`hayMedicosActivos=true` — at least one `SesionAtencionMedica.ACTIVA` for the requested specialty). When no hospital satisfies this, the response is an empty list and the frontend must show "no hay hospitales disponibles".
+- Sorting is controlled by `ordenarPor` (optional, defaults to `distancia`):
+  - `distancia` — keeps Google Places proximity order.
+  - `tiempo-atencion` — orders by lower estimated attention wait time (see `docs/04-queue-and-estimation.md#end-of-queue-estimate-for-hospital-ranking`); ties are broken by `tiempoEstimadoArriboMejorRuta` (nulls last) then `nombre`.
 - `transporte` is optional and defaults to `transporte-publico`. Valid values:
   - `transporte-publico`: Public transit (buses, trains, etc.)
   - `vehiculo`: Driving/car
@@ -21,6 +24,12 @@ GET /api/hospitales/cercanos?latitud={lat}&longitud={lon}&codigoEspecialidad={co
   - `caminar`: Walking
   - `bicicleta`: Bicycling
 - Each hospital includes `tiempoEstimadoArriboMejorRuta`, the estimated arrival time of the best route (the route labeled `DEFAULT_ROUTE` by Google) for the requested transport mode. It is `null` when Google cannot compute a route for that hospital.
+- Each hospital also exposes the estimated attention wait computed for a new arrival at the end of the queue:
+  - `pacientesEnCola` — count of `EntradaCola.EN_COLA` for `hospital+especialidad`
+  - `minutosEsperaEstimados` — `bloquesEspera * minutosPromedioAtencion`
+  - `fechaHoraAtencionEstimada` — `now + minutosEsperaEstimados`
+  - `hayMedicosActivos` — `medicosActivos > 0`
+  - `disponible` — `true` when `hayMedicosActivos` (only `true` entries are returned)
 - Patient reviews the list and selects one.
 
 ### 2. Select Hospital

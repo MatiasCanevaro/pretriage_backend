@@ -64,10 +64,10 @@ Returns available medical specialties sorted by name.
 ### Nearby Hospitals Filtered By Specialty
 
 ```http
-GET /api/hospitales/cercanos?latitud=-34.6&longitud=-58.4&codigoEspecialidad=CLINICA_MEDICA&transporte=transporte-publico
+GET /api/hospitales/cercanos?latitud=-34.6&longitud=-58.4&codigoEspecialidad=CLINICA_MEDICA&transporte=transporte-publico&ordenarPor=distancia
 ```
 
-Returns nearby hospitals that support the selected specialty. Each hospital includes `tiempoEstimadoArriboMejorRuta` (estimated arrival time of the best route for the transport mode; `transporte` is optional, defaults to `transporte-publico`, and the field is null when no route can be computed).
+Returns nearby hospitals that support the selected specialty. Only hospitals available for attention (`hayMedicosActivos=true` — at least one `SesionAtencionMedica.ACTIVA` for that specialty) are returned; an empty list means the frontend must show "no hay hospitales disponibles" and is not an error. Each hospital includes `tiempoEstimadoArriboMejorRuta` (estimated arrival time of the best route for the transport mode; `transporte` is optional, defaults to `transporte-publico`, and the field is null when no route can be computed) plus the estimated attention wait for a new arrival: `pacientesEnCola`, `minutosEsperaEstimados`, `fechaHoraAtencionEstimada`, `hayMedicosActivos`, `disponible` (always `true` in the response). `ordenarPor` is optional, defaults to `distancia` (Google Places proximity); `tiempo-atencion` orders by lower `minutosEsperaEstimados` (see `docs/04-queue-and-estimation.md#end-of-queue-estimate-for-hospital-ranking`), tie-broken by arrival time then name. Invalid values return `400`. `transporte` valid values: `transporte-publico`, `vehiculo`, `vehiculo-dos-ruedas`, `caminar`, `bicicleta` (see `docs/12-hospital-selection-and-arrival.md`).
 
 ### Select Hospital
 

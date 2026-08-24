@@ -16,7 +16,7 @@ The current focus is first attention only. The system does not model referral, d
 ## Core Modules
 
 - Authentication: Auth0 login/register integration.
-- Hospital selection: filters hospitals by selected specialty and distance.
+- Hospital selection: filters hospitals by selected specialty and distance; can order/filter by estimated attention time and shows only hospitals available for attention (with active doctors), displaying the estimated wait alongside each hospital.
 - Medical specialties: represented by `EspecialidadMedica`.
 - AI triage chat: creates a chat, stores patient and bot messages, stores structured triage JSON.
 - Queue management: uses `EntradaCola` as queue state per hospital/specialty.

@@ -120,6 +120,53 @@ class EstimacionAtencionServiceTest {
         assertThrows(NoSePudoEstimarElHorarioDeAtencion.class, () -> service.calcularPara(consultaPaciente));
     }
 
+    @Test
+    void esperaNuevaConsultaSinColaYConMedicosDevuelveCeroMinutos() {
+        when(repoEntradasCola.countByGestorDeColaHospitalIdAndGestorDeColaEspecialidadIdAndEstado(
+                10L, 20L, EstadoEntradaCola.EN_COLA)).thenReturn(0L);
+        when(repoSesionesAtencionMedica.countByHospitalIdAndEspecialidadIdAndEstado(
+                10L, 20L, EstadoSesionMedica.ACTIVA)).thenReturn(2);
+
+        var calculo = service.calcularEsperaParaNuevaConsulta(10L, 20L);
+
+        assertEquals(0, calculo.pacientesEnCola());
+        assertEquals(0, calculo.minutosEspera());
+        assertTrue(calculo.hayMedicosActivos());
+        assertNotNull(calculo.fechaHoraAtencionEstimada());
+    }
+
+    @Test
+    void esperaNuevaConsultaDividePacientesEntreMedicos() {
+        when(repoEntradasCola.countByGestorDeColaHospitalIdAndGestorDeColaEspecialidadIdAndEstado(
+                10L, 20L, EstadoEntradaCola.EN_COLA)).thenReturn(5L);
+        when(repoSesionesAtencionMedica.countByHospitalIdAndEspecialidadIdAndEstado(
+                10L, 20L, EstadoSesionMedica.ACTIVA)).thenReturn(2);
+
+        var calculo = service.calcularEsperaParaNuevaConsulta(10L, 20L);
+
+        assertEquals(5, calculo.pacientesEnCola());
+        assertEquals(20, calculo.minutosEspera());
+        assertTrue(calculo.hayMedicosActivos());
+    }
+
+    @Test
+    void esperaNuevaConsultaSinMedicosUsaUnMedicoVirtual() {
+        when(repoEntradasCola.countByGestorDeColaHospitalIdAndGestorDeColaEspecialidadIdAndEstado(
+                10L, 20L, EstadoEntradaCola.EN_COLA)).thenReturn(3L);
+        when(repoSesionesAtencionMedica.countByHospitalIdAndEspecialidadIdAndEstado(
+                10L, 20L, EstadoSesionMedica.ACTIVA)).thenReturn(0);
+
+        LocalDateTime antes = LocalDateTime.now();
+        var calculo = service.calcularEsperaParaNuevaConsulta(10L, 20L);
+        LocalDateTime despues = LocalDateTime.now();
+
+        assertEquals(3, calculo.pacientesEnCola());
+        assertEquals(30, calculo.minutosEspera());
+        assertFalse(calculo.hayMedicosActivos());
+        assertFalse(calculo.fechaHoraAtencionEstimada().isBefore(antes.plusMinutes(30)));
+        assertFalse(calculo.fechaHoraAtencionEstimada().isAfter(despues.plusMinutes(30)));
+    }
+
     private EntradaCola entrada(Long id, ConsultaMedica consulta, GestorDeCola gestor, int prioridad, long ordenRelativo) {
         EntradaCola entrada = new EntradaCola();
         entrada.setId(id);

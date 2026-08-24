@@ -1,5 +1,6 @@
 package com.pretriage.backend.services;
 
+import com.pretriage.backend.controllers.dtos.EsperaNuevaConsultaCalculo;
 import com.pretriage.backend.controllers.dtos.EspecialidadMedicaDTO;
 import com.pretriage.backend.controllers.dtos.HospitalCercanoDTO;
 import com.pretriage.backend.controllers.dtos.HospitalSeleccionadoResponse;
@@ -22,6 +23,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -66,9 +68,18 @@ public class AtencionHospitalService {
 
     public List<HospitalCercanoDTO> buscarHospitalesCercanos(Double latitud, Double longitud, String codigoEspecialidad,
             String transporte, String auth0Id) {
+        return buscarHospitalesCercanos(latitud, longitud, codigoEspecialidad, transporte, auth0Id, "distancia");
+    }
+
+    public List<HospitalCercanoDTO> buscarHospitalesCercanos(Double latitud, Double longitud, String codigoEspecialidad,
+            String transporte, String auth0Id, String ordenarPor) {
         this.obtenerPaciente(auth0Id);// valida si es un paciente válido
 
         String transporteEfectivo = transporte != null ? transporte : "transporte-publico";
+        String ordenarPorEfectivo = ordenarPor != null ? ordenarPor : "distancia";
+        if (!ordenarPorEfectivo.equals("distancia") && !ordenarPorEfectivo.equals("tiempo-atencion")) {
+            throw new IllegalArgumentException("Parametro ordenarPor invalido");
+        }
 
         EspecialidadMedica especialidad = obtenerEspecialidad(codigoEspecialidad);
         List<HospitalCercanoDTO> hospitalesCercanos = googlePlacesService.buscarHospitales(latitud, longitud);
@@ -85,7 +96,7 @@ public class AtencionHospitalService {
                 .stream()
                 .collect(Collectors.toMap(Hospital::getPlaceId, Function.identity()));
 
-        return hospitalesCercanos.stream()
+        List<HospitalCercanoDTO> resultado = hospitalesCercanos.stream()
                 .filter(hospitalCercano -> hospitalesPorPlaceId.containsKey(hospitalCercano.getPlaceId()))
                 .map(hospitalCercano -> {
                     Hospital hospital = hospitalesPorPlaceId.get(hospitalCercano.getPlaceId());
@@ -95,9 +106,31 @@ public class AtencionHospitalService {
                             googlePlacesService.calcularTiempoEstimadoArriboMejorRuta(
                                     hospital, transporteEfectivo, latitud, longitud));
 
+                    EsperaNuevaConsultaCalculo espera = estimacionAtencionService.calcularEsperaParaNuevaConsulta(
+                            hospital.getId(), especialidad.getId());
+                    hospitalCercano.setPacientesEnCola(espera.pacientesEnCola());
+                    hospitalCercano.setMinutosEsperaEstimados(espera.minutosEspera());
+                    hospitalCercano.setFechaHoraAtencionEstimada(espera.fechaHoraAtencionEstimada());
+                    hospitalCercano.setHayMedicosActivos(espera.hayMedicosActivos());
+                    hospitalCercano.setDisponible(espera.hayMedicosActivos());
+
                     return completarEspecialidades(hospitalCercano, hospital);
                 })
+                .filter(HospitalCercanoDTO::isDisponible)
                 .toList();
+
+        if (ordenarPorEfectivo.equals("tiempo-atencion")) {
+            return resultado.stream()
+                    .sorted(Comparator.comparing(HospitalCercanoDTO::getMinutosEsperaEstimados,
+                                    Comparator.nullsLast(Comparator.naturalOrder()))
+                            .thenComparing(HospitalCercanoDTO::getTiempoEstimadoArriboMejorRuta,
+                                    Comparator.nullsLast(Comparator.naturalOrder()))
+                            .thenComparing(HospitalCercanoDTO::getNombre,
+                                    Comparator.nullsLast(Comparator.naturalOrder())))
+                    .toList();
+        }
+
+        return resultado;
     }
 
     @Transactional

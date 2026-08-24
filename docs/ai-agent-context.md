@@ -41,7 +41,7 @@ The system manages the first medical attention workflow:
 
 ### Hospital And Specialty
 
-- `AtencionHospitalService`
+- `AtencionHospitalService` (incl. `buscarHospitalesCercanos` with `ordenarPor` and availability filter)
 - `HospitalController`
 - `Hospital`
 - `EspecialidadMedica`
@@ -50,12 +50,13 @@ The system manages the first medical attention workflow:
 
 ### Queue And Estimation
 
-- `EstimacionAtencionService`
+- `EstimacionAtencionService` (`calcularPara` per-patient + `calcularEsperaParaNuevaConsulta` for hospital ranking)
 - `EntradaCola`
 - `EstadoEntradaCola`
 - `GestorDeCola`
-- `RepoEntradasCola`
-- `TiempoEstimadoAtencionResponse`
+- `RepoEntradasCola` (`countByGestorDeColaHospitalIdAndGestorDeColaEspecialidadIdAndEstado`)
+- `TiempoEstimadoAtencionResponse` + `EsperaNuevaConsultaCalculo`
+- `HospitalCercanoDTO` enriched with `pacientesEnCola`, `minutosEsperaEstimados`, `fechaHoraAtencionEstimada`, `hayMedicosActivos`, `disponible`
 
 ### Doctor Attention
 
@@ -84,8 +85,9 @@ The system manages the first medical attention workflow:
 - A queue is scoped by hospital and specialty.
 - Hospital selection enters the consultation into the queue directly; the AI triage is optional and only updates the queue priority.
 - Estimated attention time is dynamic and should be recalculated on every request.
-- Only `EntradaCola.EN_COLA` counts for waiting estimation.
+- Only `EntradaCola.EN_COLA` counts for waiting estimation (both per-patient and per-hospital ranking; never `GestorDeCola.consultasEnEspera`).
 - Doctor sessions count for capacity only when `EstadoSesionMedica.ACTIVA`.
+- Nearby hospitals ranking shows only hospitals with `medicosActivos > 0` (`hayMedicosActivos=true`); an empty result means "no hay hospitales disponibles". Ranking wait uses end-of-queue formula `pacientesEnCola / max(medicosActivos,1) * minutosPromedioAtencion`.
 - Paused sessions do not count as active capacity.
 - Zero active doctors still yields an estimate using one virtual doctor, but response must indicate no active doctors.
 - A room cannot have two active or paused sessions at the same time.

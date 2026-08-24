@@ -21,16 +21,22 @@ public class HospitalController {
 
     private final AtencionHospitalService atencionHospitalService;
 
+    /*
+     * ordenarPor define el criterio de orden del resultado:
+     *   - "distancia"       (default) conserva el orden de proximidad de Google Places
+     *   - "tiempo-atencion" ordena por menor tiempo estimado de espera en cola
+     */
     @GetMapping("/api/hospitales/cercanos")
     public ResponseEntity<List<HospitalCercanoDTO>> obtenerHospitalesCercanos(
             @RequestParam Double latitud,
             @RequestParam Double longitud,
             @RequestParam String codigoEspecialidad,
             @RequestParam(required = false, defaultValue = "transporte-publico") String transporte,
+            @RequestParam(required = false, defaultValue = "distancia") String ordenarPor,
             @AuthenticationPrincipal Jwt jwt
     ){
         return ResponseEntity.ok(atencionHospitalService
-                .buscarHospitalesCercanos(latitud, longitud, codigoEspecialidad, transporte, jwt.getSubject()));
+                .buscarHospitalesCercanos(latitud, longitud, codigoEspecialidad, transporte, jwt.getSubject(), ordenarPor));
     }
 
     @PostMapping("/api/atencion/hospital")

@@ -37,5 +37,8 @@ public interface RepoEntradasCola extends JpaRepository<EntradaCola, Long> {
     List<EntradaCola> findByEstadoAndFechaHoraSalidaTemporalBefore(EstadoEntradaCola estado, LocalDateTime limite);
 
     List<EntradaCola> findByEstadoAndTipoPausaAndFechaHoraLimiteRespuestaBefore(EstadoEntradaCola estado, TipoPausaCola tipoPausa, LocalDateTime fechaHoraLimiteRespuesta);
+
+    long countByGestorDeColaHospitalIdAndGestorDeColaEspecialidadIdAndEstado(
+            Long hospitalId, Long especialidadId, EstadoEntradaCola estado);
 }
 

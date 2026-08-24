@@ -1,5 +1,6 @@
 package com.pretriage.backend.services;
 
+import com.pretriage.backend.controllers.dtos.EsperaNuevaConsultaCalculo;
 import com.pretriage.backend.controllers.dtos.TiempoEstimadoAtencionResponse;
 import com.pretriage.backend.exceptions.NoSePudoEstimarElHorarioDeAtencion;
 import com.pretriage.backend.model.consultas.ConsultaMedica;
@@ -47,7 +48,7 @@ public class EstimacionAtencionService {
                 consultaMedica.getEspecialidad().getId(),
                 EstadoSesionMedica.ACTIVA);
         int medicosParaEstimacion = Math.max(medicosActivos, 1);
-        int bloquesEspera = posicionBaseCero / medicosParaEstimacion;
+        int bloquesEspera = bloquesEspera(posicionBaseCero, medicosParaEstimacion);
 
         TiempoEstimadoAtencionResponse response = new TiempoEstimadoAtencionResponse();
         response.setConsultaId(consultaMedica.getId());
@@ -65,6 +66,24 @@ public class EstimacionAtencionService {
             response.setMensaje(MENSAJE_SIN_MEDICOS_ACTIVOS);
         }
         return response;
+    }
+
+    public EsperaNuevaConsultaCalculo calcularEsperaParaNuevaConsulta(Long hospitalId, Long especialidadId) {
+        int pacientesEnCola = (int) repoEntradasCola.countByGestorDeColaHospitalIdAndGestorDeColaEspecialidadIdAndEstado(
+                hospitalId, especialidadId, EstadoEntradaCola.EN_COLA);
+        int medicosActivos = repoSesionesAtencionMedica.countByHospitalIdAndEspecialidadIdAndEstado(
+                hospitalId, especialidadId, EstadoSesionMedica.ACTIVA);
+        int medicosParaEstimacion = Math.max(medicosActivos, 1);
+        int bloquesEspera = bloquesEspera(pacientesEnCola, medicosParaEstimacion);
+        long minutosEspera = (long) bloquesEspera * minutosPromedioAtencion;
+        LocalDateTime fechaHoraAtencionEstimada = LocalDateTime.now().plusMinutes(minutosEspera);
+        boolean hayMedicosActivos = medicosActivos > 0;
+        return new EsperaNuevaConsultaCalculo(
+                pacientesEnCola, minutosEspera, fechaHoraAtencionEstimada, hayMedicosActivos);
+    }
+
+    private int bloquesEspera(int pacientesAntes, int medicosParaEstimacion) {
+        return pacientesAntes / medicosParaEstimacion;
     }
 
     private int buscarPosicion(List<EntradaCola> cola, EntradaCola entradaPaciente) {

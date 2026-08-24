@@ -96,6 +96,21 @@ Example response:
 }
 ```
 
+## End-Of-Queue Estimate For Hospital Ranking
+
+For the nearby-hospital ranking (`GET /api/hospitales/cercanos?ordenarPor=tiempo-atencion`) a prospective wait for a **new** patient that would join at the end of the queue is computed via `EstimacionAtencionService.calcularEsperaParaNuevaConsulta`:
+
+```text
+pacientesEnCola        = count(EntradaCola.EN_COLA for hospital+especialidad)
+medicosActivos         = count(SesionAtencionMedica.ACTIVA for hospital+especialidad)
+medicosParaEstimacion  = max(medicosActivos, 1)
+bloquesEspera          = pacientesEnCola / medicosParaEstimacion   // floor division, same as per-patient formula
+minutosEsperaEstimados = bloquesEspera * minutosPromedioAtencion
+fechaHoraAtencionEstimada = now + minutosEsperaEstimados
+```
+
+Only `EntradaCola.EN_COLA` entries are counted, never `GestorDeCola.consultasEnEspera`. A hospital is considered available for ranking only when `medicosActivos > 0` (`hayMedicosActivos=true`); otherwise it is excluded and an empty ranking means the frontend must display "no hay hospitales disponibles".
+
 ## When Estimation Changes
 
 The estimate can change whenever:
