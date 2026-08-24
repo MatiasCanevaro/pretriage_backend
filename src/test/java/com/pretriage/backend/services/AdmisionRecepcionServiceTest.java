@@ -164,7 +164,7 @@ class AdmisionRecepcionServiceTest {
     }
 
     @Test
-    void registraDatosPersonalesYCorreoOpcionalDelPacientePresencial() {
+    void registraDatosPersonalesSinCorreoNiCodigoPostalDelPacientePresencial() {
         Hospital hospital = new Hospital(); hospital.setId(3L); hospital.setNombre("Hospital");
         EspecialidadMedica especialidad = new EspecialidadMedica();
         especialidad.setId(4L); especialidad.setCodigo("CLINICA_MEDICA");
@@ -174,7 +174,7 @@ class AdmisionRecepcionServiceTest {
         var request = new com.pretriage.backend.controllers.dtos.CrearAdmisionRecepcionRequest(
                 6L, "30111222", "Ana", "Perez", java.time.LocalDate.of(1990, 5, 10),
                 Genero.FEMENINO, "+54 11 5555-0101", "", "Calle E2E", "1234", "2",
-                "Ciudad Autonoma de Buenos Aires", "Buenos Aires", "C1000", "CLINICA_MEDICA");
+                "Ciudad Autonoma de Buenos Aires", "Buenos Aires", null, "CLINICA_MEDICA");
         when(repoSesionesRecepcion.findByIdAndRecepcionistaUsuarioAuthId(6L, "auth"))
                 .thenReturn(Optional.of(sesion));
         when(repoPacientes.findByNumeroDocumentoOrUsuarioAuthNumeroDocumento("30111222", "30111222"))
@@ -204,7 +204,7 @@ class AdmisionRecepcionServiceTest {
         assertEquals("1234", paciente.getDireccion().getAltura());
         assertEquals("Ciudad Autonoma de Buenos Aires", paciente.getDireccion().getCiudad());
         assertEquals("Buenos Aires", paciente.getDireccion().getProvincia());
-        assertEquals("C1000", paciente.getDireccion().getCodigoPostal());
+        assertNull(paciente.getDireccion().getCodigoPostal());
     }
 
     private AdmisionRecepcion admisionAbierta() {

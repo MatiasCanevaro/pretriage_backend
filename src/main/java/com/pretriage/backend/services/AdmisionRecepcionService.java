@@ -220,7 +220,9 @@ public class AdmisionRecepcionService {
         direccion.setPiso(r.piso() == null || r.piso().isBlank() ? null : r.piso().trim());
         direccion.setCiudad(r.ciudad().trim());
         direccion.setProvincia(r.provincia().trim());
-        direccion.setCodigoPostal(r.codigoPostal().trim());
+        if (r.codigoPostal() != null && !r.codigoPostal().isBlank()) {
+            direccion.setCodigoPostal(r.codigoPostal().trim());
+        }
         paciente.setDireccion(repoDirecciones.save(direccion));
     }
     private Recepcionista obtenerRecepcionista(String auth0Id) {
