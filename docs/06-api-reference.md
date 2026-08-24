@@ -383,10 +383,10 @@ Retrieves structured information about a specific medical record (type, date, de
 #### Get Recent Records
 
 ```http
-GET /api/medico/pacientes/{pacienteId}/ultimos-reportes?limit=10
+GET /api/medico/pacientes/{pacienteId}/ultimos-reportes
 ```
 
-Gets the most recent medical records for quick triage reference.
+Gets the 5 most recent active medical records for quick triage reference, ordered by `fechaSubida` DESC. Only studies with `activo=true` are returned; changing the limit requires updating `CANTIDAD_ULTIMOS_ESTUDIOS` in `AtencionMedicoService`.
 
 Pause, close, and call-next operations are rejected while the doctor has a patient `LLAMADO` or `EN_ATENCION`.
 

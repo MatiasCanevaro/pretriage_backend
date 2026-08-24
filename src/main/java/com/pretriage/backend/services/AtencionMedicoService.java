@@ -35,6 +35,8 @@ import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 
+import org.springframework.data.domain.PageRequest;
+
 @Service
 @RequiredArgsConstructor
 public class AtencionMedicoService {
@@ -42,6 +44,8 @@ public class AtencionMedicoService {
     private static final List<EstadoSesionMedica> SESIONES_RESERVAN_RECURSOS = List.of(
             EstadoSesionMedica.ACTIVA,
             EstadoSesionMedica.PAUSADA);
+
+    private static final int CANTIDAD_ULTIMOS_ESTUDIOS = 5;
 
     private final RepoMedico repoMedico;
     private final RepoHospitales repoHospitales;
@@ -544,10 +548,11 @@ public class AtencionMedicoService {
     }
 
     private List<EstudioClinicoDTO> obtenerUltimosEstudiosClinicosDe(Long pacienteId){
-        Paciente paciente = pacienteService.obtenerPaciente(pacienteId);
-
-        return paciente.getHistorialClinico().stream()
-                .filter(estudioClinico -> estudioClinico.getFechaSubida().isAfter(LocalDateTime.now()))
+        pacienteService.obtenerPaciente(pacienteId);
+        return repoEstudiosClinicos
+                .findByPacienteIdAndActivoTrueOrderByFechaSubidaDesc(
+                        pacienteId, PageRequest.of(0, CANTIDAD_ULTIMOS_ESTUDIOS))
+                .stream()
                 .map(this::mapearEstudioClinico)
                 .toList();
     }
