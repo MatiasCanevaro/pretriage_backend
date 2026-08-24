@@ -234,7 +234,6 @@ public class AtencionHospitalServiceTest {
         assertEquals(tiempoEsperado, hospitales.getFirst().getTiempoEstimadoArriboMejorRuta());
         assertEquals(2, hospitales.getFirst().getPacientesEnCola());
         assertEquals(20L, hospitales.getFirst().getMinutosEsperaEstimados());
-        assertTrue(hospitales.getFirst().isHayMedicosActivos());
         assertTrue(hospitales.getFirst().isDisponible());
     }
 
@@ -607,8 +606,59 @@ public class AtencionHospitalServiceTest {
         assertEquals(3, result.getPacientesEnCola());
         assertEquals(30L, result.getMinutosEsperaEstimados());
         assertEquals(fechaEsperada, result.getFechaHoraAtencionEstimada());
-        assertTrue(result.isHayMedicosActivos());
         assertTrue(result.isDisponible());
+    }
+
+    @Test
+    void ordenaConPuntuacionCombinadaSumandoRankings() {
+        String auth0idPaciente = "auth0|Paciente";
+        String codigoEspecialidad = "PEDIATRIA";
+        EspecialidadMedica especialidad = crearEspecialidad(30L, codigoEspecialidad);
+        Hospital hospitalA = crearHospital(20L, "hospitalA", especialidad);
+        Hospital hospitalB = crearHospital(21L, "hospitalB", especialidad);
+        Hospital hospitalC = crearHospital(22L, "hospitalC", especialidad);
+
+        HospitalCercanoDTO dtoA = crearHospitalCercano("hospitalA");
+        HospitalCercanoDTO dtoB = crearHospitalCercano("hospitalB");
+        HospitalCercanoDTO dtoC = crearHospitalCercano("hospitalC");
+
+        when(repoEspecialidadesMedicas.findByCodigo(codigoEspecialidad)).thenReturn(Optional.of(especialidad));
+        when(googlePlacesService.buscarHospitales(-34.6, -58.4)).thenReturn(List.of(dtoA, dtoB, dtoC));
+        when(repoHospitales.findByPlaceIdInAndEspecialidadesCodigo(List.of("hospitalA", "hospitalB", "hospitalC"), codigoEspecialidad))
+                .thenReturn(List.of(hospitalA, hospitalB, hospitalC));
+        when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0idPaciente)).thenReturn(Optional.of(new Paciente()));
+        when(googlePlacesService.calcularTiempoEstimadoArriboMejorRuta(any(), anyString(), anyDouble(), anyDouble()))
+                .thenReturn(LocalTime.of(0, 10, 0));
+        when(estimacionAtencionService.calcularEsperaParaNuevaConsulta(20L, 30L))
+                .thenReturn(new EsperaNuevaConsultaCalculo(5, 50, LocalDateTime.now().plusMinutes(50), true));
+        when(estimacionAtencionService.calcularEsperaParaNuevaConsulta(21L, 30L))
+                .thenReturn(new EsperaNuevaConsultaCalculo(1, 10, LocalDateTime.now().plusMinutes(10), true));
+        when(estimacionAtencionService.calcularEsperaParaNuevaConsulta(22L, 30L))
+                .thenReturn(new EsperaNuevaConsultaCalculo(2, 30, LocalDateTime.now().plusMinutes(30), true));
+
+        List<HospitalCercanoDTO> resultado1 = service.buscarHospitalesCercanos(-34.6, -58.4, codigoEspecialidad,
+                "caminar", auth0idPaciente, "distancia&tiempo-atencion");
+        List<HospitalCercanoDTO> resultado2 = service.buscarHospitalesCercanos(-34.6, -58.4, codigoEspecialidad,
+                "caminar", auth0idPaciente, "tiempo-atencion&distancia");
+
+        assertEquals(List.of("hospitalB", "hospitalA", "hospitalC"),
+                resultado1.stream().map(HospitalCercanoDTO::getPlaceId).toList());
+        assertEquals(List.of("hospitalB", "hospitalA", "hospitalC"),
+                resultado2.stream().map(HospitalCercanoDTO::getPlaceId).toList());
+    }
+
+    @Test
+    void rechazaCombinacionesInvalidasDeOrdenarPor() {
+        String auth0idPaciente = "auth0|Paciente";
+        when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0idPaciente)).thenReturn(Optional.of(new Paciente()));
+        assertThrows(IllegalArgumentException.class, () -> service.buscarHospitalesCercanos(-34.6, -58.4, "PEDIATRIA",
+                "caminar", auth0idPaciente, "distancia&distancia"));
+        assertThrows(IllegalArgumentException.class, () -> service.buscarHospitalesCercanos(-34.6, -58.4, "PEDIATRIA",
+                "caminar", auth0idPaciente, "distancia&invalido"));
+        assertThrows(IllegalArgumentException.class, () -> service.buscarHospitalesCercanos(-34.6, -58.4, "PEDIATRIA",
+                "caminar", auth0idPaciente, "&distancia"));
+        assertThrows(IllegalArgumentException.class, () -> service.buscarHospitalesCercanos(-34.6, -58.4, "PEDIATRIA",
+                "caminar", auth0idPaciente, ""));
     }
     private Paciente crearPaciente(Long id) {
         Paciente paciente = new Paciente();

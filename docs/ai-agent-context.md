@@ -56,7 +56,7 @@ The system manages the first medical attention workflow:
 - `GestorDeCola`
 - `RepoEntradasCola` (`countByGestorDeColaHospitalIdAndGestorDeColaEspecialidadIdAndEstado`)
 - `TiempoEstimadoAtencionResponse` + `EsperaNuevaConsultaCalculo`
-- `HospitalCercanoDTO` enriched with `pacientesEnCola`, `minutosEsperaEstimados`, `fechaHoraAtencionEstimada`, `hayMedicosActivos`, `disponible`
+ - `HospitalCercanoDTO` enriched with `pacientesEnCola`, `minutosEsperaEstimados`, `fechaHoraAtencionEstimada`, `disponible`
 
 ### Doctor Attention
 
@@ -87,7 +87,7 @@ The system manages the first medical attention workflow:
 - Estimated attention time is dynamic and should be recalculated on every request.
 - Only `EntradaCola.EN_COLA` counts for waiting estimation (both per-patient and per-hospital ranking; never `GestorDeCola.consultasEnEspera`).
 - Doctor sessions count for capacity only when `EstadoSesionMedica.ACTIVA`.
-- Nearby hospitals ranking shows only hospitals with `medicosActivos > 0` (`hayMedicosActivos=true`); an empty result means "no hay hospitales disponibles". Ranking wait uses end-of-queue formula `pacientesEnCola / max(medicosActivos,1) * minutosPromedioAtencion`.
+- Nearby hospitals ranking shows only hospitals with `medicosActivos > 0` (`disponible=true`); an empty result means "no hay hospitales disponibles". Ranking wait uses end-of-queue formula `pacientesEnCola / max(medicosActivos,1) * minutosPromedioAtencion`. `ordenarPor` valid values live in `ORDENES_VALIDOS` (`distancia`, `tiempo-atencion`, combinados con `&`), orden indistinto; el combinado usa suma de rankings.
 - Paused sessions do not count as active capacity.
 - Zero active doctors still yields an estimate using one virtual doctor, but response must indicate no active doctors.
 - A room cannot have two active or paused sessions at the same time.

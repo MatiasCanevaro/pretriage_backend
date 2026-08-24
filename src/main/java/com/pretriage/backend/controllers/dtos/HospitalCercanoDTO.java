@@ -31,6 +31,4 @@ public class HospitalCercanoDTO {
 
     private LocalDateTime fechaHoraAtencionEstimada;
 
-    private boolean hayMedicosActivos;
-
 }

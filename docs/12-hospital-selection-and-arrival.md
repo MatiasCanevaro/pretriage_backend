@@ -13,10 +13,11 @@ GET /api/hospitales/cercanos?latitud={lat}&longitud={lon}&codigoEspecialidad={co
 ```
 
 - Filters hospitals by selected specialty and distance from patient's location.
-- Returns only hospitals available for attention (`hayMedicosActivos=true` — at least one `SesionAtencionMedica.ACTIVA` for the requested specialty). When no hospital satisfies this, the response is an empty list and the frontend must show "no hay hospitales disponibles".
-- Sorting is controlled by `ordenarPor` (optional, defaults to `distancia`):
+- Returns only hospitals available for attention (`disponible=true` — at least one `SesionAtencionMedica.ACTIVA` for the requested specialty). When no hospital satisfies this, the response is an empty list and the frontend must show "no hay hospitales disponibles".
+- Sorting is controlled by `ordenarPor` (optional, defaults to `distancia`; valores válidos en `ORDENES_VALIDOS`: `distancia`, `tiempo-atencion`, combinados `distancia&tiempo-atencion` / `tiempo-atencion&distancia` donde el orden es indistinto y extensible con `&`):
   - `distancia` — keeps Google Places proximity order.
   - `tiempo-atencion` — orders by lower estimated attention wait time (see `docs/04-queue-and-estimation.md#end-of-queue-estimate-for-hospital-ranking`); ties are broken by `tiempoEstimadoArriboMejorRuta` (nulls last) then `nombre`.
+  - `distancia&tiempo-atencion` (o `tiempo-atencion&distancia`) — orden combinado por suma de rankings: `rank(distancia según posición en Google) + rank(tiempo según minutosEspera)`; el menor puntaje va primero y los empates se rompen por `nombre` (extensible agregando nuevos valores a `ORDENES_VALIDOS`).
 - `transporte` is optional and defaults to `transporte-publico`. Valid values:
   - `transporte-publico`: Public transit (buses, trains, etc.)
   - `vehiculo`: Driving/car
@@ -28,8 +29,7 @@ GET /api/hospitales/cercanos?latitud={lat}&longitud={lon}&codigoEspecialidad={co
   - `pacientesEnCola` — count of `EntradaCola.EN_COLA` for `hospital+especialidad`
   - `minutosEsperaEstimados` — `bloquesEspera * minutosPromedioAtencion`
   - `fechaHoraAtencionEstimada` — `now + minutosEsperaEstimados`
-  - `hayMedicosActivos` — `medicosActivos > 0`
-  - `disponible` — `true` when `hayMedicosActivos` (only `true` entries are returned)
+  - `disponible` — `medicosActivos > 0` (only `true` entries are returned)
 - Patient reviews the list and selects one.
 
 ### 2. Select Hospital

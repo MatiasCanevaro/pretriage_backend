@@ -23,13 +23,17 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 @Service
 @RequiredArgsConstructor
@@ -45,6 +49,10 @@ public class AtencionHospitalService {
             EstadoConsulta.EN_ESPERA,
             EstadoConsulta.ATRASADO,
             EstadoConsulta.EN_ATENCION);
+
+    private static final List<String> ORDENES_VALIDOS = List.of(
+            "distancia",
+            "tiempo-atencion");
 
     private static final List<EstadoConsulta> ESTADOS_CONSULTA_CON_HOSPITAL = List.of(
             EstadoConsulta.HOSPITAL_SELECCIONADO,
@@ -77,7 +85,12 @@ public class AtencionHospitalService {
 
         String transporteEfectivo = transporte != null ? transporte : "transporte-publico";
         String ordenarPorEfectivo = ordenarPor != null ? ordenarPor : "distancia";
-        if (!ordenarPorEfectivo.equals("distancia") && !ordenarPorEfectivo.equals("tiempo-atencion")) {
+        List<String> criterios = Arrays.stream(ordenarPorEfectivo.split("&", -1)).toList();
+        Set<String> sinDuplicados = new HashSet<>(criterios);
+        boolean valido = !criterios.isEmpty()
+                && criterios.stream().allMatch(ORDENES_VALIDOS::contains)
+                && sinDuplicados.size() == criterios.size();
+        if (!valido) {
             throw new IllegalArgumentException("Parametro ordenarPor invalido");
         }
 
@@ -111,7 +124,6 @@ public class AtencionHospitalService {
                     hospitalCercano.setPacientesEnCola(espera.pacientesEnCola());
                     hospitalCercano.setMinutosEsperaEstimados(espera.minutosEspera());
                     hospitalCercano.setFechaHoraAtencionEstimada(espera.fechaHoraAtencionEstimada());
-                    hospitalCercano.setHayMedicosActivos(espera.hayMedicosActivos());
                     hospitalCercano.setDisponible(espera.hayMedicosActivos());
 
                     return completarEspecialidades(hospitalCercano, hospital);
@@ -119,18 +131,50 @@ public class AtencionHospitalService {
                 .filter(HospitalCercanoDTO::isDisponible)
                 .toList();
 
-        if (ordenarPorEfectivo.equals("tiempo-atencion")) {
+        boolean porTiempo = criterios.contains("tiempo-atencion");
+        boolean porDistancia = criterios.contains("distancia");
+
+        if (porTiempo && porDistancia) {
+            Map<String, Integer> posicionGoogle = IntStream.range(0, hospitalesCercanos.size())
+                    .boxed()
+                    .collect(Collectors.toMap(
+                            i -> hospitalesCercanos.get(i).getPlaceId(),
+                            i -> i,
+                            (a, b) -> a));
+            List<HospitalCercanoDTO> ordenPorTiempo = resultado.stream()
+                    .sorted(comparatorPorTiempoAtencion())
+                    .toList();
+            Map<String, Integer> posicionTiempo = IntStream.range(0, ordenPorTiempo.size())
+                    .boxed()
+                    .collect(Collectors.toMap(
+                            i -> ordenPorTiempo.get(i).getPlaceId(),
+                            i -> i,
+                            (a, b) -> a));
             return resultado.stream()
-                    .sorted(Comparator.comparing(HospitalCercanoDTO::getMinutosEsperaEstimados,
-                                    Comparator.nullsLast(Comparator.naturalOrder()))
-                            .thenComparing(HospitalCercanoDTO::getTiempoEstimadoArriboMejorRuta,
-                                    Comparator.nullsLast(Comparator.naturalOrder()))
+                    .sorted(Comparator.<HospitalCercanoDTO>comparingInt(dto ->
+                                    posicionGoogle.getOrDefault(dto.getPlaceId(), Integer.MAX_VALUE)
+                                            + posicionTiempo.getOrDefault(dto.getPlaceId(), Integer.MAX_VALUE))
                             .thenComparing(HospitalCercanoDTO::getNombre,
                                     Comparator.nullsLast(Comparator.naturalOrder())))
                     .toList();
         }
 
+        if (porTiempo) {
+            return resultado.stream()
+                    .sorted(comparatorPorTiempoAtencion())
+                    .toList();
+        }
+
         return resultado;
+    }
+
+    private Comparator<HospitalCercanoDTO> comparatorPorTiempoAtencion() {
+        return Comparator.comparing(HospitalCercanoDTO::getMinutosEsperaEstimados,
+                        Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(HospitalCercanoDTO::getTiempoEstimadoArriboMejorRuta,
+                        Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(HospitalCercanoDTO::getNombre,
+                        Comparator.nullsLast(Comparator.naturalOrder()));
     }
 
     @Transactional
