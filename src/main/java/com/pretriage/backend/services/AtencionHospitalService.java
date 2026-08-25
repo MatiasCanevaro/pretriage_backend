@@ -131,8 +131,8 @@ public class AtencionHospitalService {
                 .filter(HospitalCercanoDTO::isDisponible)
                 .toList();
 
-        boolean porTiempo = criterios.contains("tiempo-atencion");
-        boolean porDistancia = criterios.contains("distancia");
+        boolean porTiempo = criterios.contains(ORDENES_VALIDOS.get(1)); // tiempo-atencion
+        boolean porDistancia = criterios.contains(ORDENES_VALIDOS.get(0)); // distancia
 
         if (porTiempo && porDistancia) {
             Map<String, Integer> posicionGoogle = IntStream.range(0, hospitalesCercanos.size())
@@ -151,8 +151,9 @@ public class AtencionHospitalService {
                             i -> i,
                             (a, b) -> a));
             return resultado.stream()
-                    .sorted(Comparator.<HospitalCercanoDTO>comparingInt(dto ->
-                                    posicionGoogle.getOrDefault(dto.getPlaceId(), Integer.MAX_VALUE)
+                    .sorted(Comparator
+                            .<HospitalCercanoDTO>comparingInt(
+                                    dto -> posicionGoogle.getOrDefault(dto.getPlaceId(), Integer.MAX_VALUE)
                                             + posicionTiempo.getOrDefault(dto.getPlaceId(), Integer.MAX_VALUE))
                             .thenComparing(HospitalCercanoDTO::getNombre,
                                     Comparator.nullsLast(Comparator.naturalOrder())))
@@ -170,10 +171,8 @@ public class AtencionHospitalService {
 
     private Comparator<HospitalCercanoDTO> comparatorPorTiempoAtencion() {
         return Comparator.comparing(HospitalCercanoDTO::getMinutosEsperaEstimados,
-                        Comparator.nullsLast(Comparator.naturalOrder()))
+                Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(HospitalCercanoDTO::getTiempoEstimadoArriboMejorRuta,
-                        Comparator.nullsLast(Comparator.naturalOrder()))
-                .thenComparing(HospitalCercanoDTO::getNombre,
                         Comparator.nullsLast(Comparator.naturalOrder()));
     }
 
