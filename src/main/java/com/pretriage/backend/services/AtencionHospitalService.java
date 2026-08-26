@@ -132,7 +132,7 @@ public class AtencionHospitalService {
 
                     return completarEspecialidades(hospitalCercano, hospital);
                 })
-                // .filter(HospitalCercanoDTO::isDisponible)
+                .filter(HospitalCercanoDTO::isDisponible)
                 .toList();
 
         boolean porTiempo = criterios.contains(ORDENES_VALIDOS.get(1)); // tiempo-atencion
