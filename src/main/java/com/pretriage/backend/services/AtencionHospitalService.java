@@ -19,10 +19,13 @@ import com.pretriage.backend.repositories.RepoEspecialidadesMedicas;
 import com.pretriage.backend.repositories.RepoHospitales;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -37,6 +40,7 @@ import java.util.stream.IntStream;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class AtencionHospitalService {
 
     private static final List<EstadoConsulta> ESTADOS_CONSULTA_ACTIVA = List.of(
@@ -85,7 +89,7 @@ public class AtencionHospitalService {
 
         String transporteEfectivo = transporte != null ? transporte : "transporte-publico";
         String ordenarPorEfectivo = ordenarPor != null ? ordenarPor : "distancia";
-        List<String> criterios = Arrays.stream(ordenarPorEfectivo.split("&", -1)).toList();
+        List<String> criterios = Arrays.asList(ordenarPorEfectivo.split("\\|"));
         Set<String> sinDuplicados = new HashSet<>(criterios);
         boolean valido = !criterios.isEmpty()
                 && criterios.stream().allMatch(ORDENES_VALIDOS::contains)
@@ -128,7 +132,7 @@ public class AtencionHospitalService {
 
                     return completarEspecialidades(hospitalCercano, hospital);
                 })
-                .filter(HospitalCercanoDTO::isDisponible)
+                // .filter(HospitalCercanoDTO::isDisponible)
                 .toList();
 
         boolean porTiempo = criterios.contains(ORDENES_VALIDOS.get(1)); // tiempo-atencion

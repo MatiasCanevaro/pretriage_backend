@@ -14,10 +14,10 @@ GET /api/hospitales/cercanos?latitud={lat}&longitud={lon}&codigoEspecialidad={co
 
 - Filters hospitals by selected specialty and distance from patient's location.
 - Returns only hospitals available for attention (`disponible=true` — at least one `SesionAtencionMedica.ACTIVA` for the requested specialty). When no hospital satisfies this, the response is an empty list and the frontend must show "no hay hospitales disponibles".
-- Sorting is controlled by `ordenarPor` (optional, defaults to `distancia`; valores válidos en `ORDENES_VALIDOS`: `distancia`, `tiempo-atencion`, combinados `distancia&tiempo-atencion` / `tiempo-atencion&distancia` donde el orden es indistinto y extensible con `&`):
+- Sorting is controlled by `ordenarPor` (optional, defaults to `distancia`; valores válidos en `ORDENES_VALIDOS`: `distancia`, `tiempo-atencion`, combinados `distancia|tiempo-atencion` / `tiempo-atencion|distancia` donde el orden es indistinto y extensible con `|`):
   - `distancia` — keeps Google Places proximity order.
   - `tiempo-atencion` — orders by lower estimated attention wait time (see `docs/04-queue-and-estimation.md#end-of-queue-estimate-for-hospital-ranking`); ties are broken by `tiempoEstimadoArriboMejorRuta` (nulls last) then `nombre`.
-  - `distancia&tiempo-atencion` (o `tiempo-atencion&distancia`) — orden combinado por suma de rankings: `rank(distancia según posición en Google) + rank(tiempo según minutosEspera)`; el menor puntaje va primero y los empates se rompen por `nombre` (extensible agregando nuevos valores a `ORDENES_VALIDOS`).
+  - `distancia|tiempo-atencion` (o `tiempo-atencion|distancia`) — orden combinado por suma de rankings: `rank(distancia según posición en Google) + rank(tiempo según minutosEspera)`; el menor puntaje va primero y los empates se rompen por `nombre` (extensible agregando nuevos valores a `ORDENES_VALIDOS`).
 - `transporte` is optional and defaults to `transporte-publico`. Valid values:
   - `transporte-publico`: Public transit (buses, trains, etc.)
   - `vehiculo`: Driving/car
