@@ -95,10 +95,6 @@ public class AtencionMedicoService {
         return new SesionMedicaActualDTO(sesion, consultaActual);
     }
 
-    public List<ConsultaLlamadaDTO> listarPacientesDisponibles(String auth0Id, Long sesionId) {
-        return listarPacientesDisponibles(auth0Id, sesionId, null);
-    }
-
     public List<ConsultaLlamadaDTO> listarPacientesDisponibles(String auth0Id, Long sesionId, String dni) {
         SesionAtencionMedica sesion = obtenerSesionActiva(auth0Id, sesionId);
         GestorDeCola gestor = obtenerGestorDeCola(sesion);
@@ -136,7 +132,7 @@ public class AtencionMedicoService {
         return this.obtenerHistorialClinicoDe(pacienteId);
     }
 
-    public EstudioClinicoDTO obtenerEstudioClinico(String auth0Id, Long pacienteId, Long estudioId){
+    public EstudioClinicoDTO obtenerEstudioClinico(String auth0Id, Long pacienteId, Long estudioId) {
         this.obtenerMedico(auth0Id);
         return this.obtenerEstudioClinicoDe(pacienteId, estudioId);
     }
@@ -146,15 +142,16 @@ public class AtencionMedicoService {
         return this.obtenerUltimosEstudiosClinicosDe(pacienteId, limite);
     }
 
-    public byte[] descargarArchivo(String auth0Id, Long pacienteId, Long estudioId){
+    public byte[] descargarArchivo(String auth0Id, Long pacienteId, Long estudioId) {
         this.obtenerMedico(auth0Id);
         Paciente paciente = pacienteService.obtenerPaciente(pacienteId);
 
-        return estudioClinicoService.descargarEstudioClinicoDePaciente(paciente,estudioId);
+        return estudioClinicoService.descargarEstudioClinicoDePaciente(paciente, estudioId);
     }
 
     @Transactional
-    public SesionAtencionMedicaDTO iniciarSesion(String auth0Id, Long hospitalId, String codigoEspecialidad, Long salaId) {
+    public SesionAtencionMedicaDTO iniciarSesion(String auth0Id, Long hospitalId, String codigoEspecialidad,
+            Long salaId) {
         Medico medico = obtenerMedico(auth0Id);
         Hospital hospital = repoHospitales.findById(hospitalId)
                 .orElseThrow(() -> new NoSuchElementException("Hospital inexistente"));
@@ -217,7 +214,8 @@ public class AtencionMedicoService {
                 .orElseThrow(() -> new NoSuchElementException("No existe cola para la especialidad del hospital"));
 
         EntradaCola entrada = repoEntradasCola
-                .findFirstByGestorDeColaIdAndEstadoOrderByPrioridadDescOrdenRelativoAsc(gestorDeCola.getId(), EstadoEntradaCola.EN_COLA)
+                .findFirstByGestorDeColaIdAndEstadoOrderByPrioridadDescOrdenRelativoAsc(gestorDeCola.getId(),
+                        EstadoEntradaCola.EN_COLA)
                 .orElseThrow(() -> new NoSuchElementException("No hay pacientes en cola"));
 
         ConsultaMedica consulta = entrada.getConsultaMedica();
@@ -306,7 +304,8 @@ public class AtencionMedicoService {
         revision.setMedico(sesion.getMedico());
         revision.setDecision(request.decision());
         revision.setPrioridadAnterior(consulta.getNivelDeGravedadMedico() == null
-                ? preliminar : consulta.getNivelDeGravedadMedico());
+                ? preliminar
+                : consulta.getNivelDeGravedadMedico());
         revision.setPrioridadNueva(nuevaPrioridad);
         revision.setMotivo(motivo);
         revision.setFechaHora(LocalDateTime.now());
@@ -360,7 +359,6 @@ public class AtencionMedicoService {
         return mapearConsultaLlamada(consulta);
     }
 
-
     private GestorDeCola obtenerGestorDeCola(SesionAtencionMedica sesion) {
         return repoGestoresDeColas
                 .findByHospitalIdAndEspecialidadId(sesion.getHospital().getId(), sesion.getEspecialidad().getId())
@@ -376,6 +374,7 @@ public class AtencionMedicoService {
             throw new IllegalStateException("Debe finalizar o resolver la consulta actual antes de continuar");
         }
     }
+
     private Medico obtenerMedico(String auth0Id) {
         return repoMedico.findByUsuarioAuthId(auth0Id)
                 .orElseThrow(() -> new AccessDeniedException("No tiene permisos de medico"));
@@ -464,9 +463,6 @@ public class AtencionMedicoService {
         return dto;
     }
 
-
-
-
     private AtencionMedicaDTO mapearAtencion(AtencionMedica atencion) {
         AtencionMedicaDTO dto = new AtencionMedicaDTO();
         dto.setId(atencion.getId());
@@ -481,15 +477,18 @@ public class AtencionMedicoService {
         dto.setFechaHoraFin(atencion.getFechaHoraFin());
         return dto;
     }
+
     private ConsultaLlamadaDTO mapearConsultaLlamada(ConsultaMedica consulta) {
         ConsultaLlamadaDTO dto = new ConsultaLlamadaDTO();
         dto.setConsultaId(consulta.getId());
         dto.setCodigoLlamado(consulta.getCodigoLlamado());
-        dto.setPacienteId(consulta.getPaciente().getId());
-        dto.setNombrePaciente(consulta.getPaciente().getNombre());
-        dto.setApellidoPaciente(consulta.getPaciente().getApellido());
-        dto.setNumeroDocumento(consulta.getPaciente().getNumeroDocumento());
-        dto.setTipoDocumento(consulta.getPaciente().getTipoDocumento());
+        Paciente paciente = consulta.getPaciente();
+
+        dto.setPacienteId(paciente.getId());
+        dto.setNombrePaciente(paciente.getNombre());
+        dto.setApellidoPaciente(paciente.getApellido());
+        dto.setNumeroDocumento(paciente.getNumeroDocumento());
+        dto.setTipoDocumento(paciente.getTipoDocumento());
         Sala sala = consulta.getSala();
         if (sala != null) {
             dto.setSalaId(sala.getId());
@@ -514,17 +513,20 @@ public class AtencionMedicoService {
         EstadoRevisionPrioridad estado = ultima == null
                 ? EstadoRevisionPrioridad.PENDIENTE
                 : (ultima.getDecision() == DecisionRevisionPrioridad.CONFIRMAR
-                    ? EstadoRevisionPrioridad.CONFIRMADA : EstadoRevisionPrioridad.CORREGIDA);
+                        ? EstadoRevisionPrioridad.CONFIRMADA
+                        : EstadoRevisionPrioridad.CORREGIDA);
         return new PretriajeConsultaDTO(
                 consulta.getId(),
                 consulta.getNivelDeGravedadBot(),
                 consulta.getNivelDeGravedadMedico() == null
-                        ? consulta.getNivelDeGravedadBot() : consulta.getNivelDeGravedadMedico(),
+                        ? consulta.getNivelDeGravedadBot()
+                        : consulta.getNivelDeGravedadMedico(),
                 estado,
                 leerResumenPretriaje(consulta),
-                ultima == null ? null : new RevisionPrioridadDTO(
-                        ultima.getId(), ultima.getDecision(), ultima.getPrioridadAnterior(),
-                        ultima.getPrioridadNueva(), ultima.getMotivo(), ultima.getFechaHora()));
+                ultima == null ? null
+                        : new RevisionPrioridadDTO(
+                                ultima.getId(), ultima.getDecision(), ultima.getPrioridadAnterior(),
+                                ultima.getPrioridadNueva(), ultima.getMotivo(), ultima.getFechaHora()));
     }
 
     private TriageResultDTO leerResumenPretriaje(ConsultaMedica consulta) {
@@ -557,12 +559,12 @@ public class AtencionMedicoService {
                 .toList();
     }
 
-    private EstudioClinicoDTO obtenerEstudioClinicoDe(Long pacienteId, Long estudioId){
+    private EstudioClinicoDTO obtenerEstudioClinicoDe(Long pacienteId, Long estudioId) {
         Paciente paciente = pacienteService.obtenerPaciente(pacienteId);
         return estudioClinicoService.obtenerEstudioClinicoDePaciente(paciente, estudioId);
     }
 
-    private List<EstudioClinicoDTO> obtenerUltimosEstudiosClinicosDe(Long pacienteId, int limite){
+    private List<EstudioClinicoDTO> obtenerUltimosEstudiosClinicosDe(Long pacienteId, int limite) {
         if (limite < 1) {
             throw new IllegalArgumentException("El limite debe ser mayor a cero");
         }
@@ -589,5 +591,3 @@ public class AtencionMedicoService {
         return dto;
     }
 }
-
-
