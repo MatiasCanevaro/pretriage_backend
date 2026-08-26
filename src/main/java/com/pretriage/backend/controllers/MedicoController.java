@@ -82,8 +82,9 @@ public class MedicoController {
     @GetMapping("/api/medico/sesiones/{sesionId}/pacientes-disponibles")
     public ResponseEntity<List<ConsultaLlamadaDTO>> listarPacientesDisponibles(
             @AuthenticationPrincipal Jwt jwt,
-            @PathVariable Long sesionId) {
-        return ResponseEntity.ok(atencionMedicoService.listarPacientesDisponibles(jwt.getSubject(), sesionId));
+            @PathVariable Long sesionId,
+            @RequestParam(required = false) String dni) {
+        return ResponseEntity.ok(atencionMedicoService.listarPacientesDisponibles(jwt.getSubject(), sesionId, dni));
     }
 
     @GetMapping("/api/medico/atenciones")
