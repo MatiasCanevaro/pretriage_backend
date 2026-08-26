@@ -29,6 +29,9 @@ public interface RepoEntradasCola extends JpaRepository<EntradaCola, Long> {
 
     List<EntradaCola> findByGestorDeColaIdAndEstadoOrderByPrioridadDescOrdenRelativoAscFechaHoraIngresoAsc(Long idGestorDeCola, EstadoEntradaCola estado);
 
+    List<EntradaCola> findByGestorDeColaIdAndEstadoAndConsultaMedicaPacienteNumeroDocumentoOrderByPrioridadDescOrdenRelativoAscFechaHoraIngresoAsc(
+            Long idGestorDeCola, EstadoEntradaCola estado, String numeroDocumento);
+
     boolean existsByConsultaMedicaMedicoIdAndEstadoIn(Long medicoId, Collection<EstadoEntradaCola> estados);
 
     Optional<EntradaCola> findFirstByConsultaMedicaMedicoUsuarioAuthIdAndEstadoInOrderByFechaHoraLlamadoDesc(

@@ -409,4 +409,153 @@ class AtencionMedicoServiceTest {
         assertThrows(IllegalArgumentException.class, () -> service.obtenerUltimosEstudiosClinicos("auth0", pacienteId, -1));
         verify(repoEstudiosClinicos, never()).findByPacienteIdAndActivoTrueOrderByFechaSubidaDesc(any(), any());
     }
+
+    // --- Filtro por DNI ---
+
+    @Test
+    void listarPacientesDisponibles_filtraPorDniExacto_conCoincidencia() {
+        Hospital hospital = new Hospital(); hospital.setId(1L);
+        EspecialidadMedica especialidad = new EspecialidadMedica(); especialidad.setId(2L);
+        GestorDeCola gestor = new GestorDeCola(); gestor.setId(3L);
+        Paciente paciente = new Paciente(); paciente.setId(4L);
+        paciente.setNombre("Juan"); paciente.setApellido("Perez");
+        paciente.setNumeroDocumento("30111222");
+        paciente.setTipoDocumento(com.pretriage.backend.model.personas.TipoDocumento.DNI);
+        ConsultaMedica consulta = new ConsultaMedica(); consulta.setId(5L);
+        consulta.setCodigoLlamado("A-005"); consulta.setPaciente(paciente);
+        consulta.setEstadoConsulta(EstadoConsulta.EN_COLA);
+        consulta.setNivelDeGravedadBot(NivelDeGravedad.URGENTE);
+        EntradaCola entrada = new EntradaCola(); entrada.setConsultaMedica(consulta);
+        SesionAtencionMedica sesion = new SesionAtencionMedica(); sesion.setId(6L);
+        sesion.setHospital(hospital); sesion.setEspecialidad(especialidad);
+        sesion.setEstado(EstadoSesionMedica.ACTIVA);
+
+        when(repoSesionesAtencionMedica.findByIdAndMedicoUsuarioAuthId(6L, "auth0")).thenReturn(Optional.of(sesion));
+        when(repoGestoresDeColas.findByHospitalIdAndEspecialidadId(1L, 2L)).thenReturn(Optional.of(gestor));
+        when(repoEntradasCola.findByGestorDeColaIdAndEstadoAndConsultaMedicaPacienteNumeroDocumentoOrderByPrioridadDescOrdenRelativoAscFechaHoraIngresoAsc(3L, EstadoEntradaCola.EN_COLA, "30111222"))
+                .thenReturn(List.of(entrada));
+
+        List<ConsultaLlamadaDTO> resultado = service.listarPacientesDisponibles("auth0", 6L, "30111222");
+
+        assertEquals(1, resultado.size());
+        assertEquals(5L, resultado.getFirst().getConsultaId());
+        assertEquals("30111222", resultado.getFirst().getNumeroDocumento());
+        assertEquals(com.pretriage.backend.model.personas.TipoDocumento.DNI, resultado.getFirst().getTipoDocumento());
+        assertEquals("Juan", resultado.getFirst().getNombrePaciente());
+        assertEquals("Perez", resultado.getFirst().getApellidoPaciente());
+        assertEquals(EstadoConsulta.EN_COLA, resultado.getFirst().getEstadoConsulta());
+        verify(repoEntradasCola).findByGestorDeColaIdAndEstadoAndConsultaMedicaPacienteNumeroDocumentoOrderByPrioridadDescOrdenRelativoAscFechaHoraIngresoAsc(3L, EstadoEntradaCola.EN_COLA, "30111222");
+        verify(repoEntradasCola, never()).findByGestorDeColaIdAndEstadoOrderByPrioridadDescOrdenRelativoAscFechaHoraIngresoAsc(any(), any());
+    }
+
+    @Test
+    void listarPacientesDisponibles_filtraPorDniExacto_sinCoincidencia_retornaVacia() {
+        Hospital hospital = new Hospital(); hospital.setId(1L);
+        EspecialidadMedica especialidad = new EspecialidadMedica(); especialidad.setId(2L);
+        GestorDeCola gestor = new GestorDeCola(); gestor.setId(3L);
+        SesionAtencionMedica sesion = new SesionAtencionMedica(); sesion.setId(6L);
+        sesion.setHospital(hospital); sesion.setEspecialidad(especialidad);
+        sesion.setEstado(EstadoSesionMedica.ACTIVA);
+
+        when(repoSesionesAtencionMedica.findByIdAndMedicoUsuarioAuthId(6L, "auth0")).thenReturn(Optional.of(sesion));
+        when(repoGestoresDeColas.findByHospitalIdAndEspecialidadId(1L, 2L)).thenReturn(Optional.of(gestor));
+        when(repoEntradasCola.findByGestorDeColaIdAndEstadoAndConsultaMedicaPacienteNumeroDocumentoOrderByPrioridadDescOrdenRelativoAscFechaHoraIngresoAsc(3L, EstadoEntradaCola.EN_COLA, "99999999"))
+                .thenReturn(List.of());
+
+        List<ConsultaLlamadaDTO> resultado = service.listarPacientesDisponibles("auth0", 6L, "99999999");
+
+        assertEquals(0, resultado.size());
+    }
+
+    @Test
+    void listarPacientesDisponibles_dniConEspacios_haceTrimYFiltra() {
+        Hospital hospital = new Hospital(); hospital.setId(1L);
+        EspecialidadMedica especialidad = new EspecialidadMedica(); especialidad.setId(2L);
+        GestorDeCola gestor = new GestorDeCola(); gestor.setId(3L);
+        Paciente paciente = new Paciente(); paciente.setId(4L);
+        paciente.setNombre("Maria"); paciente.setApellido("Gomez");
+        paciente.setNumeroDocumento("30111222");
+        paciente.setTipoDocumento(com.pretriage.backend.model.personas.TipoDocumento.DNI);
+        ConsultaMedica consulta = new ConsultaMedica(); consulta.setId(5L);
+        consulta.setPaciente(paciente); consulta.setEstadoConsulta(EstadoConsulta.EN_COLA);
+        consulta.setNivelDeGravedadBot(NivelDeGravedad.NORMAL);
+        EntradaCola entrada = new EntradaCola(); entrada.setConsultaMedica(consulta);
+        SesionAtencionMedica sesion = new SesionAtencionMedica(); sesion.setId(6L);
+        sesion.setHospital(hospital); sesion.setEspecialidad(especialidad);
+        sesion.setEstado(EstadoSesionMedica.ACTIVA);
+
+        when(repoSesionesAtencionMedica.findByIdAndMedicoUsuarioAuthId(6L, "auth0")).thenReturn(Optional.of(sesion));
+        when(repoGestoresDeColas.findByHospitalIdAndEspecialidadId(1L, 2L)).thenReturn(Optional.of(gestor));
+        when(repoEntradasCola.findByGestorDeColaIdAndEstadoAndConsultaMedicaPacienteNumeroDocumentoOrderByPrioridadDescOrdenRelativoAscFechaHoraIngresoAsc(3L, EstadoEntradaCola.EN_COLA, "30111222"))
+                .thenReturn(List.of(entrada));
+
+        List<ConsultaLlamadaDTO> resultado = service.listarPacientesDisponibles("auth0", 6L, "  30111222  ");
+
+        assertEquals(1, resultado.size());
+        verify(repoEntradasCola).findByGestorDeColaIdAndEstadoAndConsultaMedicaPacienteNumeroDocumentoOrderByPrioridadDescOrdenRelativoAscFechaHoraIngresoAsc(3L, EstadoEntradaCola.EN_COLA, "30111222");
+    }
+
+    @Test
+    void listarPacientesDisponibles_dniBlankONull_retornaTodosSinFiltrar() {
+        Hospital hospital = new Hospital(); hospital.setId(1L);
+        EspecialidadMedica especialidad = new EspecialidadMedica(); especialidad.setId(2L);
+        GestorDeCola gestor = new GestorDeCola(); gestor.setId(3L);
+        Paciente paciente = new Paciente(); paciente.setId(4L);
+        paciente.setNombre("Ana"); paciente.setApellido("Perez");
+        paciente.setNumeroDocumento("30111222");
+        paciente.setTipoDocumento(com.pretriage.backend.model.personas.TipoDocumento.DNI);
+        ConsultaMedica consulta = new ConsultaMedica(); consulta.setId(5L);
+        consulta.setPaciente(paciente); consulta.setEstadoConsulta(EstadoConsulta.EN_COLA);
+        consulta.setNivelDeGravedadBot(NivelDeGravedad.URGENTE);
+        EntradaCola entrada = new EntradaCola(); entrada.setConsultaMedica(consulta);
+        SesionAtencionMedica sesion = new SesionAtencionMedica(); sesion.setId(6L);
+        sesion.setHospital(hospital); sesion.setEspecialidad(especialidad);
+        sesion.setEstado(EstadoSesionMedica.ACTIVA);
+
+        when(repoSesionesAtencionMedica.findByIdAndMedicoUsuarioAuthId(6L, "auth0")).thenReturn(Optional.of(sesion));
+        when(repoGestoresDeColas.findByHospitalIdAndEspecialidadId(1L, 2L)).thenReturn(Optional.of(gestor));
+        when(repoEntradasCola.findByGestorDeColaIdAndEstadoOrderByPrioridadDescOrdenRelativoAscFechaHoraIngresoAsc(3L, EstadoEntradaCola.EN_COLA))
+                .thenReturn(List.of(entrada));
+
+        List<ConsultaLlamadaDTO> resultadoBlank = service.listarPacientesDisponibles("auth0", 6L, "   ");
+        assertEquals(1, resultadoBlank.size());
+        List<ConsultaLlamadaDTO> resultadoNull = service.listarPacientesDisponibles("auth0", 6L, null);
+        assertEquals(1, resultadoNull.size());
+        List<ConsultaLlamadaDTO> resultadoVacio = service.listarPacientesDisponibles("auth0", 6L, "");
+        assertEquals(1, resultadoVacio.size());
+
+        verify(repoEntradasCola, times(3)).findByGestorDeColaIdAndEstadoOrderByPrioridadDescOrdenRelativoAscFechaHoraIngresoAsc(3L, EstadoEntradaCola.EN_COLA);
+        verify(repoEntradasCola, never()).findByGestorDeColaIdAndEstadoAndConsultaMedicaPacienteNumeroDocumentoOrderByPrioridadDescOrdenRelativoAscFechaHoraIngresoAsc(any(), any(), any());
+    }
+
+    @Test
+    void listarPacientesDisponibles_mapeoIncluyeNumeroDocumentoYTipoDocumento() {
+        Hospital hospital = new Hospital(); hospital.setId(1L);
+        EspecialidadMedica especialidad = new EspecialidadMedica(); especialidad.setId(2L);
+        GestorDeCola gestor = new GestorDeCola(); gestor.setId(3L);
+        Paciente paciente = new Paciente(); paciente.setId(4L);
+        paciente.setNombre("Carlos"); paciente.setApellido("Lopez");
+        paciente.setNumeroDocumento("12345678");
+        paciente.setTipoDocumento(com.pretriage.backend.model.personas.TipoDocumento.DNI);
+        ConsultaMedica consulta = new ConsultaMedica(); consulta.setId(5L);
+        consulta.setCodigoLlamado("A-010"); consulta.setPaciente(paciente);
+        consulta.setEstadoConsulta(EstadoConsulta.EN_COLA);
+        consulta.setNivelDeGravedadBot(NivelDeGravedad.MUY_URGENTE);
+        EntradaCola entrada = new EntradaCola(); entrada.setConsultaMedica(consulta);
+        SesionAtencionMedica sesion = new SesionAtencionMedica(); sesion.setId(6L);
+        sesion.setHospital(hospital); sesion.setEspecialidad(especialidad);
+        sesion.setEstado(EstadoSesionMedica.ACTIVA);
+
+        when(repoSesionesAtencionMedica.findByIdAndMedicoUsuarioAuthId(6L, "auth0")).thenReturn(Optional.of(sesion));
+        when(repoGestoresDeColas.findByHospitalIdAndEspecialidadId(1L, 2L)).thenReturn(Optional.of(gestor));
+        when(repoEntradasCola.findByGestorDeColaIdAndEstadoOrderByPrioridadDescOrdenRelativoAscFechaHoraIngresoAsc(3L, EstadoEntradaCola.EN_COLA))
+                .thenReturn(List.of(entrada));
+
+        List<ConsultaLlamadaDTO> resultado = service.listarPacientesDisponibles("auth0", 6L);
+
+        assertEquals("12345678", resultado.getFirst().getNumeroDocumento());
+        assertEquals(com.pretriage.backend.model.personas.TipoDocumento.DNI, resultado.getFirst().getTipoDocumento());
+        assertEquals("Carlos", resultado.getFirst().getNombrePaciente());
+        assertEquals("Lopez", resultado.getFirst().getApellidoPaciente());
+    }
 }

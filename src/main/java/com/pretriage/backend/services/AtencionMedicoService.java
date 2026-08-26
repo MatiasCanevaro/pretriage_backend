@@ -96,12 +96,27 @@ public class AtencionMedicoService {
     }
 
     public List<ConsultaLlamadaDTO> listarPacientesDisponibles(String auth0Id, Long sesionId) {
+        return listarPacientesDisponibles(auth0Id, sesionId, null);
+    }
+
+    public List<ConsultaLlamadaDTO> listarPacientesDisponibles(String auth0Id, Long sesionId, String dni) {
         SesionAtencionMedica sesion = obtenerSesionActiva(auth0Id, sesionId);
         GestorDeCola gestor = obtenerGestorDeCola(sesion);
-        return repoEntradasCola
-                .findByGestorDeColaIdAndEstadoOrderByPrioridadDescOrdenRelativoAscFechaHoraIngresoAsc(
-                        gestor.getId(), EstadoEntradaCola.EN_COLA)
-                .stream()
+        String dniNormalizado = dni == null ? null : dni.trim();
+        if (dniNormalizado != null && dniNormalizado.isBlank()) {
+            dniNormalizado = null;
+        }
+        List<EntradaCola> entradas;
+        if (dniNormalizado == null) {
+            entradas = repoEntradasCola
+                    .findByGestorDeColaIdAndEstadoOrderByPrioridadDescOrdenRelativoAscFechaHoraIngresoAsc(
+                            gestor.getId(), EstadoEntradaCola.EN_COLA);
+        } else {
+            entradas = repoEntradasCola
+                    .findByGestorDeColaIdAndEstadoAndConsultaMedicaPacienteNumeroDocumentoOrderByPrioridadDescOrdenRelativoAscFechaHoraIngresoAsc(
+                            gestor.getId(), EstadoEntradaCola.EN_COLA, dniNormalizado);
+        }
+        return entradas.stream()
                 .map(EntradaCola::getConsultaMedica)
                 .map(this::mapearConsultaLlamada)
                 .toList();
@@ -473,6 +488,8 @@ public class AtencionMedicoService {
         dto.setPacienteId(consulta.getPaciente().getId());
         dto.setNombrePaciente(consulta.getPaciente().getNombre());
         dto.setApellidoPaciente(consulta.getPaciente().getApellido());
+        dto.setNumeroDocumento(consulta.getPaciente().getNumeroDocumento());
+        dto.setTipoDocumento(consulta.getPaciente().getTipoDocumento());
         Sala sala = consulta.getSala();
         if (sala != null) {
             dto.setSalaId(sala.getId());

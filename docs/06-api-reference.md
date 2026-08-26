@@ -302,11 +302,31 @@ POST /api/medico/sesiones/{sesionId}/consultas/{consultaId}/ausente
 ### List Available Patients
 
 ```http
-GET /api/medico/sesiones/{sesionId}/pacientes-disponibles
+GET /api/medico/sesiones/{sesionId}/pacientes-disponibles?dni={dni}
 ```
 
 Returns ordered `EntradaCola.EN_COLA` consultations for the session hospital and specialty,
-including the effective priority, patient name and surname. For queued patients the effective priority is the preliminary backend classification. Room fields remain null until the consultation is called.
+including the effective priority, patient name and surname, document (`numeroDocumento`/`tipoDocumento`) and `estadoConsulta`. For queued patients the effective priority is the preliminary backend classification. Room fields remain null until the consultation is called.
+
+`dni` is optional. When provided, the backend filters by exact match on `Paciente.numeroDocumento` (trimmed, `String` exact equals) within the same hospital/specialty queue and ordered by `prioridad DESC, ordenRelativo ASC, fechaHoraIngreso ASC`. The filtering is executed at DB level via `RepoEntradasCola.findByGestorDeColaIdAndEstadoAndConsultaMedicaPacienteNumeroDocumento...` for acceptable response times. Blank or missing `dni` returns the full ordered queue. Non-matching `dni` returns `[]` (empty JSON array, `200 OK`) — the frontend must show the “no coincidences” message.
+
+Example: `GET /api/medico/sesiones/42/pacientes-disponibles?dni=30111222`
+
+Response item (`ConsultaLlamadaDTO`):
+
+```json
+{
+  "consultaId": 5,
+  "codigoLlamado": "A-005",
+  "pacienteId": 4,
+  "nombrePaciente": "Juan",
+  "apellidoPaciente": "Perez",
+  "numeroDocumento": "30111222",
+  "tipoDocumento": "DNI",
+  "prioridad": "URGENTE",
+  "estadoConsulta": "EN_COLA"
+}
+```
 
 ### Attention History
 

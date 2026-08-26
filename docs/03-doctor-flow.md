@@ -85,7 +85,7 @@ the review is pending.
 - `GET /api/hospitales/{hospitalId}/salas?codigoEspecialidad={codigoEspecialidad}` returns the active rooms of a hospital for the given specialty.
 - `GET /api/medico/sesiones/actual` returns the authenticated doctor's active or
   paused session and their currently called or in-attention consultation, if present.
-- `GET /api/medico/sesiones/{sesionId}/pacientes-disponibles` lists ordered `EN_COLA` patients for the session hospital and specialty, including the preliminary priority and the patient name and surname authorized for the attending doctor. A room is not present until the patient is called.
+- `GET /api/medico/sesiones/{sesionId}/pacientes-disponibles?dni={dni}` lists ordered `EN_COLA` patients for the session hospital and specialty, including the preliminary priority, patient name and surname, document (`numeroDocumento`/`tipoDocumento`) and `estadoConsulta` authorized for the attending doctor. A room is not present until the patient is called. `dni` is optional exact-match filter on `Paciente.numeroDocumento` (trimmed) scoped to the session queue, executed at DB level; blank/missing returns full queue, non-matching returns `[]`.
 - `GET /api/medico/atenciones` returns the authenticated doctor's historical attention records.
 
 ## Clinical History Access

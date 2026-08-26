@@ -2,6 +2,7 @@ package com.pretriage.backend.controllers.dtos;
 
 import com.pretriage.backend.model.consultas.EstadoConsulta;
 import com.pretriage.backend.model.consultas.NivelDeGravedad;
+import com.pretriage.backend.model.personas.TipoDocumento;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -17,6 +18,10 @@ public class ConsultaLlamadaDTO {
     private String nombrePaciente;
 
     private String apellidoPaciente;
+
+    private String numeroDocumento;
+
+    private TipoDocumento tipoDocumento;
 
     private Long salaId;
 
