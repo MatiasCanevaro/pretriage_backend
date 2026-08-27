@@ -25,7 +25,7 @@ import java.text.ParseException;
 public class AuthService {
 
     @Value("${auth0.base-path}")
-    private String AUTH0_BASE_PATH ;
+    private String AUTH0_BASE_PATH;
 
     @Value("${auth0.client-id.machine-to-machine}")
     private String AUTH0_M2M_CLIENT_ID;
@@ -41,24 +41,21 @@ public class AuthService {
 
     private static final Logger log = LoggerFactory.getLogger(AuthService.class);
 
-    //contantes para evitar repetición de strings
+    // contantes para evitar repetición de strings
 
     private static final String USERNAME_FIELD = "username";
     private static final String EMAIL_FIELD = "email";
     private static final String PASSWORD_FIELD = "password";
     private static final String CONNECTION_FIELD = "connection";
-    private static final String CLIENT_ID_FIELD="client_id";
-    private static final String AUDIENCE_FIELD="audience";
-    private static final String SCOPE_FIELD="scope";
-    private static final String GRANT_TYPE_FIELD ="grant_type";
+    private static final String CLIENT_ID_FIELD = "client_id";
+    private static final String AUDIENCE_FIELD = "audience";
+    private static final String SCOPE_FIELD = "scope";
+    private static final String GRANT_TYPE_FIELD = "grant_type";
 
-    private static final String REALM_NAME= "Username-Password-Authentication";
-
+    private static final String REALM_NAME = "Username-Password-Authentication";
 
     private final RestClient restClient = RestClient.create();
     private final ObjectMapper objectMapper = new ObjectMapper();
-
-
 
     public String registrarUsuarioYObtenerAuth0Id(String email, String password) {
         try {
@@ -67,15 +64,14 @@ public class AuthService {
             Map<String, String> bodyRequest = Map.of(
                     EMAIL_FIELD, email,
                     PASSWORD_FIELD, password,
-                    CONNECTION_FIELD, REALM_NAME
-            );
+                    CONNECTION_FIELD, REALM_NAME);
 
             String responseUserDetails = this.llamarApiToken(bodyRequest,
-                    AUTH0_BASE_PATH+"/api/v2/users",
-                    tokenParaCrearUsuario
-                    );
+                    AUTH0_BASE_PATH + "/api/v2/users",
+                    tokenParaCrearUsuario);
 
-            AuthUserDetailsResponse userDetailsNuevo = objectMapper.readValue(responseUserDetails, AuthUserDetailsResponse.class);
+            AuthUserDetailsResponse userDetailsNuevo = objectMapper.readValue(responseUserDetails,
+                    AuthUserDetailsResponse.class);
 
             return userDetailsNuevo.getUserId();
         } catch (Auth0UsuarioExistenteException exception) {
@@ -97,39 +93,36 @@ public class AuthService {
         }
     }
 
-    public String obtenerTokenParaLogearUsuario(String email, String password){
-        Map<String, String> bodyTokenRequest =  Map.of(
+    public String obtenerTokenParaLogearUsuario(String email, String password) {
+        Map<String, String> bodyTokenRequest = Map.of(
                 GRANT_TYPE_FIELD, "http://auth0.com/oauth/grant-type/password-realm",
                 USERNAME_FIELD, email,
                 PASSWORD_FIELD, password,
                 AUDIENCE_FIELD, "http://localhost:8080",
-                SCOPE_FIELD, "openid profile email",
+                SCOPE_FIELD, "openid profile email offline_access",
                 CLIENT_ID_FIELD, AUTH0_APP_CLIENT_ID,
-                "realm", REALM_NAME
-        );
+                "realm", REALM_NAME);
         String responseJson = this.llamarApiToken(bodyTokenRequest,
-                AUTH0_BASE_PATH+"/oauth/token",
+                AUTH0_BASE_PATH + "/oauth/token",
                 null);
 
         AuthIdTokenResponse response = objectMapper.readValue(responseJson, AuthIdTokenResponse.class);
 
-        return response.getIdToken();
+        return response.getAccessToken();
     }
 
     private String obtenerTokenParaCrearUsuario() {
         Map<String, String> bodyRequest = Map.of(
                 CLIENT_ID_FIELD, AUTH0_M2M_CLIENT_ID,
                 "client_secret", AUTH0_M2M_CLIENT_SECRET,
-                AUDIENCE_FIELD, AUTH0_BASE_PATH+"/api/v2/",
-                SCOPE_FIELD,AUTH0_M2M_SCOPE,
-                GRANT_TYPE_FIELD, "client_credentials"
-        );
+                AUDIENCE_FIELD, AUTH0_BASE_PATH + "/api/v2/",
+                SCOPE_FIELD, AUTH0_M2M_SCOPE,
+                GRANT_TYPE_FIELD, "client_credentials");
 
         String responseJson = this.llamarApiToken(
                 bodyRequest,
-                AUTH0_BASE_PATH +"/oauth/token",
-                null
-        );
+                AUTH0_BASE_PATH + "/oauth/token",
+                null);
 
         AuthTokenResponse response = objectMapper.readValue(responseJson, AuthTokenResponse.class);
 
@@ -137,9 +130,9 @@ public class AuthService {
     }
 
     private String llamarApiToken(Map<String, String> bodyRequest,
-                                  String uriPath,
-                                  String bearerToken){
-        try{
+            String uriPath,
+            String bearerToken) {
+        try {
             RestClient.RequestBodySpec request = restClient.post()
                     .uri(uriPath)
                     .contentType(MediaType.APPLICATION_JSON);
@@ -153,7 +146,7 @@ public class AuthService {
                     .retrieve()
                     .body(String.class);
 
-            if(responseJson ==null){
+            if (responseJson == null) {
                 log.warn("no se pudo crear el usuario");
                 throw new NoSePudoCrearUsuario();
             }
@@ -168,7 +161,7 @@ public class AuthService {
             throw new NoSePudoCrearUsuario(mensajeSeguroAuth0(e));
         } catch (NoSePudoCrearUsuario e) {
             throw e;
-        } catch (Exception e){
+        } catch (Exception e) {
             log.error("Error al crear el usuario con Auth0 API: {}", e.getMessage(), e);
             throw new NoSePudoCrearUsuario();
         }
