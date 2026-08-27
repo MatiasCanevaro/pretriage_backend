@@ -26,4 +26,16 @@ class GlobalExceptionHandlerTest {
         assertEquals(HttpStatus.CONFLICT,
                 handler.handleStateConflict(new ConflictoDeEstadoException("conflicto")).getStatusCode());
     }
+
+    @Test
+    void devuelveUnauthorizedParaRefreshTokenInvalido() {
+        assertEquals(HttpStatus.UNAUTHORIZED,
+                handler.handleRefreshTokenInvalido(new RefreshTokenInvalidoException()).getStatusCode());
+    }
+
+    @Test
+    void devuelveBadRequestParaOtrosErroresAuth() {
+        assertEquals(HttpStatus.BAD_REQUEST,
+                handler.handleExceptions(new NoSePudoCrearUsuario("error")).getStatusCode());
+    }
 }

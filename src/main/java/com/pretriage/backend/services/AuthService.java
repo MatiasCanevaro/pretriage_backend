@@ -1,9 +1,12 @@
 package com.pretriage.backend.services;
 
+import com.pretriage.backend.controllers.dtos.LoginResponseDTO;
+import com.pretriage.backend.controllers.dtos.RefreshTokenRequest;
 import com.pretriage.backend.controllers.dtos.auth0.AuthIdTokenResponse;
 import com.pretriage.backend.controllers.dtos.auth0.AuthTokenResponse;
 import com.pretriage.backend.controllers.dtos.auth0.AuthUserDetailsResponse;
 import com.pretriage.backend.exceptions.NoSePudoCrearUsuario;
+import com.pretriage.backend.exceptions.RefreshTokenInvalidoException;
 import com.nimbusds.jwt.JWTParser;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -80,9 +83,9 @@ public class AuthService {
     }
 
     private String obtenerAuth0IdPorCredenciales(String email, String password) {
-        String idToken = obtenerTokenParaLogearUsuario(email, password);
+        LoginResponseDTO response = obtenerTokenParaLogearUsuario(email, password);
         try {
-            String subject = JWTParser.parse(idToken).getJWTClaimsSet().getSubject();
+            String subject = JWTParser.parse(response.getToken()).getJWTClaimsSet().getSubject();
             if (subject == null || subject.isBlank()) {
                 throw new NoSePudoCrearUsuario();
             }
@@ -93,7 +96,7 @@ public class AuthService {
         }
     }
 
-    public String obtenerTokenParaLogearUsuario(String email, String password) {
+    public LoginResponseDTO obtenerTokenParaLogearUsuario(String email, String password) {
         Map<String, String> bodyTokenRequest = Map.of(
                 GRANT_TYPE_FIELD, "http://auth0.com/oauth/grant-type/password-realm",
                 USERNAME_FIELD, email,
@@ -108,7 +111,23 @@ public class AuthService {
 
         AuthIdTokenResponse response = objectMapper.readValue(responseJson, AuthIdTokenResponse.class);
 
-        return response.getAccessToken();
+        return this.mapToLoginResponseDTO(response);
+    }
+
+    public LoginResponseDTO renovarTokenUsuario(String refreshToken) {
+        Map<String, String> bodyRefreshRequest = Map.of(
+                GRANT_TYPE_FIELD, "refresh_token",
+                CLIENT_ID_FIELD, AUTH0_APP_CLIENT_ID,
+                "refresh_token", refreshToken);
+
+        String responseJson = this.llamarApiToken(
+                bodyRefreshRequest,
+                AUTH0_BASE_PATH + "/oauth/token",
+                null);
+
+        AuthIdTokenResponse response = objectMapper.readValue(responseJson, AuthIdTokenResponse.class);
+
+        return this.mapToLoginResponseDTO(response);
     }
 
     private String obtenerTokenParaCrearUsuario() {
@@ -155,10 +174,15 @@ public class AuthService {
 
         } catch (RestClientResponseException e) {
             log.error("Auth0 API respondió con estado {}", e.getStatusCode(), e);
+            if (esRefreshTokenRequest(bodyRequest) && esRefreshTokenInvalido(e)) {
+                throw new RefreshTokenInvalidoException();
+            }
             if (esUsuarioExistente(e)) {
                 throw new Auth0UsuarioExistenteException();
             }
             throw new NoSePudoCrearUsuario(mensajeSeguroAuth0(e));
+        } catch (RefreshTokenInvalidoException e) {
+            throw e;
         } catch (NoSePudoCrearUsuario e) {
             throw e;
         } catch (Exception e) {
@@ -188,6 +212,28 @@ public class AuthService {
         return exception.getStatusCode().value() == 409
                 || response.contains("already exists")
                 || response.contains("user_exists");
+    }
+
+    private boolean esRefreshTokenRequest(Map<String, String> bodyRequest) {
+        return "refresh_token".equals(bodyRequest.get(GRANT_TYPE_FIELD));
+    }
+
+    private boolean esRefreshTokenInvalido(RestClientResponseException exception) {
+        String response = exception.getResponseBodyAsString().toLowerCase(Locale.ROOT);
+        return response.contains("invalid_grant")
+                || response.contains("invalid_request")
+                || response.contains("invalid refresh token")
+                || response.contains("unknown or invalid refresh token");
+    }
+
+    private LoginResponseDTO mapToLoginResponseDTO(AuthIdTokenResponse auth0Response) {
+        LoginResponseDTO dto = new LoginResponseDTO();
+
+        dto.setRenovarTokenEn(Long.valueOf(auth0Response.getExpiresIn()));
+        dto.setRefreshToken(auth0Response.getRefreshToken());
+        dto.setToken(auth0Response.getAccessToken());
+
+        return dto;
     }
 
     private static class Auth0UsuarioExistenteException extends RuntimeException {

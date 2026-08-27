@@ -21,45 +21,50 @@ import java.net.Proxy;
 @Configuration
 public class SpringSecurityConfig {
 
-    @Bean
-    public SecurityFilterChain mainConfig(HttpSecurity http){
-        http.csrf(Customizer.withDefaults())
-                .cors(AbstractHttpConfigurer::disable)
-                .csrf(AbstractHttpConfigurer::disable)
-                .sessionManagement(session ->
-                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests((authorize) -> authorize
-                        .dispatcherTypeMatchers(DispatcherType.FORWARD, DispatcherType.ERROR).permitAll()
-                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers("/api/hello", "/api/login", "/api/register").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/invitaciones/*/resumen").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/invitaciones/*/registro").permitAll()
-                        .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
-                        .anyRequest().authenticated()
-                )
-                .oauth2ResourceServer(oauth ->
-                        oauth.jwt(Customizer.withDefaults()));
+        @Bean
+        public SecurityFilterChain mainConfig(HttpSecurity http) {
+                http.csrf(Customizer.withDefaults())
+                                .cors(AbstractHttpConfigurer::disable)
+                                .csrf(AbstractHttpConfigurer::disable)
+                                .sessionManagement(session -> session
+                                                .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                                .authorizeHttpRequests((authorize) -> authorize
+                                                .dispatcherTypeMatchers(DispatcherType.FORWARD, DispatcherType.ERROR)
+                                                .permitAll()
+                                                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                                                .requestMatchers("/api/login", "/api/register", "/api/renovar")
+                                                .permitAll()
+                                                .requestMatchers(HttpMethod.GET, "/api/invitaciones/*/resumen")
+                                                .permitAll()
+                                                .requestMatchers(HttpMethod.POST, "/api/invitaciones/*/registro")
+                                                .permitAll()
+                                                .requestMatchers("/swagger-ui.html", "/swagger-ui/**",
+                                                                "/v3/api-docs/**")
+                                                .permitAll()
+                                                .anyRequest().authenticated())
+                                .oauth2ResourceServer(oauth -> oauth.jwt(Customizer.withDefaults()));
 
-        return http.build();
-    }
+                return http.build();
+        }
 
-    @Bean
-    public JwtDecoder jwtDecoder(@Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}") String issuerUri) {
-        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-        requestFactory.setProxy(Proxy.NO_PROXY);
-        requestFactory.setConnectTimeout(10_000);
-        requestFactory.setReadTimeout(10_000);
+        @Bean
+        public JwtDecoder jwtDecoder(
+                        @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}") String issuerUri) {
+                SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+                requestFactory.setProxy(Proxy.NO_PROXY);
+                requestFactory.setConnectTimeout(10_000);
+                requestFactory.setReadTimeout(10_000);
 
-        RestTemplate restTemplate = new RestTemplate(requestFactory);
-        String jwkSetUri = issuerUri.endsWith("/")
-                ? issuerUri + ".well-known/jwks.json"
-                : issuerUri + "/.well-known/jwks.json";
+                RestTemplate restTemplate = new RestTemplate(requestFactory);
+                String jwkSetUri = issuerUri.endsWith("/")
+                                ? issuerUri + ".well-known/jwks.json"
+                                : issuerUri + "/.well-known/jwks.json";
 
-        NimbusJwtDecoder jwtDecoder = NimbusJwtDecoder.withJwkSetUri(jwkSetUri)
-                .restOperations(restTemplate)
-                .build();
-        jwtDecoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(issuerUri));
-        return jwtDecoder;
-    }
+                NimbusJwtDecoder jwtDecoder = NimbusJwtDecoder.withJwkSetUri(jwkSetUri)
+                                .restOperations(restTemplate)
+                                .build();
+                jwtDecoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(issuerUri));
+                return jwtDecoder;
+        }
 
 }

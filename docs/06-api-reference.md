@@ -47,7 +47,42 @@ Body:
 }
 ```
 
-Returns token data.
+Returns token data. The response (`LoginResponseDTO`) contains `token` (`access_token`), `refreshToken`, and `renovarTokenEn` (seconds until `access_token` expiry, from Auth0 `expires_in`). Login requests `offline_access` scope so Auth0 always returns a rotating `refresh_token`.
+
+### Renovar Sesión (Refresh con Rotación)
+
+```http
+POST /api/renovar
+```
+
+Público (no requiere Bearer). Implementa refresh token con rotación delegada a Auth0: cada uso genera un nuevo `refresh_token` e invalida el anterior.
+
+Body (`RefreshTokenRequest`):
+
+```json
+{
+  "refreshToken": "v1.Mk2x...long-refresh-token"
+}
+```
+
+Validación: `refreshToken` es `@NotBlank` -> `400` con `{ "refreshToken": "es obligatorio el uso de refreshToken para renovar el acceso" }` si está vacío/blanco/ausente.
+
+Success `200`:
+
+```json
+{
+  "token": "eyJhbGciOi...",
+  "refreshToken": "v1.NuevoRefreshTokenRotado",
+  "renovarTokenEn": 86400
+}
+```
+
+Errores:
+
+* `401 { "error": "El refresh token es inválido o expiró. Iniciá sesión nuevamente." }` cuando Auth0 responde `invalid_grant` / `invalid_request` / `Unknown or invalid refresh token` (token expirado, revocado o ya rotado). Mapeado por `AuthService.renovarTokenUsuario` -> `RefreshTokenInvalidoException` -> `GlobalExceptionHandler` `401`.
+* `400` para otros fallos de Auth0 (configuración, red) con mensaje de `NoSePudoCrearUsuario`.
+
+Frontend debe guardar `refreshToken` de login y de cada `/renovar` (rotación) y reemplazar el anterior. Ante `401` debe forzar re-login y descartar el refresh almacenado. No hay persistencia local de refresh en backend (stateless proxy a Auth0).
 
 ## Specialties
 

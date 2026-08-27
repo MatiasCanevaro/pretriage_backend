@@ -15,7 +15,7 @@ The current focus is first attention only. The system does not model referral, d
 
 ## Core Modules
 
-- Authentication: Auth0 login/register integration.
+- Authentication: Auth0 login/register integration with refresh-token rotation via `POST /api/renovar` (`AuthController.renovar`, `AuthService.renovarTokenUsuario`, `RefreshTokenRequest`/`LoginResponseDTO`, `RefreshTokenInvalidoException` -> `401`; `offline_access` scope; public endpoint in `SpringSecurityConfig`).
 - Hospital selection: filters hospitals by selected specialty and distance; can order/filter by estimated attention time and shows only hospitals available for attention (with active doctors), displaying the estimated wait alongside each hospital.
 - Medical specialties: represented by `EspecialidadMedica`.
 - AI triage chat: creates a chat, stores patient and bot messages, stores structured triage JSON.

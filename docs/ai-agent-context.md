@@ -19,6 +19,13 @@ The system manages the first medical attention workflow:
 - Patient absence and delayed return rules.
 - AI triage priority mapping.
 - Auth0 token handling in local E2E scripts.
+- Auth refresh with rotation (`AuthService.renovarTokenUsuario`, `RefreshTokenRequest`, `RefreshTokenInvalidoException` -> `401`).
+
+## Auth
+
+- `AuthController` (`/api/register`, `/api/login`, `/api/renovar`): `renovar` is public (`SpringSecurityConfig:34`), validates `@NotBlank refreshToken`, delegates to `AuthService.renovarTokenUsuario` (`grant_type=refresh_token`).
+- `AuthService`: `obtenerTokenParaLogearUsuario` requests `offline_access` to obtain rotating `refresh_token`; `renovarTokenUsuario` proxies to Auth0 `/oauth/token` and maps `AuthIdTokenResponse` -> `LoginResponseDTO` (`token`, `refreshToken`, `renovarTokenEn`). Rotation invalidates previous refresh; `invalid_grant`/`invalid_request` maps to `RefreshTokenInvalidoException` (`GlobalExceptionHandler` `401`). Stateless, no DB persistence for refresh.
+- Invariants: frontend must replace stored `refreshToken` on each renovar; on `401` force re-login. Keep `LoginResponseDTO.renovarTokenEn` from `expires_in`.
 
 ## Optional Integrations
 

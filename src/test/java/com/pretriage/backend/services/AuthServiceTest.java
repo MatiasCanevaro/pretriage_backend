@@ -5,8 +5,10 @@ package com.pretriage.backend.services;
  * */
 
 import com.github.tomakehurst.wiremock.WireMockServer;
+import com.pretriage.backend.controllers.dtos.LoginResponseDTO;
 import com.pretriage.backend.controllers.dtos.auth0.AuthRegisterTokenYUserId;
 import com.pretriage.backend.exceptions.NoSePudoCrearUsuario;
+import com.pretriage.backend.exceptions.RefreshTokenInvalidoException;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -63,7 +65,7 @@ public class AuthServiceTest {
                                 	"access_token": "fakeAccessToken",
                                         "refresh_token": "fakeRefreshToken",
                                 	"id_token": "fakeIdToken",
-                                	"scope": "openid profile email",
+                                	"scope": "openid profile email offline_access",
                                 	"expires_in": 86400,
                                 	"token_type": "Bearer"
                                 }
@@ -75,9 +77,12 @@ public class AuthServiceTest {
                                                 .withHeader("Content-Type", "application/json")
                                                 .withBody(bodyResponseApi)));
 
-                String token = service.obtenerTokenParaLogearUsuario("someEmail@gmail.com", "somepass123");
+                LoginResponseDTO tokenResponse = service.obtenerTokenParaLogearUsuario("someEmail@gmail.com",
+                                "somepass123");
 
-                assertEquals("fakeAccessToken", token);
+                assertEquals("fakeAccessToken", tokenResponse.getToken());
+                assertEquals("fakeRefreshToken", tokenResponse.getRefreshToken());
+                assertEquals(86400, tokenResponse.getRenovarTokenEn());
         }
 
         @Test
@@ -99,7 +104,7 @@ public class AuthServiceTest {
                                   "username": "someEmail@gmail.com",
                                   "password": "somepass123",
                                   "audience": "http://localhost:8080",
-                                  "scope": "openid profile email",
+                                  "scope": "openid profile email offline_access",
                                   "client_id": "ATUH0_APP_CLIENT_ID",
                                 	"realm": "Username-Password-Authentication"
                                 }
@@ -118,6 +123,7 @@ public class AuthServiceTest {
                                 {
                                 "access_token": "accesstoken",
                                 "id_token": "idtoken",
+                                "refresh_token": "fakeRefreshToken",
                                 "scope": "read:users update:users delete:users create:users",
                                 "expires_in": 86400,
                                 "token_type": "Bearer"
@@ -246,13 +252,120 @@ public class AuthServiceTest {
                 wireMockServer.stubFor(post(urlEqualTo("/oauth/token"))
                                 .withRequestBody(equalToJson(loginRequest))
                                 .willReturn(okJson(
-                                                "{\"id_token\":\"nodeberiatomaresto\", \"access_token\":\"eyJhbGciOiJub25lIn0.eyJzdWIiOiJhdXRoMHxleGlzdGluZyJ9.\"}")));
+                                                "{\"id_token\":\"nodeberiatomaresto\", \"access_token\":\"eyJhbGciOiJub25lIn0.eyJzdWIiOiJhdXRoMHxleGlzdGluZyJ9.\", \"expires_in\": 86400}")));
 
                 String auth0Id = service.registrarUsuarioYObtenerAuth0Id(
                                 "orphan@example.com",
                                 "Strong!2026Password");
 
                 assertEquals("auth0|existing", auth0Id);
+        }
+
+        @Test
+        void sePuedeRenovarLaSesionDelUsuario() {
+
+                String bodyResponseApi = """
+                                {
+                                	"access_token": "fakeAccessToken",
+                                        "refresh_token": "fakeRefreshToken2",
+                                	"id_token": "fakeIdToken",
+                                	"scope": "openid profile email offline_access",
+                                	"expires_in": 86400,
+                                	"token_type": "Bearer"
+                                }
+                                """;
+
+                wireMockServer.stubFor(post(urlEqualTo("/oauth/token"))
+                                .willReturn(aResponse()
+                                                .withStatus(200)
+                                                .withHeader("Content-Type", "application/json")
+                                                .withBody(bodyResponseApi)));
+
+                LoginResponseDTO tokenResponse = service.renovarTokenUsuario("fakeRefreshToken1");
+
+                assertEquals("fakeAccessToken", tokenResponse.getToken());
+                assertEquals("fakeRefreshToken2", tokenResponse.getRefreshToken());// cada refresh token invalida el
+                                                                                   // anterior por seguridad
+                assertEquals(86400, tokenResponse.getRenovarTokenEn());// segundos
+        }
+
+        @Test
+        void renovarFallaCuandoRefreshTokenEsInvalido() {
+                wireMockServer.stubFor(post(urlEqualTo("/oauth/token"))
+                                .willReturn(aResponse()
+                                                .withStatus(400)
+                                                .withHeader("Content-Type", "application/json")
+                                                .withBody("""
+                                                                {
+                                                                  "error": "invalid_grant",
+                                                                  "error_description": "Invalid refresh token"
+                                                                }
+                                                                """)));
+
+                RefreshTokenInvalidoException error = assertThrows(
+                                RefreshTokenInvalidoException.class,
+                                () -> service.renovarTokenUsuario("refreshInvalido"));
+
+                assertEquals("El refresh token es inválido o expiró. Iniciá sesión nuevamente.", error.getMessage());
+        }
+
+        @Test
+        void renovarFallaCuandoRefreshTokenExpiro() {
+                wireMockServer.stubFor(post(urlEqualTo("/oauth/token"))
+                                .willReturn(aResponse()
+                                                .withStatus(401)
+                                                .withHeader("Content-Type", "application/json")
+                                                .withBody("""
+                                                                {
+                                                                  "error": "invalid_grant",
+                                                                  "error_description": "Unknown or invalid refresh token."
+                                                                }
+                                                                """)));
+
+                assertThrows(
+                                RefreshTokenInvalidoException.class,
+                                () -> service.renovarTokenUsuario("refreshExpirado"));
+        }
+
+        @Test
+        void renovarVerificaRotacionCadaRefreshInvalidaAnterior() {
+                // Auth0 con rotación: cada refresh genera uno nuevo; simulamos dos llamadas
+                String bodyResponse1 = """
+                                {
+                                  "access_token": "token1",
+                                  "refresh_token": "refresh2",
+                                  "id_token": "id1",
+                                  "expires_in": 86400,
+                                  "token_type": "Bearer"
+                                }
+                                """;
+                String bodyResponse2 = """
+                                {
+                                  "error": "invalid_grant",
+                                  "error_description": "Invalid refresh token"
+                                }
+                                """;
+
+                wireMockServer.stubFor(post(urlEqualTo("/oauth/token"))
+                                .withRequestBody(containing("refresh2"))
+                                .willReturn(aResponse()
+                                                .withStatus(400)
+                                                .withHeader("Content-Type", "application/json")
+                                                .withBody(bodyResponse2)));
+
+                wireMockServer.stubFor(post(urlEqualTo("/oauth/token"))
+                                .withRequestBody(containing("refresh1"))
+                                .willReturn(aResponse()
+                                                .withStatus(200)
+                                                .withHeader("Content-Type", "application/json")
+                                                .withBody(bodyResponse1)));
+
+                LoginResponseDTO primera = service.renovarTokenUsuario("refresh1");
+                assertEquals("refresh2", primera.getRefreshToken());
+
+                // reutilizar refresh1 (ya rotado) debe fallar como invalid_grant
+                assertThrows(RefreshTokenInvalidoException.class,
+                                () -> service.renovarTokenUsuario("refresh2"));
         }
 
 }

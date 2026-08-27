@@ -1,8 +1,11 @@
 package com.pretriage.backend.controllers;
 
 import com.pretriage.backend.controllers.dtos.LoginRequest;
+import com.pretriage.backend.controllers.dtos.LoginResponseDTO;
+import com.pretriage.backend.controllers.dtos.RefreshTokenRequest;
 import com.pretriage.backend.controllers.dtos.RegisterRequest;
 import com.pretriage.backend.controllers.dtos.TipoUsuario;
+import com.pretriage.backend.controllers.dtos.auth0.AuthIdTokenResponse;
 import com.pretriage.backend.model.personas.*;
 import com.pretriage.backend.repositories.RepoMedico;
 import com.pretriage.backend.repositories.RepoPacientes;
@@ -48,12 +51,22 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<Map<String, String>> login(
+    public ResponseEntity<LoginResponseDTO> login(
             @Valid @RequestBody LoginRequest request) {
 
-        String idToken = authService.obtenerTokenParaLogearUsuario(request.getEmail(), request.getPassword());
+        LoginResponseDTO response = authService.obtenerTokenParaLogearUsuario(request.getEmail(),
+                request.getPassword());
 
-        return ResponseEntity.ok(Map.of("token", idToken));
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/renovar")
+    public ResponseEntity<LoginResponseDTO> renovar(
+            @Valid @RequestBody RefreshTokenRequest request) {
+
+        LoginResponseDTO response = authService.renovarTokenUsuario(request.getRefreshToken());
+
+        return ResponseEntity.ok(response);
     }
 
     private UsuarioAuth crearUsuario(RegisterRequest request, String email, String auth0Id, RolSistema rol) {
