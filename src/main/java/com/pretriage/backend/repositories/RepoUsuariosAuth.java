@@ -9,5 +9,6 @@ import java.util.Optional;
 @Repository
 public interface RepoUsuariosAuth extends JpaRepository<UsuarioAuth, String> {
     Optional<UsuarioAuth> findByCorreoElectronicoIgnoreCase(String correoElectronico);
+    boolean existsByCorreoElectronicoIgnoreCase(String correoElectronico);
     boolean existsByNumeroDocumento(String numeroDocumento);
 }

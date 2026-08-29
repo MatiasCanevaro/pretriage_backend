@@ -84,6 +84,104 @@ Errores:
 
 Frontend debe guardar `refreshToken` de login y de cada `/renovar` (rotación) y reemplazar el anterior. Ante `401` debe forzar re-login y descartar el refresh almacenado. No hay persistencia local de refresh en backend (stateless proxy a Auth0).
 
+### Solicitar Token de Cambio de Contraseña
+
+```http
+POST /api/auth/cambio-contrasenia/solicitar-token
+```
+
+Público (no requiere Bearer). No enumera usuarios: siempre responde `200` genérico por privacidad.
+
+Body (`SolicitarTokenCambioContraseniaRequest`):
+
+```json
+{
+  "email": "user@example.com"
+}
+```
+
+Validación: `@NotBlank @Email` -> `400` si formato inválido.
+
+Success `200` (siempre, exista o no el usuario):
+
+```json
+{
+  "message": "Si el correo existe, le enviamos un token al correo indicado, por favor, revise su mail e ingrese el token"
+}
+```
+
+Cuando el email existe: valida rate limit (`pretriage.cambio-contrasenia.max-solicitudes-por-hora` en ventana `pretriage.cambio-contrasenia.ventana-horas`, defecto `3/1h`) -> `429 { "error": "Superaste el límite..." }` si se supera; invalida `PENDIENTE` previos a `INVALIDADO`, crea `CambioContraseniaToken` (`PENDIENTE`, `fechaHoraCreacion=now`, `fechaHoraExpiracion=now+pretriage.cambio-contrasenia.expiracion-minutos` defecto `15`), token opaco `TokenService` (SecureRandom 32 bytes base64url), y envía email vía `PasswordResetEmailPort` (`smtp`/`local`) con token, fecha de vencimiento `dd/MM/yyyy HH:mm America/Argentina/Buenos_Aires` y aviso "si no fuiste vos ignorá / no compartas". Cuando el email no existe: no crea token ni envía email, pero responde el mismo `200`.
+
+El token se guarda en claro (plain) para que el aviso del email tenga sentido; no se hashea.
+
+### Validar Token de Cambio de Contraseña
+
+```http
+GET /api/auth/cambio-contrasenia/validar?token={token}
+```
+
+Público. Valida estado y expiración.
+
+Success `200`:
+
+```json
+{
+  "valido": true,
+  "message": "Token válido"
+}
+```
+
+Errores `400 { "error": "el token no es válido o venció, por favor, solicite un nuevo token o revise si escribió bien el token" }` cuando: token inexistente, `estado != PENDIENTE` (`CAMBIADO`/`EXPIRO`/`INVALIDADO`), o `expiro()==true` (se marca `EXPIRO` y persiste). El frontend debe mostrar el error en rojo y ofrecer botón "solicitar nuevo token".
+
+### Cambiar Contraseña
+
+```http
+POST /api/auth/cambio-contrasenia
+```
+
+Público. El frontend debe verificar que ambas contraseñas coincidan y enviar solo la nueva.
+
+Body (`CambiarContraseniaRequest`):
+
+```json
+{
+  "token": "43-char-base64url-token",
+  "nuevaContrasenia": "NuevaPass123!"
+}
+```
+
+Validación: `token @NotBlank`, `nuevaContrasenia @NotBlank @Size(8,72)` -> `400` con mapa de campos.
+
+Success `200`:
+
+```json
+{
+  "message": "Contraseña cambiada con éxito"
+}
+```
+
+Flujo backend (`CambioContraseniaService.cambiarContraseña`): `obtenerCambioContraseniaToken` -> `validarToken` (`expiro()` -> `EXPIRO`) -> `llamarApiCambioContrasenia(auth0Id, nuevaPass)` (`PATCH /api/v2/users/{auth0Id}` con `{ "password": nuevaPass, "connection": "Username-Password-Authentication" }` y M2M `Bearer` de `AuthService` pattern `client_credentials` -> `update:users` scope). Mapea `PasswordStrengthError` -> `400` con mensaje amigable. Si OK: `estado=CAMBIADO`, persiste, `INVALIDADO` para otros `PENDIENTE` del usuario, e intenta invalidar sesiones Auth0 (best-effort `DELETE /api/v2/grants?user_id=` y fallback `DELETE /api/v2/users/{id}/refresh-tokens`; el cambio de password ya invalida la sesión Auth0 cookie pero los refresh tokens permanecen válidos según Auth0 docs y se revocan aquí; fallos no abortan el cambio). El backend toma `auth0Id` del token, no del body.
+
+Errores:
+
+* `400 { "error": "el token no es válido o venció..." }` (mismo que validar)
+* `400 { "error": "La contraseña es demasiado débil..." }`
+* `500/400 { "error": "No se pudo cambiar la contraseña..." }` para fallos Auth0 de red/config.
+
+Luego el frontend redirige a login con mensaje de éxito.
+
+Config (`application.properties`):
+
+```properties
+pretriage.cambio-contrasenia.expiracion-minutos=${PRETRIAGE_CAMBIO_CONTRASENIA_EXPIRACION:15}
+pretriage.cambio-contrasenia.max-solicitudes-por-hora=${PRETRIAGE_CAMBIO_MAX_POR_HORA:3}
+pretriage.cambio-contrasenia.ventana-horas=${PRETRIAGE_CAMBIO_VENTANA_HORAS:1}
+pretriage.cambio-contrasenia.email.mode=${PRETRIAGE_CAMBIO_EMAIL_MODE:${PRETRIAGE_INVITATIONS_EMAIL_MODE:local}}
+pretriage.cambio-contrasenia.email.from=${PRETRIAGE_CAMBIO_EMAIL_FROM:${PRETRIAGE_INVITATIONS_EMAIL_FROM:no-reply@pretriage.local}}
+```
+
+Endpoints públicos en `SpringSecurityConfig` (`/api/auth/cambio-contrasenia/**`).
+
 ## Specialties
 
 ### List Specialties

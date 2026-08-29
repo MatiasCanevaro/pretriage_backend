@@ -243,6 +243,23 @@ stores name, document, email, and a platform-level `RolSistema` (`ADMIN` or
 `USER`). `Medico`, `Recepcionista`, and `Paciente` profiles own a one-to-one
 `UsuarioAuth`; patient profiles make it optional.
 
+`CambioContraseniaToken` stores a password-reset token. Important fields:
+
+- `usuario` (`UsuarioAuth`)
+- `token` (opaque, `unique`, plain for email warning)
+- `fechaHoraCreacion`
+- `fechaHoraExpiracion`
+- `estado`
+
+States in `EstadoCambioContrasenia`:
+
+- `PENDIENTE`
+- `CAMBIADO`
+- `EXPIRO`
+- `INVALIDADO` (superseded by a newer `PENDIENTE` for the same user; not counted for validation)
+
+`expiro()` checks `LocalDateTime.now().isAfter(fechaHoraExpiracion)`. Token lifetime and rate limit (`pretriage.cambio-contrasenia.expiracion-minutos`, `max-solicitudes-por-hora`, `ventana-horas`) are configurable via `application.properties`. `UsuarioAuth.cambiosDeContrasenia` is `@OneToMany(cascade=ALL)`.
+
 `MembresiaHospital` links one global identity to one hospital. Important fields:
 
 - `usuario`

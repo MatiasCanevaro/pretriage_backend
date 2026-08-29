@@ -15,7 +15,7 @@ The current focus is first attention only. The system does not model referral, d
 
 ## Core Modules
 
-- Authentication: Auth0 login/register integration with refresh-token rotation via `POST /api/renovar` (`AuthController.renovar`, `AuthService.renovarTokenUsuario`, `RefreshTokenRequest`/`LoginResponseDTO`, `RefreshTokenInvalidoException` -> `401`; `offline_access` scope; public endpoint in `SpringSecurityConfig`).
+- Authentication: Auth0 login/register integration with refresh-token rotation via `POST /api/renovar` (`AuthController.renovar`, `AuthService.renovarTokenUsuario`, `RefreshTokenRequest`/`LoginResponseDTO`, `RefreshTokenInvalidoException` -> `401`; `offline_access` scope; public endpoint in `SpringSecurityConfig`). Password reset is supported via token flow (`CambioContraseniaService`, `CambioContraseniaToken`, `TokenService`, `PasswordResetEmailPort`; public `POST /api/auth/cambio-contrasenia/solicitar-token`, `GET /api/auth/cambio-contrasenia/validar?token=`, `POST /api/auth/cambio-contrasenia`; generic `200` response for privacy, configurable expiry/limit, `INVALIDADO` for superseded tokens, Auth0 `PATCH /api/v2/users/{id}` + best-effort grant revocation).
 - Hospital selection: filters hospitals by selected specialty and distance; can order/filter by estimated attention time and shows only hospitals available for attention (with active doctors), displaying the estimated wait alongside each hospital.
 - Medical specialties: represented by `EspecialidadMedica`.
 - AI triage chat: creates a chat, stores patient and bot messages, stores structured triage JSON.

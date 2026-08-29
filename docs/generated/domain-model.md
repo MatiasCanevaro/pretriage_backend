@@ -18,6 +18,7 @@ python scripts\generate_domain_diagram.py
 - `AsignacionMedicoHospital`: `src/main/java/com/pretriage/backend/model/personas/AsignacionMedicoHospital.java`
 - `AtencionMedica`: `src/main/java/com/pretriage/backend/model/consultas/AtencionMedica.java`
 - `AuditoriaHospital`: `src/main/java/com/pretriage/backend/model/acceso/AuditoriaHospital.java`
+- `CambioContraseniaToken`: `src/main/java/com/pretriage/backend/model/personas/CambioContraseniaToken.java`
 - `Chat`: `src/main/java/com/pretriage/backend/model/chat/Chat.java`
 - `ConsultaMedica`: `src/main/java/com/pretriage/backend/model/consultas/ConsultaMedica.java`
 - `Coordenada`: `src/main/java/com/pretriage/backend/model/hospitales/Coordenada.java`
@@ -194,6 +195,13 @@ erDiagram
     ASIGNACION_MEDICO_HOSPITAL {
         Long id
     }
+    CAMBIO_CONTRASENIA_TOKEN {
+        Long id
+        String token
+        LocalDateTime fechaHoraCreacion
+        LocalDateTime fechaHoraExpiracion
+        EstadoCambioContrasenia estado
+    }
     CREDENCIAL_PROFESIONAL {
         static_final_String JURISDICCION_NACIONAL
         Long id
@@ -293,6 +301,7 @@ erDiagram
     ASIGNACION_MEDICO_HOSPITAL }o--|| MEDICO : medico
     ASIGNACION_MEDICO_HOSPITAL }o--|| HOSPITAL : hospital
     ASIGNACION_MEDICO_HOSPITAL }o--|| ESPECIALIDAD_MEDICA : especialidad
+    CAMBIO_CONTRASENIA_TOKEN }o--|| USUARIO_AUTH : usuario
     CREDENCIAL_PROFESIONAL }o--|| MEDICO : medico
     MEDICO ||--|| USUARIO_AUTH : usuarioAuth
     MEDICO ||--o{ CREDENCIAL_PROFESIONAL : credencialesProfesionales
@@ -303,6 +312,7 @@ erDiagram
     PACIENTE ||--o{ ESTUDIO_CLINICO : historialClinico
     PACIENTE ||--|| DIRECCION : direccion
     RECEPCIONISTA ||--|| USUARIO_AUTH : usuarioAuth
+    USUARIO_AUTH ||--o{ CAMBIO_CONTRASENIA_TOKEN : cambiosDeContrasenia
     ADMISION_RECEPCION ||--|| CONSULTA_MEDICA : consultaMedica
     ADMISION_RECEPCION }o--|| SESION_RECEPCION : sesionRecepcion
     SESION_RECEPCION }o--|| RECEPCIONISTA : recepcionista

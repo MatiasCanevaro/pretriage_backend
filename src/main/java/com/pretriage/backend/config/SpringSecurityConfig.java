@@ -32,7 +32,10 @@ public class SpringSecurityConfig {
                                                 .dispatcherTypeMatchers(DispatcherType.FORWARD, DispatcherType.ERROR)
                                                 .permitAll()
                                                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                                                .requestMatchers("/api/login", "/api/register", "/api/renovar")
+                                                .requestMatchers("/api/login", "/api/register", "/api/renovar",
+                                                "/api/auth/cambio-contrasenia/solicitar-token",
+                                                "/api/auth/cambio-contrasenia/validar",
+                                                "/api/auth/cambio-contrasenia")
                                                 .permitAll()
                                                 .requestMatchers(HttpMethod.GET, "/api/invitaciones/*/resumen")
                                                 .permitAll()

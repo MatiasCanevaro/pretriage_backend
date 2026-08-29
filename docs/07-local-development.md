@@ -16,6 +16,11 @@ spring.ai.ollama.chat.model=llama3.2:3b
 spring.ai.ollama.chat.temperature=0
 spring.ai.ollama.chat.seed=42
 pretriage.estimacion.minutos-promedio-atencion=10
+pretriage.cambio-contrasenia.expiracion-minutos=${PRETRIAGE_CAMBIO_CONTRASENIA_EXPIRACION:15}
+pretriage.cambio-contrasenia.max-solicitudes-por-hora=${PRETRIAGE_CAMBIO_MAX_POR_HORA:3}
+pretriage.cambio-contrasenia.ventana-horas=${PRETRIAGE_CAMBIO_VENTANA_HORAS:1}
+pretriage.cambio-contrasenia.email.mode=${PRETRIAGE_CAMBIO_EMAIL_MODE:${PRETRIAGE_INVITATIONS_EMAIL_MODE:local}}
+pretriage.cambio-contrasenia.email.from=${PRETRIAGE_CAMBIO_EMAIL_FROM:${PRETRIAGE_INVITATIONS_EMAIL_FROM:no-reply@pretriage.local}}
 spring.config.import=optional:file:.env[.properties]
 spring.jpa.hibernate.ddl-auto=${JPA_DDL_AUTO:update}
 ```
