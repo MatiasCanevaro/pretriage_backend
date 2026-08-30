@@ -126,9 +126,6 @@ public class CambioContraseniaService {
 
         // invalidar otros pendientes del usuario (por si quedaron)
         invalidarOtrosPendientes(usuario.getId(), cambio.getId());
-
-        // intentar invalidar sesiones / refresh tokens en Auth0 (best-effort)
-        intentarInvalidarTokensAuth0(auth0Id);
     }
 
     // --- helpers privados ---
@@ -208,46 +205,6 @@ public class CambioContraseniaService {
         } catch (Exception e) {
             log.error("Error inesperado al cambiar contraseña Auth0 para {}", auth0Id, e);
             throw new NoSePudoCambiarContraseniaException();
-        }
-    }
-
-    private void intentarInvalidarTokensAuth0(String auth0Id) {
-        // Según Auth0 docs, el cambio de password via Management API ya invalida la
-        // sesión (cookie)
-        // pero los refresh tokens permanecen válidos y deben revocarse explícitamente.
-        // Intentamos best-effort revocar grants/refresh tokens.
-        try {
-            String m2mToken = obtenerTokenM2M();
-            // Intento 1: DELETE /api/v2/grants?user_id=...
-            try {
-                restClient.delete()
-                        .uri(auth0BasePath + "/api/v2/grants?user_id=" + auth0Id)
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + m2mToken)
-                        .retrieve()
-                        .toBodilessEntity();
-                log.info("Grants revocados para {}", auth0Id);
-                return;
-            } catch (Exception ex) {
-                log.debug("DELETE /grants falló para {}, probando alternativa: {}", auth0Id, ex.getMessage());
-            }
-
-            // Intento 2: POST /oauth/revoke no disponible sin token, intentamos DELETE
-            // users refresh-tokens (si existe)
-            // No fallar si no existe el endpoint
-            try {
-                restClient.delete()
-                        .uri(auth0BasePath + "/api/v2/users/" + auth0Id + "/refresh-tokens")
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + m2mToken)
-                        .retrieve()
-                        .toBodilessEntity();
-                log.info("Refresh tokens revocados via /users/refresh-tokens para {}", auth0Id);
-            } catch (Exception ex2) {
-                log.debug("DELETE /users/refresh-tokens no disponible o falló para {}: {}", auth0Id, ex2.getMessage());
-            }
-
-        } catch (Exception e) {
-            log.warn("No se pudieron invalidar tokens Auth0 para {} tras cambio de contraseña (no crítico): {}",
-                    auth0Id, e.getMessage());
         }
     }
 

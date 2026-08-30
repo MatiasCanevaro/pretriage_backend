@@ -160,7 +160,7 @@ Success `200`:
 }
 ```
 
-Flujo backend (`CambioContraseniaService.cambiarContraseña`): `obtenerCambioContraseniaToken` -> `validarToken` (`expiro()` -> `EXPIRO`) -> `llamarApiCambioContrasenia(auth0Id, nuevaPass)` (`PATCH /api/v2/users/{auth0Id}` con `{ "password": nuevaPass, "connection": "Username-Password-Authentication" }` y M2M `Bearer` de `AuthService` pattern `client_credentials` -> `update:users` scope). Mapea `PasswordStrengthError` -> `400` con mensaje amigable. Si OK: `estado=CAMBIADO`, persiste, `INVALIDADO` para otros `PENDIENTE` del usuario, e intenta invalidar sesiones Auth0 (best-effort `DELETE /api/v2/grants?user_id=` y fallback `DELETE /api/v2/users/{id}/refresh-tokens`; el cambio de password ya invalida la sesión Auth0 cookie pero los refresh tokens permanecen válidos según Auth0 docs y se revocan aquí; fallos no abortan el cambio). El backend toma `auth0Id` del token, no del body.
+Flujo backend (`CambioContraseniaService.cambiarContraseña`): `obtenerCambioContraseniaToken` -> `validarToken` (`expiro()` -> `EXPIRO`) -> `llamarApiCambioContrasenia(auth0Id, nuevaPass)` (`PATCH /api/v2/users/{auth0Id}` con `{ "password": nuevaPass, "connection": "Username-Password-Authentication" }` y M2M `Bearer` de `AuthService` pattern `client_credentials` -> `update:users` scope). Mapea `PasswordStrengthError` -> `400` con mensaje amigable. Si OK: `estado=CAMBIADO`, persiste, `INVALIDADO` para otros `PENDIENTE` del usuario. El backend toma `auth0Id` del token, no del body.
 
 Errores:
 
