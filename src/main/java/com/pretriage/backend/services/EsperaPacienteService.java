@@ -1,6 +1,7 @@
 package com.pretriage.backend.services;
 
 import com.pretriage.backend.controllers.dtos.EstadoConsultaPacienteDTO;
+import com.pretriage.backend.controllers.dtos.NotificacionSalaDTO;
 import com.pretriage.backend.model.consultas.ConsultaMedica;
 import com.pretriage.backend.model.consultas.EntradaCola;
 import com.pretriage.backend.model.consultas.EstadoConsulta;
@@ -83,7 +84,8 @@ public class EsperaPacienteService {
 
         if (entrada.getEstado() == EstadoEntradaCola.ATRASADO) {
             entrada.setOrdenRelativo(obtenerOrdenParaPrimerLugarDePrioridad(entrada));
-        } else if (entrada.getEstado() != EstadoEntradaCola.EN_ESPERA || entrada.getTipoPausa() != TipoPausaCola.ESPERA_MANUAL) {
+        } else if (entrada.getEstado() != EstadoEntradaCola.EN_ESPERA
+                || entrada.getTipoPausa() != TipoPausaCola.ESPERA_MANUAL) {
             throw new IllegalStateException("El paciente no puede volver a la cola desde el estado actual");
         }
 
@@ -106,6 +108,24 @@ public class EsperaPacienteService {
         return mapear(obtenerEntradaActivaPaciente(paciente));
     }
 
+    public EstadoConsultaPacienteDTO obtenerEstadoDe(Long consultaId) {
+        ConsultaMedica consulta = repoConsultasMedicas.findById(consultaId)
+                .orElseThrow(() -> new NoSuchElementException("No existe la consulta con id " + consultaId));
+        EntradaCola entrada = repoEntradasCola.findByConsultaMedicaId(consulta.getId())
+                .orElseThrow(() -> new NoSuchElementException(
+                        "No existe una entrada de cola para la consulta con id " + consultaId));
+        return mapear(entrada);
+    }
+
+    public NotificacionSalaDTO obtenerNotificacionSalaDe(Long consultaId) {
+        ConsultaMedica consulta = repoConsultasMedicas.findById(consultaId)
+                .orElseThrow(() -> new NoSuchElementException("No existe la consulta con id " + consultaId));
+        EntradaCola entrada = repoEntradasCola.findByConsultaMedicaId(consulta.getId())
+                .orElseThrow(() -> new NoSuchElementException(
+                        "No existe una entrada de cola para la consulta con id " + consultaId));
+        return mapearSala(entrada);
+    }
+
     @Scheduled(fixedDelay = 60000)
     @Transactional
     public void cancelarAtrasadosSinRespuesta() {
@@ -116,7 +136,6 @@ public class EsperaPacienteService {
 
         cancelarEntradas(vencidas);
     }
-
 
     @Scheduled(fixedDelay = 60000)
     @Transactional
@@ -137,6 +156,7 @@ public class EsperaPacienteService {
             repoEntradasCola.save(entrada);
         });
     }
+
     private Paciente obtenerPaciente(String auth0Id) {
         return pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id)
                 .orElseThrow(() -> new AccessDeniedException("No tiene permisos de paciente"));
@@ -144,12 +164,12 @@ public class EsperaPacienteService {
 
     private EntradaCola obtenerEntradaActivaPaciente(Paciente paciente) {
         return repoEntradasCola.findFirstByConsultaMedicaPacienteIdAndEstadoIn(
-                        paciente.getId(),
-                        List.of(EstadoEntradaCola.EN_COLA,
-                                EstadoEntradaCola.LLAMADO,
-                                EstadoEntradaCola.EN_ESPERA,
-                                EstadoEntradaCola.ATRASADO,
-                                EstadoEntradaCola.EN_ATENCION))
+                paciente.getId(),
+                List.of(EstadoEntradaCola.EN_COLA,
+                        EstadoEntradaCola.LLAMADO,
+                        EstadoEntradaCola.EN_ESPERA,
+                        EstadoEntradaCola.ATRASADO,
+                        EstadoEntradaCola.EN_ATENCION))
                 .orElseThrow(() -> new NoSuchElementException("El paciente no tiene una consulta activa en cola"));
     }
 
@@ -181,5 +201,15 @@ public class EsperaPacienteService {
         }
         return dto;
     }
-}
 
+    private NotificacionSalaDTO mapearSala(EntradaCola entrada) {
+        NotificacionSalaDTO dto = new NotificacionSalaDTO();
+        dto.setConsultaId(entrada.getConsultaMedica().getId());
+        dto.setEstadoConsulta(entrada.getConsultaMedica().getEstadoConsulta());
+        dto.setEstadoEntradaCola(entrada.getEstado());
+        dto.setTipoPausa(entrada.getTipoPausa());
+        dto.setFechaHoraLimiteRespuesta(entrada.getFechaHoraLimiteRespuesta());
+        dto.setCodigoSala(entrada.getConsultaMedica().getCodigoSala());
+        return dto;
+    }
+}

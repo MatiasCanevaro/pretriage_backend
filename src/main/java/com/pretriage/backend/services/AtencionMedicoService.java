@@ -1,9 +1,16 @@
 package com.pretriage.backend.services;
 
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.ObjectMapper;
-import com.pretriage.backend.controllers.dtos.AtencionMedicaDTO;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.NoSuchElementException;
+import java.util.Objects;
+
+import org.springframework.data.domain.PageRequest;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Service;
+
 import com.pretriage.backend.controllers.dtos.AsignacionMedicoDTO;
+import com.pretriage.backend.controllers.dtos.AtencionMedicaDTO;
 import com.pretriage.backend.controllers.dtos.ConsultaLlamadaDTO;
 import com.pretriage.backend.controllers.dtos.EstudioClinicoDTO;
 import com.pretriage.backend.controllers.dtos.PretriajeConsultaDTO;
@@ -13,29 +20,45 @@ import com.pretriage.backend.controllers.dtos.SalaDTO;
 import com.pretriage.backend.controllers.dtos.SesionAtencionMedicaDTO;
 import com.pretriage.backend.controllers.dtos.SesionMedicaActualDTO;
 import com.pretriage.backend.controllers.dtos.TriageResultDTO;
-import com.pretriage.backend.exceptions.ArchivoS3Exception;
 import com.pretriage.backend.exceptions.ConflictoDeEstadoException;
-import com.pretriage.backend.model.consultas.*;
+import com.pretriage.backend.model.consultas.AtencionMedica;
+import com.pretriage.backend.model.consultas.ConsultaMedica;
+import com.pretriage.backend.model.consultas.DecisionRevisionPrioridad;
+import com.pretriage.backend.model.consultas.EntradaCola;
+import com.pretriage.backend.model.consultas.EstadoAtencionMedica;
+import com.pretriage.backend.model.consultas.EstadoConsulta;
+import com.pretriage.backend.model.consultas.EstadoEntradaCola;
+import com.pretriage.backend.model.consultas.EstadoRevisionPrioridad;
+import com.pretriage.backend.model.consultas.EstadoSesionMedica;
+import com.pretriage.backend.model.consultas.EstudioClinico;
+import com.pretriage.backend.model.consultas.GestorDeCola;
+import com.pretriage.backend.model.consultas.NivelDeGravedad;
+import com.pretriage.backend.model.consultas.RevisionPrioridadConsulta;
+import com.pretriage.backend.model.consultas.SesionAtencionMedica;
+import com.pretriage.backend.model.consultas.TipoPausaCola;
 import com.pretriage.backend.model.hospitales.EspecialidadMedica;
 import com.pretriage.backend.model.hospitales.Hospital;
 import com.pretriage.backend.model.hospitales.Sala;
 import com.pretriage.backend.model.personas.AsignacionMedicoHospital;
 import com.pretriage.backend.model.personas.Medico;
 import com.pretriage.backend.model.personas.Paciente;
-import com.pretriage.backend.repositories.*;
+import com.pretriage.backend.repositories.RepoAdmisionesRecepcion;
+import com.pretriage.backend.repositories.RepoAsignacionesMedicoHospital;
+import com.pretriage.backend.repositories.RepoAtencionesMedicas;
+import com.pretriage.backend.repositories.RepoConsultasMedicas;
+import com.pretriage.backend.repositories.RepoEntradasCola;
+import com.pretriage.backend.repositories.RepoEspecialidadesMedicas;
+import com.pretriage.backend.repositories.RepoEstudiosClinicos;
+import com.pretriage.backend.repositories.RepoGestoresDeColas;
+import com.pretriage.backend.repositories.RepoHospitales;
+import com.pretriage.backend.repositories.RepoMedico;
+import com.pretriage.backend.repositories.RepoRevisionesPrioridadConsulta;
+import com.pretriage.backend.repositories.RepoSesionesAtencionMedica;
+
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
-import lombok.Value;
-import org.springframework.security.access.AccessDeniedException;
-import org.springframework.stereotype.Service;
-
-import java.io.IOException;
-import java.time.LocalDateTime;
-import java.util.List;
-import java.util.NoSuchElementException;
-import java.util.Objects;
-
-import org.springframework.data.domain.PageRequest;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 @Service
 @RequiredArgsConstructor
@@ -61,10 +84,10 @@ public class AtencionMedicoService {
     private final ObjectMapper objectMapper;
 
     private final PacienteService pacienteService;
-    private final GestionDeArchivosService gestionDeArchivosService;
     private final UsuariosService usuariosService;
     private final SalaService salaService;
     private final EstudioClinicoService estudioClinicoService;
+    private final SalaAtencionNotifier salaAtencionNotifier;
 
     public List<AsignacionMedicoDTO> obtenerAsignaciones(String auth0Id) {
         Medico medico = obtenerMedico(auth0Id);
@@ -227,6 +250,8 @@ public class AtencionMedicoService {
 
         repoConsultasMedicas.save(consulta);
         repoEntradasCola.save(entrada);
+
+        salaAtencionNotifier.notificarLlamadoAlPaciente(consulta.getId());
         return mapearConsultaLlamada(consulta);
     }
 

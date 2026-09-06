@@ -38,12 +38,13 @@ flowchart TD
 
 ## Calling Patients
 
-When doctor calls next patient:
+When doctor calls next patient (`POST /api/medico/sesiones/{sesionId}/llamar-proximo`):
 
 - Backend selects next `EntradaCola.EN_COLA` for the same hospital/specialty.
-- Ordering is by priority descending and relative order ascending.
+- Ordering is by priority descending and relative order ascending (`prioridad DESC, ordenRelativo ASC, fechaHoraIngreso ASC`).
 - Entry becomes `LLAMADO`.
-- Consultation also becomes `LLAMADO`.
+- Consultation also becomes `LLAMADO` (`medico` and `sala` are set; `codigoSala = Sala.nombre`).
+- The backend then invokes `SalaAtencionNotifier.notificarLlamadoAlPaciente(consultaId)` which loads `NotificacionSalaDTO` via `EsperaPacienteService.obtenerNotificacionSalaDe` (without `tiempoEstimadoAtencion`, with `codigoSala`) and emits SSE `llamado` to every emitter subscribed via `GET /api/atencion/sala/suscribirse/{consultaId}`. `heartbeat` every 30s keeps the sala channel open until `desuscribirse`. The tiempo-estimacion channel (`TiempoEstimadoNotifier`) is independent (separate `ConcurrentHashMap`).
 
 If patient appears:
 

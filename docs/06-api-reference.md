@@ -550,7 +550,75 @@ GET /api/atencion/tiempos/suscribirse/{consultaId}
 Accept: text/event-stream
 ```
 
-Authenticated SSE stream with `tiempo-estimado` and `heartbeat` events. The patient must own the consultation.
+Authenticated SSE stream with `tiempo-estimado` and `heartbeat` events. The patient must own the consultation. Uses `TiempoEstimadoNotifier` (`fixedRate 15000` `tiempo-estimado`, `fixedRate 30000` `heartbeat`, multiple emitters per `consultaId`, `SseEmitter(0L)`, validates `EN_COLA` only). See `docs/04-queue-and-estimation.md`.
+
+## Real-Time Sala Notification
+
+Patient real-time room notification when the doctor calls, implemented with a separate SSE publisher `SalaAtencionNotifier` (independent `ConcurrentHashMap` from `TiempoEstimadoNotifier`).
+
+### Subscribe to Sala
+
+```http
+GET /api/atencion/sala/suscribirse/{consultaId}
+Accept: text/event-stream
+```
+
+Authenticated (`anyRequest().authenticated()`). The authenticated patient must own the consultation (`RepoConsultasMedicas.existsByIdAndPacienteUsuarioAuthId` → `403` otherwise). On subscription the backend registers `SseEmitter(0L)` and immediately sends a `suscrito` event:
+
+```
+event: suscrito
+data: {"consultaId": 5}
+```
+
+Then keeps the connection open with `heartbeat` every `30000` ms (`fixedRate`):
+
+```
+event: heartbeat
+data: {"consultaId": 5}
+```
+
+Multiple simultaneous emitters per `consultaId` are supported (multiple tabs). The session stays open until explicit unsubscription — no auto-close on `FINALIZADA`/`EN_ATENCION` (frontend drives lifecycle via `GET /api/paciente/consulta/estado` polling every 20s or via `idConsultaActiva` global null check).
+
+### Unsubscribe from Sala
+
+```http
+GET /api/atencion/sala/desuscribirse/{consultaId}
+```
+
+Authenticated. Validates ownership (`403` if not). Completes all emitters for the `consultaId` (`emitter.complete()` + `desconectar`) and returns `204 No Content`. The frontend must call this when `estadoConsulta` is `EN_ATENCION` or `FINALIZADA`, or when the user leaves the queue. `ATRASADO`/`EN_ESPERA` (patient marked absent and delayed) does not trigger unsubscription — the patient can be called again and will receive a new `llamado`.
+
+### Doctor Calls Patient (triggers `llamado`)
+
+```http
+POST /api/medico/sesiones/{sesionId}/llamar-proximo
+```
+
+After setting `EntradaCola.LLAMADO`, `ConsultaMedica.LLAMADO` and `ConsultaMedica.sala`, the backend calls `SalaAtencionNotifier.notificarLlamadoAlPaciente(consultaId)`. The notifier loads `NotificacionSalaDTO` via `EsperaPacienteService.obtenerNotificacionSalaDe(consultaId)` (same fields as `EstadoConsultaPacienteDTO` but without `tiempoEstimadoAtencion` plus `codigoSala = ConsultaMedica.getCodigoSala()` → `Sala.nombre`, `null` until `LLAMADO`). `EstimacionAtencionService.calcularPara` is **not** invoked for this path, so `LLAMADO` does not throw `NoSePudoEstimarElHorarioDeAtencion`.
+
+It then sends to every subscribed emitter:
+
+```
+event: llamado
+data: {
+  "consultaId": 5,
+  "estadoConsulta": "LLAMADO",
+  "estadoEntradaCola": "LLAMADO",
+  "tipoPausa": null,
+  "fechaHoraLimiteRespuesta": null,
+  "codigoSala": "Consultorio 1"
+}
+```
+
+If no emitters exist the call is a no-op (caught `RuntimeException` is logged `log.error` and does not abort `llamarProximo`). Front global variable `idConsultaActiva` holds the active `consultaId`; if `null` no subscription is attempted.
+
+### Frontend Flow (summary)
+
+1. After `POST /api/atencion/hospital` or after chat triage finalization, set `idConsultaActiva = consultaId`.
+2. `GET /api/atencion/sala/suscribirse/{idConsultaActiva}` with `Accept: text/event-stream` and `Authorization: Bearer <jwt>` (requires EventSource polyfill with headers).
+3. On `suscrito` confirm UI subscription.
+4. On `llamado` show `codigoSala` (push notification + screen) in real time.
+5. On `heartbeat` keep-alive.
+6. Poll `GET /api/paciente/consulta/estado` every 20s; when `estadoConsulta` is `EN_ATENCION`/`FINALIZADA` call `GET /api/atencion/sala/desuscribirse/{id}` and set `idConsultaActiva=null`.
 
 ## Reception Admission
 

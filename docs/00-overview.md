@@ -23,7 +23,8 @@ The current focus is first attention only. The system does not model referral, d
 - Doctor attention: uses SesionAtencionMedica, rooms, assignments, and historical AtencionMedica records.
 - Reception admission: supports DNI-based in-person registration, structured form triage, and entry into the same dynamic queue without using chat.
 - Estimated attention time: recalculated dynamically using queue state and active doctor sessions.
-- Real-time estimation: authenticated SSE subscriptions support periodic updates, heartbeat, and multiple connections per consultation.
+- Real-time estimation: authenticated SSE subscriptions support periodic updates, heartbeat, and multiple connections per consultation (`TiempoEstimadoNotifier` for `tiempo-estimado`).
+- Real-time sala notification: when the doctor calls, `SalaAtencionNotifier` pushes `llamado NotificacionSalaDTO{consultaId, codigoSala}` via SSE (`suscrito`/`heartbeat`/`llamado`), subscribed via `GET /api/atencion/sala/suscribirse/{consultaId}` and cleared via `GET /api/atencion/sala/desuscribirse/{consultaId}` (frontend global `idConsultaActiva`). Independent `ConcurrentHashMap` from tiempo-estimado.
 - Medical studies management: patients can upload, list, download, and delete medical study files (PDFs, images) stored in AWS S3. Doctors can access patient studies during attention through clinical history endpoints.
 - Health insurance credentials: patients and receptionists can load, list, update, and delete credentials. Load and update validate the health insurance at runtime selecting the validator for the requested obra social (`FabricaValidadoresCredencialesObraSocial`). Only a demo mock (`OSDE`) exists; real integrations with the health insurance companies are out of scope and can be plugged in by implementing `ValidadorCredencialObraSocial`.
 

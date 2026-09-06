@@ -74,6 +74,8 @@ class AtencionMedicoServiceTest {
         GestionDeArchivosService gestionDeArchivosService;
         @Mock
         EstudioClinicoService estudioClinicoService;
+        @Mock
+        SalaAtencionNotifier salaAtencionNotifier;
 
         @Test
         void noPermitePausarUnaSesionConConsultaTomada() {

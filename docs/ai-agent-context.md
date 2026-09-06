@@ -68,7 +68,7 @@ The system manages the first medical attention workflow:
 
 ### Doctor Attention
 
-- `AtencionMedicoService`
+- `AtencionMedicoService` (incl. `llamarProximo` → `SalaAtencionNotifier.notificarLlamadoAlPaciente`)
 - `MedicoController`
 - `SesionAtencionMedica`
 - `EstadoSesionMedica`
@@ -78,13 +78,15 @@ The system manages the first medical attention workflow:
 - `AtencionMedica`
 - `EstadoAtencionMedica`
 - `RepoAtencionesMedicas`
-- `TiempoEstimadoNotifier`
+- `TiempoEstimadoNotifier` (tiempo-estimado SSE)
+- `SalaAtencionNotifier` + `SalaAtencionController` + `NotificacionSalaDTO` (sala SSE)
 
 ### Patient Waiting State
 
-- `EsperaPacienteService`
+- `EsperaPacienteService` (`obtenerEstadoDe` + `obtenerNotificacionSalaDe`/`mapearSala` con `codigoSala`)
 - `PacienteEsperaController`
 - `EstadoConsultaPacienteDTO`
+- `NotificacionSalaDTO` (same fields minus `tiempoEstimadoAtencion` plus `codigoSala`)
 - `TipoPausaCola`
 
 ## Invariants
@@ -107,6 +109,7 @@ The system manages the first medical attention workflow:
 - `AtencionMedica` is created on presence confirmation and finalized with the consultation.
 - `EN_ESPERA` entries are cancelled after one hour measured from `fechaHoraSalidaTemporal`.
 - SSE subscriptions validate that the authenticated patient owns the consultation.
+- `SalaAtencionNotifier` and `TiempoEstimadoNotifier` keep independent `ConcurrentHashMap<Long, CopyOnWriteArrayList<SseEmitter>>` — no shared list. `Sala` SSE sends `suscrito` on subscribe, `llamado NotificacionSalaDTO{consultaId, estadoConsulta, estadoEntradaCola, tipoPausa, fechaHoraLimiteRespuesta, codigoSala}` on `llamarProximo` (without `EstimacionAtencionService.calcularPara`), and `heartbeat` every `30000` ms until explicit `desuscribirse` (no auto-close on `FINALIZADA`). Frontend holds global `idConsultaActiva`.
 
 ## Estimation Contract
 

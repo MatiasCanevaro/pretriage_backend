@@ -11,6 +11,9 @@ flowchart TD
     E --> F[AI assigns triage priority]
     F --> G[Queue priority updated]
     G --> H[Patient checks dynamic estimated attention time]
+    H --> I[Patient subscribes to sala SSE and waits for llamado]
+    I --> J[Doctor calls next patient]
+    J --> K[Patient receives sala notification in real time]
 ```
 
 ## Steps
@@ -25,7 +28,11 @@ flowchart TD
 8. When triage finishes, `Chat.resultadoTriageJson` is stored.
 9. `nivelDeGravedadBot` is mapped from AI priority.
 10. The existing `EntradaCola` priority is updated with the pretriage result.
-11. Estimated attention time is returned dynamically.
+11. Estimated attention time is returned dynamically via `EstimacionAtencionService` (`TiempoEstimadoAtencionResponse`).
+12. When the patient enters `EN_COLA` (hospital selected or chat finalized) the frontend sets global `idConsultaActiva = consultaId` and subscribes to `GET /api/atencion/sala/suscribirse/{consultaId}` (`Accept: text/event-stream`, `Authorization: Bearer <jwt>` via EventSource polyfill). Only the owning patient may subscribe (`403` otherwise); the backend immediately sends `suscrito` and then `heartbeat` every 30s (`SalaAtencionNotifier`, separate `ConcurrentHashMap` from `TiempoEstimadoNotifier`).
+13. When the doctor calls `POST /api/medico/sesiones/{id}/llamar-proximo`, the backend sets `LLAMADO` and emits `llamado NotificacionSalaDTO {consultaId, estadoConsulta, estadoEntradaCola, tipoPausa, fechaHoraLimiteRespuesta, codigoSala=Sala.nombre}` to all emitters for that `consultaId`. Previously the frontend polled `GET /api/paciente/consulta/estado` every 20s to discover the room; now the room is pushed in real time.
+14. The frontend shows the room (`codigoSala`) as a push notification + screen. It keeps `heartbeat` while subscribed.
+15. The frontend polls `GET /api/paciente/consulta/estado` every 20s; when `estadoConsulta` is `EN_ATENCION` or `FINALIZADA` it calls `GET /api/atencion/sala/desuscribirse/{consultaId}` (`204`) and clears `idConsultaActiva=null`. If marked `ATRASADO`/`EN_ESPERA` (ausente y atrasado) it does **not** unsubscribe — a later `llamarProximo` will emit a new `llamado`.
 
 ## Waiting And Absence Rules
 

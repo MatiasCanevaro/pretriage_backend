@@ -47,7 +47,10 @@ flowchart TD
 flowchart TD
     A["Paciente en espera"] --> B["Médico ejecuta llamarPróxima"]
     B --> C["Estado del paciente: LLAMADO"]
-    C --> D{"¿Paciente atiende presencialmente?"}
+    C --> C1["Backend emite SSE llamado con NotificacionSalaDTO codigoSala"]
+    C1 --> D{"¿Paciente atiende presencialmente?"}
+    C1 --> C2["Frontend suscrito recibe sala en tiempo real"]
+    C2 --> D
 
     D -->|"Sí"| E["Atención médica"]
     D -->|"No"| F["Médico marca AUSENTE"]
@@ -71,4 +74,26 @@ flowchart TD
     L --> R["Paciente nuevamente en espera"]
     R --> S["Médico puede ejecutar llamarPróxima nuevamente"]
     S --> C
+```
+5. Flujo SSE de sala (tiempo real, independiente de tiempo-estimado)
+```mermaid
+flowchart TD
+    A["Paciente entra EN_COLA"] --> B["Frontend set idConsultaActiva = consultaId"]
+    B --> C["GET /api/atencion/sala/suscribirse/{id}"]
+    C --> D["Backend valida dueño y registra SseEmitter 0L"]
+    D --> E["Evento suscrito {consultaId}"]
+    E --> F["Heartbeat cada 30s"]
+    F --> G{"Médico llama proximo?"}
+    G -->|No| F
+    G -->|Sí| H["Backend NotificacionSalaDTO con codigoSala"]
+    H --> I["Evento llamado al paciente"]
+    I --> J["Frontend muestra sala + notificacion push"]
+    J --> K{"Estado EN_ATENCION o FINALIZADA?"}
+    K -->|No| F
+    K -->|Sí| L["GET /api/atencion/sala/desuscribirse/{id}"]
+    L --> M["idConsultaActiva = null"]
+    M --> N["Conexion cerrada"]
+    F --> O{"ATRASADO/EN_ESPERA?"}
+    O -->|Sí| F
+    O -->|No| K
 ```

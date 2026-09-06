@@ -126,16 +126,33 @@ The estimate can change whenever:
 
 ## Real-Time Updates
 
-Patients can subscribe through authenticated SSE:
+Two independent SSE publishers exist, each with its own `ConcurrentHashMap<Long, CopyOnWriteArrayList<SseEmitter>>`.
+
+### Tiempo estimado (`TiempoEstimadoNotifier`)
 
 ```http
 GET /api/atencion/tiempos/suscribirse/{consultaId}
 Accept: text/event-stream
 ```
 
-- The authenticated patient must own the consultation.
-- An initial `tiempo-estimado` event is sent when the connection opens.
-- Estimates are recalculated from `EntradaCola` and `EstimacionAtencionService` every 15 seconds while connected.
-- A `heartbeat` event is sent every 30 seconds.
+- The authenticated patient must own the consultation (`existsByIdAndPacienteUsuarioAuthId` → `403`).
+- An initial `tiempo-estimado` event (`TiempoEstimadoAtencionResponse` including `codigoSala` from `Sala.nombre`, `null` until `LLAMADO`) is sent when the connection opens.
+- Estimates are recalculated from `EntradaCola` and `EstimacionAtencionService` every 15 seconds while connected (`@Scheduled(fixedRate=15000)`). Only `EN_COLA` is estimable; other states throw `NoSePudoEstimarElHorarioDeAtencion`.
+- A `heartbeat` event is sent every 30 seconds (`@Scheduled(fixedRate=30000)`).
 - Multiple simultaneous emitters are supported for the same consultation.
 - Connections are completed when the consultation no longer has an active `EN_COLA` estimate.
+
+### Sala llamado (`SalaAtencionNotifier`)
+
+```http
+GET /api/atencion/sala/suscribirse/{consultaId}
+Accept: text/event-stream
+GET /api/atencion/sala/desuscribirse/{consultaId}
+```
+
+- Authenticated; patient must own the consultation (`403` otherwise). Separate `ConcurrentHashMap` from `TiempoEstimadoNotifier` — no shared list.
+- On `suscribirse` the backend sends an immediate `suscrito` event (`{"consultaId": 5}`) and registers `SseEmitter(0L)` with `onCompletion/onTimeout/onError -> desconectar`.
+- When doctor executes `POST /api/medico/sesiones/{id}/llamar-proximo`, the backend invokes `SalaAtencionNotifier.notificarLlamadoAlPaciente(consultaId)` which loads `NotificacionSalaDTO` via `EsperaPacienteService.obtenerNotificacionSalaDe(consultaId)` (fields `consultaId, estadoConsulta, estadoEntradaCola, tipoPausa, fechaHoraLimiteRespuesta, codigoSala`; same as `EstadoConsultaPacienteDTO` but without `tiempoEstimadoAtencion` and with `codigoSala`). This path **does not** call `EstimacionAtencionService.calcularPara`, so `LLAMADO` does not throw.
+- A `llamado` event with `NotificacionSalaDTO` (`estadoConsulta=LLAMADO`, `codigoSala=Sala.nombre`) is sent to every emitter for that `consultaId`. If no emitters, it is a no-op (exception logged, does not abort `llamarProximo`).
+- A `heartbeat` event (`{"consultaId": 5}`) is sent every 30 seconds (`@Scheduled(fixedRate=30000)`).
+- The subscription stays open until explicit `desuscribirse` (`emitter.complete()` + remove) — no auto-close on `FINALIZADA`/`EN_ATENCION`. Frontend holds global `idConsultaActiva`; when `null` no subscription, when `GET /api/paciente/consulta/estado` returns `EN_ATENCION`/`FINALIZADA` it must call `desuscribirse`. `ATRASADO`/`EN_ESPERA` keep the subscription so a later re-call can still be received.
