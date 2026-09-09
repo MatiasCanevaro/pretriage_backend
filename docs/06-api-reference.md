@@ -337,35 +337,48 @@ GET /api/chat/{id}
 
 ## Patient Queue State
 
+All endpoints in this section are under `PacienteEsperaController` (`EsperaPacienteService`) and operate on the active `EntradaCola` of the authenticated patient. Every response is `EstadoConsultaPacienteDTO` (`consultaId`, `estadoConsulta`, `estadoEntradaCola`, `tipoPausa`, `fechaHoraLimiteRespuesta`, `tiempoEstimadoAtencion` which is non-null only when `estadoEntradaCola == EN_COLA`).
+
 ```http
 GET /api/paciente/consulta/estado
 ```
 
-When patient is `EN_COLA`, response includes dynamic estimated attention time.
+Returns the current queue/consultation state for the authenticated patient (no state change). Valid for `EN_COLA`, `LLAMADO`, `EN_ESPERA`, `ATRASADO`, `EN_ATENCION` (see `EsperaPacienteService.obtenerEntradaActivaPaciente`). When the entry is `EN_COLA`, the payload includes the dynamic estimate from `EstimacionAtencionService.calcularPara` (`TiempoEstimadoAtencionResponse`). Example: `docs/04-queue-and-estimation.md`.
 
-### Patient Temporarily Leaves Queue
-
-```http
-POST /api/paciente/consulta/ausentarme
-```
-
-### Patient Confirms Delay
+### Pausar Cola Manualmente (salida voluntaria)
 
 ```http
-POST /api/paciente/consulta/estoy-atrasado
+POST /api/paciente/consulta/cola/pausa-manual
 ```
 
-### Patient Confirms Still Attending
+Patient voluntarily leaves the queue. Requires `EntradaCola.EN_COLA`, transitions to `EN_ESPERA` with `TipoPausaCola.ESPERA_MANUAL`, sets `ConsultaMedica.EN_ESPERA` and `fechaHoraSalidaTemporal=now`. While `EN_ESPERA` the entry does not count for estimation (`docs/04-queue-and-estimation.md#entries-counted-for-estimation`). Automatically cancelled to `CANCELADA` after 60 minutes without return (`EsperaPacienteService.cancelarEsperasVencidas`, `MINUTOS_MAXIMOS_EN_ESPERA=60`). Return path: `POST /api/paciente/consulta/cola/reincorporar` restores the previous relative position (`docs/02-patient-flow.md#waiting-and-absence-rules`). Replaces the former `POST /api/paciente/consulta/ausentarme`. No body; authenticated by `Jwt.getSubject()`.
+
+### Confirmar Atraso (tras ser marcado ausente)
 
 ```http
-POST /api/paciente/consulta/sigo-asistiendo
+POST /api/paciente/consulta/cola/atraso/confirmar
 ```
 
-### Patient Arrives
+Patient confirms they are delayed after the doctor marked them absent on call. Requires `EN_ESPERA` with `AUSENTE_AL_LLAMADO`, transitions to `ATRASADO` with `ATRASADO_CONFIRMADO`, sets `ConsultaMedica.ATRASADO`, `fechaHoraUltimaRepregunta=now`, `fechaHoraLimiteRespuesta=now+30m` (`MINUTOS_REPREGUNTA_ATRASADO=30`). While `ATRASADO` the entry does not count for estimation. Automatically cancelled after 30 minutes without renewal (`EsperaPacienteService.cancelarAtrasadosSinRespuesta`). Replaces `POST /api/paciente/consulta/estoy-atrasado`.
+
+### Renovar Confirmación de Atraso (sigo asistiendo)
 
 ```http
-POST /api/paciente/consulta/llegue
+POST /api/paciente/consulta/cola/atraso/renovar
 ```
+
+Patient still intends to attend while in `ATRASADO`. Requires `ATRASADO` (`ATRASADO_CONFIRMADO`), extends `fechaHoraUltimaRepregunta=now` and `fechaHoraLimiteRespuesta=now+30m`. Does not change `estado`/`tipoPausa`. If not renewed within 30 minutes the entry is cancelled. Replaces `POST /api/paciente/consulta/sigo-asistiendo`.
+
+### Reincorporarse a la Cola (confirmar llegada)
+
+```http
+POST /api/paciente/consulta/cola/reincorporar
+```
+
+Patient physically arrives and re-enters `EN_COLA`. Accepts two origins (both documented in `docs/02-patient-flow.md` and `docs/12-hospital-selection-and-arrival.md`):
+* From `ATRASADO` → `EN_COLA` at **first place within its priority level** (`ordenRelativo = min(ordenRelativo) - 1` for that `prioridad` via `obtenerOrdenParaPrimerLugarDePrioridad`), clears `tipoPausa`, `fechaHoraLimiteRespuesta`, resets `fechaHoraIngreso=now`, `ConsultaMedica.EN_COLA`.
+* From `EN_ESPERA(ESPERA_MANUAL)` → `EN_COLA` restoring the **previous relative position** (keeps `ordenRelativo`).
+Other states are rejected with `IllegalStateException`. On success `tiempoEstimadoAtencion` is recalculated dynamically. Replaces `POST /api/paciente/consulta/llegue`.
 
 ## Doctor
 

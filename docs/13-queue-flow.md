@@ -14,16 +14,16 @@ flowchart TD
     D --> H["Paciente en espera"]
     G --> H
 ```
-2. Flujo de ausencia y atraso
+2. Flujo de ausencia y atraso (`POST /api/paciente/consulta/cola/pausa-manual` → `POST /api/paciente/consulta/cola/reincorporar`)
 ```mermaid
 flowchart TD
-    A["Paciente en espera"] --> B{"¿Se ausenta?"}
+    A["Paciente en espera"] --> B{"¿Se ausenta? (cola/pausa-manual)"}
 
     B -->|"No"| A
     B -->|"Sí"| C["Desencolar paciente"]
     
     C --> D["Iniciar ventana de espera: 1 hora"]
-    D --> E{"¿Marca 'llegué'?"}
+    D --> E{"¿Marca 'llegué'? (cola/reincorporar)"}
 
     E -->|"Sí"| F["Volver a encolar"]
     E -->|"No"| G["Timeout de 1 hora"]
@@ -42,7 +42,7 @@ flowchart TD
     
     D --> E["Turno cancelado"]
 ```
-4. Flujo de llamado médico, ausencia y reencolamiento
+4. Flujo de llamado médico, ausencia y reencolamiento (`cola/atraso/confirmar` / `cola/atraso/renovar` / `cola/reincorporar`)
 ```mermaid
 flowchart TD
     A["Paciente en espera"] --> B["Médico ejecuta llamarPróxima"]
@@ -54,16 +54,16 @@ flowchart TD
 
     F --> G["Desencolar paciente"]
     G --> H["Iniciar ventana de espera: 1 hora"]
-    H --> I{"¿Marca 'estoy atrasado'?"}
+    H --> I{"¿Marca 'estoy atrasado'? (cola/atraso/confirmar)"}
 
-    I -->|"No"| J{"¿Marca 'llegué'?"}
-    I -->|"Sí"| K["Extender ventana 30 minutos"]
+    I -->|"No"| J{"¿Marca 'llegué'? (cola/reincorporar)"}
+    I -->|"Sí"| K["Extender ventana 30 minutos (cola/atraso/renovar)"]
 
     J -->|"Sí"| L["Volver a encolar con prioridad previa"]
     J -->|"No"| M["Timeout de 1 hora"]
     M --> N["Cancelar turno"]
 
-    K --> O{"¿Marca 'llegué' dentro de los 30 min?"}
+    K --> O{"¿Marca 'llegué' dentro de los 30 min? (cola/reincorporar)"}
     O -->|"Sí"| L
     O -->|"No"| P["Timeout de 30 minutos"]
     P --> Q["Cancelar turno"]

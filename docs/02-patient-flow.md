@@ -29,34 +29,36 @@ flowchart TD
 
 ## Waiting And Absence Rules
 
-If patient manually leaves the waiting queue:
+Endpoints in this section are implemented in `PacienteEsperaController` / `EsperaPacienteService` (`docs/06-api-reference.md#patient-queue-state`).
+
+If patient manually leaves the waiting queue (`POST /api/paciente/consulta/cola/pausa-manual` — `EsperaPacienteService.ausentarme`, requires `EN_COLA`):
 
 - `EntradaCola.estado = EN_ESPERA`
 - `tipoPausa = ESPERA_MANUAL`
 - They do not count for estimation while waiting outside queue.
-- When they return, they keep their previous relative position.
+- When they return (`POST /api/paciente/consulta/cola/reincorporar`), they keep their previous relative position (keeps `ordenRelativo`).
 
 If doctor calls patient and patient is absent:
 
 - Doctor marks them absent manually.
 - Patient becomes `EN_ESPERA` with `AUSENTE_AL_LLAMADO`.
-- Patient can confirm they are delayed.
+- Patient can confirm they are delayed (`POST /api/paciente/consulta/cola/atraso/confirmar` — requires `EN_ESPERA+AUSENTE_AL_LLAMADO`).
 - The one-hour waiting deadline starts when the doctor marks the called patient absent.
 
-If patient confirms delayed:
+If patient confirms delayed (`POST /api/paciente/consulta/cola/atraso/confirmar` → `POST /api/paciente/consulta/cola/atraso/renovar`):
 
-- State becomes `ATRASADO`.
-- They are not in queue until they mark arrival.
-- Backend asks again every 30 minutes through deadline state.
-- If they do not respond, they are cancelled by scheduler.
+- State becomes `ATRASADO` (`ATRASADO_CONFIRMADO`, `fechaHoraLimiteRespuesta=now+30m`).
+- They are not in queue until they mark arrival (`POST /api/paciente/consulta/cola/reincorporar`).
+- Backend asks again every 30 minutes through deadline state (`sigoAsistiendo` → now `renovarConfirmacionAtraso` extends `+30m`).
+- If they do not respond, they are cancelled by scheduler (`cancelarAtrasadosSinRespuesta`).
 
-If delayed patient arrives:
+If delayed patient arrives (`POST /api/paciente/consulta/cola/reincorporar` from `ATRASADO`):
 
-- They return to first place within their priority level.
+- They return to first place within their priority level (`obtenerOrdenParaPrimerLugarDePrioridad`: `min(ordenRelativo)-1` for that `prioridad`).
 
 ## Waiting Expiration
 
-Both manual waiting and absence-after-call entries are automatically cancelled after one hour in `EN_ESPERA`:
+Both manual waiting (`POST /api/paciente/consulta/cola/pausa-manual`) and absence-after-call / `ATRASADO` entries are automatically cancelled after their deadline in `EN_ESPERA`/`ATRASADO` (60m for `EN_ESPERA`, 30m windows for `ATRASADO` via `EsperaPacienteService.cancelarEsperasVencidas` / `cancelarAtrasadosSinRespuesta`):
 
 - `EntradaCola.estado = CANCELADA`
 - `ConsultaMedica.estadoConsulta = CANCELADA`

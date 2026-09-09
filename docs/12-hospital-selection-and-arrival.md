@@ -155,11 +155,13 @@ The consultation enters the queue at hospital selection (`POST /api/atencion/hos
 - Queue position and estimated attention time are calculated based on current queue state.
 - The AI triage chat is optional; when it finishes, the `EntradaCola` priority is updated with the pretriage result.
 
-Patients who temporarily left the queue return through:
+Patients who temporarily left the queue return through (`PacienteEsperaController.reincorporarseACola`):
 
 ```http
-POST /api/paciente/consulta/llegue
+POST /api/paciente/consulta/cola/reincorporar
 ```
+
+Formerly `POST /api/paciente/consulta/llegue`.
 
 - This is independent of the arrival time estimation.
 - The patient can return to the queue regardless of whether they followed the estimated time.

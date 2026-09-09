@@ -82,8 +82,8 @@ The system manages the first medical attention workflow:
 
 ### Patient Waiting State
 
-- `EsperaPacienteService`
-- `PacienteEsperaController`
+- `EsperaPacienteService` (`ausentarme`→`pausa-manual`, `estoyAtrasado`→`atraso/confirmar`, `sigoAsistiendo`→`atraso/renovar`, `llegue`→`reincorporar`)
+- `PacienteEsperaController` (`@RequestMapping /api/paciente/consulta` + `GET /estado` unchanged + `POST /cola/pausa-manual`, `POST /cola/atraso/confirmar`, `POST /cola/atraso/renovar`, `POST /cola/reincorporar`)
 - `EstadoConsultaPacienteDTO`
 - `TipoPausaCola`
 
