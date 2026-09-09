@@ -43,7 +43,7 @@ public class MedicoController {
             @AuthenticationPrincipal Jwt jwt) {
         String auth0Id = jwt.getSubject();
 
-        return ResponseEntity.ok(atencionMedicoService.obtenerSalas(hospitalId, codigoEspecialidad,auth0Id));
+        return ResponseEntity.ok(atencionMedicoService.obtenerSalas(hospitalId, codigoEspecialidad, auth0Id));
     }
 
     @PostMapping("/api/medico/sesiones")
@@ -78,13 +78,13 @@ public class MedicoController {
         return ResponseEntity.ok(atencionMedicoService.cerrarSesion(jwt.getSubject(), sesionId));
     }
 
-
     @GetMapping("/api/medico/sesiones/{sesionId}/pacientes-disponibles")
     public ResponseEntity<List<ConsultaLlamadaDTO>> listarPacientesDisponibles(
             @AuthenticationPrincipal Jwt jwt,
-            @PathVariable Long sesionId,
-            @RequestParam(required = false) String dni) {
-        return ResponseEntity.ok(atencionMedicoService.listarPacientesDisponibles(jwt.getSubject(), sesionId, dni));
+            @PathVariable Long sesionId// ,
+    /* @RequestParam(required = false) String dni */) {
+        return ResponseEntity
+                .ok(atencionMedicoService.listarPacientesDisponibles(jwt.getSubject(), sesionId, null));
     }
 
     @GetMapping("/api/medico/atenciones")
@@ -103,8 +103,7 @@ public class MedicoController {
     public ResponseEntity<EstudioClinicoDTO> obtenerMetadataDeUnEstudioClinico(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable Long pacienteId,
-            @PathVariable Long estudioId
-    ){
+            @PathVariable Long estudioId) {
         return ResponseEntity.ok(atencionMedicoService.obtenerEstudioClinico(jwt.getSubject(), pacienteId, estudioId));
     }
 
@@ -112,17 +111,16 @@ public class MedicoController {
     public ResponseEntity<List<EstudioClinicoDTO>> obtenerHistorialClinicoMasActuales(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable Long pacienteId,
-            @RequestParam(defaultValue = "5") int limite
-    ){
-        return ResponseEntity.ok(atencionMedicoService.obtenerUltimosEstudiosClinicos(jwt.getSubject(), pacienteId, limite));
+            @RequestParam(defaultValue = "5") int limite) {
+        return ResponseEntity
+                .ok(atencionMedicoService.obtenerUltimosEstudiosClinicos(jwt.getSubject(), pacienteId, limite));
     }
 
     @GetMapping("/api/medico/pacientes/{pacienteId}/historial-clinico/{estudioId}/archivo")
     public ResponseEntity<byte[]> descargarArchivoEstudioClinico(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable Long pacienteId,
-            @PathVariable Long estudioId
-    ){
+            @PathVariable Long estudioId) {
 
         // 1. Delegar la lógica de negocio y descarga al servicio
         byte[] archivoBytes = atencionMedicoService.descargarArchivo(jwt.getSubject(), pacienteId, estudioId);
@@ -130,10 +128,12 @@ public class MedicoController {
         // 2. Configurar las cabeceras HTTP de la respuesta
         HttpHeaders headers = new HttpHeaders();
 
-        // 'attachment' permite la descarga automática del archivo (ej. PDFs o imágenes).
+        // 'attachment' permite la descarga automática del archivo (ej. PDFs o
+        // imágenes).
         headers.add(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"estudio_medico_" + estudioId + "\"");
 
-        // Define el tipo de contenido. APPLICATION_OCTET_STREAM es un genérico de bytes binarios.
+        // Define el tipo de contenido. APPLICATION_OCTET_STREAM es un genérico de bytes
+        // binarios.
         headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
 
         // 3. Retornar la respuesta con los bytes, las cabeceras y el estado HTTP 200 OK
@@ -189,4 +189,3 @@ public class MedicoController {
         return ResponseEntity.ok(atencionMedicoService.finalizarConsulta(jwt.getSubject(), sesionId, consultaId));
     }
 }
-
