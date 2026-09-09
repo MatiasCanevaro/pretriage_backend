@@ -1,5 +1,6 @@
 package com.pretriage.backend.services;
 
+import com.pretriage.backend.controllers.dtos.SolicitarTokenCambioContraseniaResponse;
 import com.pretriage.backend.exceptions.LimiteSolicitudesCambioContraseniaException;
 import com.pretriage.backend.exceptions.NoSePudoCambiarContraseniaException;
 import com.pretriage.backend.exceptions.TokenCambioContraseniaInvalidoException;
@@ -22,6 +23,7 @@ import org.springframework.web.client.RestClientResponseException;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -67,14 +69,18 @@ public class CambioContraseniaService {
     // --- API pública según diagrama ---
 
     @Transactional
-    public String obtenerTokenCambioContraseña(String email) {
+    public SolicitarTokenCambioContraseniaResponse obtenerTokenCambioContraseña(String email) {
+        SolicitarTokenCambioContraseniaResponse dtoResponse = new SolicitarTokenCambioContraseniaResponse();
+        dtoResponse.setTiempoExpiracion(LocalTime.of(0, (int) expiracionMinutos));
+        // Privacidad: siempre devolver mensaje genérico para no enumerar usuarios
+        dtoResponse.setMensaje(MENSAJE_GENERICO);
+
         String emailNormalizado = normalizarEmail(email);
         Optional<UsuarioAuth> usuarioOpt = repoUsuariosAuth.findByCorreoElectronicoIgnoreCase(emailNormalizado);
 
-        // Privacidad: siempre devolver mensaje genérico para no enumerar usuarios
         if (usuarioOpt.isEmpty()) {
             log.info("Solicitud de token para email no existente: {}", emailNormalizado);
-            return MENSAJE_GENERICO;
+            return dtoResponse;
         }
 
         UsuarioAuth usuario = usuarioOpt.get();
@@ -101,7 +107,7 @@ public class CambioContraseniaService {
             log.error("Error al enviar email de restablecimiento a {}", emailNormalizado, e);
         }
 
-        return MENSAJE_GENERICO;
+        return dtoResponse;
     }
 
     @Transactional(readOnly = true)

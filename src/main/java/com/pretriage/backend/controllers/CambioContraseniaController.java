@@ -2,6 +2,7 @@ package com.pretriage.backend.controllers;
 
 import com.pretriage.backend.controllers.dtos.CambiarContraseniaRequest;
 import com.pretriage.backend.controllers.dtos.SolicitarTokenCambioContraseniaRequest;
+import com.pretriage.backend.controllers.dtos.SolicitarTokenCambioContraseniaResponse;
 import com.pretriage.backend.services.CambioContraseniaService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -18,11 +19,11 @@ public class CambioContraseniaController {
     private final CambioContraseniaService cambioContraseniaService;
 
     @PostMapping("/solicitar-token")
-    public ResponseEntity<Map<String, String>> solicitarToken(
+    public ResponseEntity<SolicitarTokenCambioContraseniaResponse> solicitarToken(
             @Valid @RequestBody SolicitarTokenCambioContraseniaRequest request) {
 
-        String mensaje = cambioContraseniaService.obtenerTokenCambioContraseña(request.getEmail());
-        return ResponseEntity.ok(Map.of("message", mensaje));
+        return ResponseEntity.ok(
+                cambioContraseniaService.obtenerTokenCambioContraseña(request.getEmail()));
     }
 
     @GetMapping("/validar")
