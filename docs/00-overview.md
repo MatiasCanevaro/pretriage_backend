@@ -10,14 +10,14 @@ The current focus is first attention only. The system does not model referral, d
 
 - Patient: selects specialty and hospital, completes AI triage, enters queue, checks state and estimated attention time.
 - Doctor: starts an attention session at an assigned hospital/specialty/room, calls patients, marks absences, pauses or closes the session.
-- Hospital admin: manages scoped staff memberships and invitations, and hospital configuration (enabled specialties and rooms). Assignment administration remains incremental.
+- Hospital admin: manages scoped staff memberships and invitations, and hospital configuration (enabled specialties, sectors and rooms). Assignment administration remains incremental.
 - AI triage bot: collects symptoms and produces structured triage output used to assign priority.
 
 ## Core Modules
 
 - Authentication: Auth0 login/register integration with refresh-token rotation via `POST /api/renovar` (`AuthController.renovar`, `AuthService.renovarTokenUsuario`, `RefreshTokenRequest`/`LoginResponseDTO`, `RefreshTokenInvalidoException` -> `401`; `offline_access` scope; public endpoint in `SpringSecurityConfig`). Password reset is supported via token flow (`CambioContraseniaService`, `CambioContraseniaToken`, `TokenService`, `PasswordResetEmailPort`; public `POST /api/auth/cambio-contrasenia/solicitar-token`, `GET /api/auth/cambio-contrasenia/validar?token=`, `POST /api/auth/cambio-contrasenia`; generic `200` response for privacy, configurable expiry/limit, `INVALIDADO` for superseded tokens, Auth0 `PATCH /api/v2/users/{id}` + best-effort grant revocation).
 - Hospital selection: filters hospitals by selected specialty and distance; can order/filter by estimated attention time and shows only hospitals available for attention (with active doctors), displaying the estimated wait alongside each hospital.
-- Medical specialties: represented by `EspecialidadMedica`.
+- Medical specialties and sectors: `EspecialidadMedica` and `Sector` (`Sector` groups rooms per hospital+specialty, multiple sectors per specialty, `POST /api/admin/hospitales/{hospitalId}/configuracion/sectores`, included in `GET /configuracion`).
 - AI triage chat: creates a chat, stores patient and bot messages, stores structured triage JSON.
 - Queue management: uses `EntradaCola` as queue state per hospital/specialty.
 - Doctor attention: uses SesionAtencionMedica, rooms, assignments, and historical AtencionMedica records.

@@ -66,7 +66,9 @@ catalog of symptom names identified during triage.
 
 `Hospital` has many specialties. A patient can select only hospitals that support the chosen specialty.
 
-`Sala` belongs to a hospital and specialty. A room can be used by one doctor session at a time.
+`Sector` groups rooms within a hospital for a single specialty. Important fields: `nombre` (unique per hospital, case-insensitive, `@Size(max=100)` trimmed), `hospital` (`ManyToOne`), `especialidad` (`ManyToOne`), `salas` (`OneToMany(mappedBy=sector)`). A specialty can have multiple sectors in the same hospital (e.g., “Clínica Médica – Ala Norte/Sur”). Sectors are managed by `ADMIN_HOSPITAL` via `HospitalConfigurationService.crearSector` (`POST /api/admin/hospitales/{hospitalId}/configuracion/sectores`) and listed in `GET /configuracion` (`ConfiguracionHospitalResponse.sectores`, `SectorHospitalResponse`). Creation requires the specialty to be enabled for the hospital and audits `SECTOR_CREADO`. Future assignment (`AsignacionSectorService`, `GestorDeCola(sector)`, `ConsultaMedica.sector`) is out of scope for this increment.
+
+`Sala` belongs to a hospital and specialty and may belong to a `Sector` (`Sala.sector` nullable `ManyToOne`). A room can be used by one doctor session at a time.
 
 ## Health Insurance Credentials
 

@@ -48,4 +48,11 @@ public class HospitalConfigurationController {
             @PathVariable Long salaId, @Valid @RequestBody ActualizarEstadoSalaRequest request) {
         return service.actualizarEstadoSala(jwt.getSubject(), hospitalId, salaId, request);
     }
+
+    @PostMapping("/sectores")
+    public SectorHospitalResponse crearSector(@AuthenticationPrincipal Jwt jwt, @PathVariable Long hospitalId,
+            @Valid @RequestBody GuardarSectorRequest request) {
+        return service.crearSector(jwt.getSubject(), hospitalId, request);
+    }
+
 }

@@ -53,8 +53,11 @@ The system manages the first medical attention workflow:
 - `HospitalController`
 - `Hospital`
 - `EspecialidadMedica`
+- `Sector` (`hospital`+`especialidad` grouping, multiple per specialty, `HospitalConfigurationService.crearSector`/`RepoSectores`, `SectorHospitalResponse`/`GuardarSectorRequest`, listed in `GET /configuracion`)
 - `RepoHospitales`
 - `RepoEspecialidadesMedicas`
+- `RepoSectores`
+- `HospitalConfigurationController`/`HospitalConfigurationService` (`GET /configuracion` returns `especialidades`+`salas`+`sectores`, `POST /sectores`)
 
 ### Queue And Estimation
 

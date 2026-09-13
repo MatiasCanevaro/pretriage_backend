@@ -39,6 +39,7 @@ python scripts\generate_domain_diagram.py
 - `Recepcionista`: `src/main/java/com/pretriage/backend/model/personas/Recepcionista.java`
 - `RevisionPrioridadConsulta`: `src/main/java/com/pretriage/backend/model/consultas/RevisionPrioridadConsulta.java`
 - `Sala`: `src/main/java/com/pretriage/backend/model/hospitales/Sala.java`
+- `Sector`: `src/main/java/com/pretriage/backend/model/hospitales/Sector.java`
 - `SesionAtencionMedica`: `src/main/java/com/pretriage/backend/model/consultas/SesionAtencionMedica.java`
 - `SesionRecepcion`: `src/main/java/com/pretriage/backend/model/recepcion/SesionRecepcion.java`
 - `Sintoma`: `src/main/java/com/pretriage/backend/model/consultas/Sintoma.java`
@@ -192,6 +193,10 @@ erDiagram
         String nombre
         boolean activa
     }
+    SECTOR {
+        Long id
+        String nombre
+    }
     ASIGNACION_MEDICO_HOSPITAL {
         Long id
     }
@@ -283,6 +288,7 @@ erDiagram
     GESTOR_DE_COLA }o--|| ESPECIALIDAD_MEDICA : especialidad
     GESTOR_DE_COLA ||--o{ CONSULTA_MEDICA : consultasEnEspera
     GESTOR_DE_COLA ||--o{ ENTRADA_COLA : entradas
+    GESTOR_DE_COLA ||--|| SECTOR : sector
     REVISION_PRIORIDAD_CONSULTA }o--|| CONSULTA_MEDICA : consultaMedica
     REVISION_PRIORIDAD_CONSULTA }o--|| MEDICO : medico
     SESION_ATENCION_MEDICA }o--|| MEDICO : medico
@@ -296,8 +302,13 @@ erDiagram
     HOSPITAL ||--o{ SALA : salas
     HOSPITAL ||--|| DIRECCION : direccion
     OBRA_SOCIAL ||--o{ CREDENCIAL : credenciales
+    SALA }o--|| SECTOR : sector
     SALA }o--|| HOSPITAL : hospital
     SALA }o--|| ESPECIALIDAD_MEDICA : especialidad
+    SECTOR }o--|| HOSPITAL : hospital
+    SECTOR ||--o{ SALA : salas
+    SECTOR }o--|| ESPECIALIDAD_MEDICA : especialidad
+    SECTOR ||--o{ PACIENTE : pacientesAsignados
     ASIGNACION_MEDICO_HOSPITAL }o--|| MEDICO : medico
     ASIGNACION_MEDICO_HOSPITAL }o--|| HOSPITAL : hospital
     ASIGNACION_MEDICO_HOSPITAL }o--|| ESPECIALIDAD_MEDICA : especialidad

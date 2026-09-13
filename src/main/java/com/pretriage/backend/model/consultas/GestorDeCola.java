@@ -1,29 +1,26 @@
 package com.pretriage.backend.model.consultas;
 
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Optional;
 
 import com.pretriage.backend.model.hospitales.EspecialidadMedica;
 import com.pretriage.backend.model.hospitales.Hospital;
+import com.pretriage.backend.model.hospitales.Sector;
 
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
-import org.springframework.beans.factory.annotation.Value;
 
 @Getter
 @Setter
 @Entity
-@Table(uniqueConstraints = @UniqueConstraint(columnNames = {"id_hospital", "id_especialidad_medica"}))
+@Table(uniqueConstraints = @UniqueConstraint(columnNames = { "id_hospital", "id_especialidad_medica" }))
 public class GestorDeCola {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
 
     @ManyToOne
     @JoinColumn(name = "id_hospital", referencedColumnName = "id")
@@ -40,12 +37,14 @@ public class GestorDeCola {
     @OneToMany(mappedBy = "gestorDeCola")
     private List<EntradaCola> entradas;
 
+    @OneToOne
+    @JoinColumn(name = "id_sector", referencedColumnName = "id")
+    private Sector sector;
 
-    public GestorDeCola (){
+    public GestorDeCola() {
         this.consultasEnEspera = new ArrayList<>();
         this.entradas = new ArrayList<>();
     }
-
 
     private void reordenarColaPorPrioridad() {
 
@@ -54,12 +53,9 @@ public class GestorDeCola {
         this.consultasEnEspera.sort(
                 Comparator
                         .comparingInt(
-                                (ConsultaMedica consulta) ->
-                                        obtenerPrioridad(consulta.getNivelDeGravedadBot())
-                        )
+                                (ConsultaMedica consulta) -> obtenerPrioridad(consulta.getNivelDeGravedadBot()))
                         .reversed()
-                        .thenComparing(ConsultaMedica::getFechaHoraCreacion)
-        );
+                        .thenComparing(ConsultaMedica::getFechaHoraCreacion));
     }
 
     public int obtenerPrioridad(NivelDeGravedad nivel) {
@@ -83,9 +79,9 @@ public class GestorDeCola {
         reordenarColaPorPrioridad();
     }
 
-    private void eliminarAtendidosDeLaCola(){
-        this.consultasEnEspera.removeIf(consultaMedica ->
-                consultaMedica.getEstadoConsulta().equals(EstadoConsulta.FINALIZADA)
+    private void eliminarAtendidosDeLaCola() {
+        this.consultasEnEspera
+                .removeIf(consultaMedica -> consultaMedica.getEstadoConsulta().equals(EstadoConsulta.FINALIZADA)
                         || consultaMedica.getEstadoConsulta().equals(EstadoConsulta.CANCELADA));
     }
 }

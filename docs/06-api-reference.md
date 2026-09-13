@@ -770,7 +770,19 @@ All operations are scoped to the hospital in the URL and require an active
 GET /api/admin/hospitales/{hospitalId}/configuracion
 ```
 
-Returns the hospital's enabled specialties and rooms.
+Returns the hospital's enabled specialties, rooms and sectors. Response is `ConfiguracionHospitalResponse` with `especialidades`, `salas` and `sectores` (`SectorHospitalResponse` list, ordered by `nombre` ASC).
+
+Example `sectores` item:
+
+```json
+{
+  "id": 10,
+  "nombre": "Sector Rojo",
+  "especialidadId": 1,
+  "especialidadCodigo": "CLINICA_MEDICA",
+  "especialidadNombre": "Clínica médica"
+}
+```
 
 ### Enable or Disable Specialty
 
@@ -813,5 +825,36 @@ Body:
 ```json
 {
   "activa": false
+}
+```
+
+### Create Sector
+
+```http
+POST /api/admin/hospitales/{hospitalId}/configuracion/sectores
+```
+
+Hospital admin only (`ADMIN_HOSPITAL` via `StaffAccessService.exigirAdminHospital`). Creates a sector that groups rooms of a single specialty. The specialty must already be enabled for the hospital; otherwise `409`.
+
+Body (`GuardarSectorRequest`):
+
+```json
+{
+  "nombre": "Sector Rojo",
+  "especialidadId": 1
+}
+```
+
+Validation: `nombre` `@NotBlank @Size(max=100)` (trimmed before uniqueness check), `especialidadId` `@NotNull` -> `400` with field map on violation. Uniqueness is `hospitalId + nombre` case-insensitive (`RepoSectores.existsByHospitalIdAndNombreIgnoreCase`) -> `409 { "error": "Ya existe un sector con ese nombre en el hospital" }`. `404` if hospital or specialty not found. Audits `SECTOR_CREADO` via `AuditoriaHospital`.
+
+Success `200` (`SectorHospitalResponse`):
+
+```json
+{
+  "id": 10,
+  "nombre": "Sector Rojo",
+  "especialidadId": 1,
+  "especialidadCodigo": "CLINICA_MEDICA",
+  "especialidadNombre": "Clínica médica"
 }
 ```

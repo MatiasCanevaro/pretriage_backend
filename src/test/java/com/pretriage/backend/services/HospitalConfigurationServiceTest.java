@@ -1,15 +1,18 @@
 package com.pretriage.backend.services;
 
 import com.pretriage.backend.controllers.dtos.acceso.HospitalConfigurationDtos.GuardarSalaRequest;
+import com.pretriage.backend.controllers.dtos.acceso.HospitalConfigurationDtos.GuardarSectorRequest;
 import com.pretriage.backend.exceptions.ConflictoDeEstadoException;
 import com.pretriage.backend.model.hospitales.EspecialidadMedica;
 import com.pretriage.backend.model.hospitales.Hospital;
 import com.pretriage.backend.model.hospitales.Sala;
+import com.pretriage.backend.model.hospitales.Sector;
 import com.pretriage.backend.model.personas.UsuarioAuth;
 import com.pretriage.backend.repositories.RepoAuditoriasHospital;
 import com.pretriage.backend.repositories.RepoEspecialidadesMedicas;
 import com.pretriage.backend.repositories.RepoHospitales;
 import com.pretriage.backend.repositories.RepoSalas;
+import com.pretriage.backend.repositories.RepoSectores;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,6 +31,7 @@ class HospitalConfigurationServiceTest {
     @Mock RepoHospitales hospitales;
     @Mock RepoEspecialidadesMedicas especialidades;
     @Mock RepoSalas salas;
+    @Mock RepoSectores sectores;
     @Mock RepoAuditoriasHospital auditorias;
 
     private HospitalConfigurationService service;
@@ -37,7 +41,7 @@ class HospitalConfigurationServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new HospitalConfigurationService(staffAccessService, hospitales, especialidades, salas, auditorias);
+        service = new HospitalConfigurationService(staffAccessService, hospitales, especialidades, salas, sectores, auditorias);
         hospital = new Hospital();
         hospital.setId(7L);
         hospital.setNombre("Hospital Escuela");
@@ -82,5 +86,69 @@ class HospitalConfigurationServiceTest {
 
         assertEquals("Desactivá las salas de la especialidad antes de quitarla del hospital", error.getMessage());
         verify(hospitales, never()).save(any());
+    }
+
+    @Test
+    void creaUnSectorParaUnaEspecialidadHabilitada() {
+        when(sectores.existsByHospitalIdAndNombreIgnoreCase(hospital.getId(), "Sector Norte")).thenReturn(false);
+        when(sectores.save(any(Sector.class))).thenAnswer(invocation -> {
+            Sector sector = invocation.getArgument(0);
+            sector.setId(22L);
+            return sector;
+        });
+
+        var response = service.crearSector(actor.getId(), hospital.getId(),
+                new GuardarSectorRequest(" Sector Norte ", especialidad.getId()));
+
+        assertEquals(22L, response.id());
+        assertEquals("Sector Norte", response.nombre());
+        assertEquals(especialidad.getId(), response.especialidadId());
+        assertEquals(especialidad.getCodigo(), response.especialidadCodigo());
+        assertEquals(especialidad.getNombre(), response.especialidadNombre());
+        verify(auditorias).save(any());
+    }
+
+    @Test
+    void noCreaSectorSiNombreDuplicadoEnHospital() {
+        when(sectores.existsByHospitalIdAndNombreIgnoreCase(hospital.getId(), "Sector Norte")).thenReturn(true);
+
+        ConflictoDeEstadoException error = assertThrows(ConflictoDeEstadoException.class,
+                () -> service.crearSector(actor.getId(), hospital.getId(),
+                        new GuardarSectorRequest("Sector Norte", especialidad.getId())));
+
+        assertEquals("Ya existe un sector con ese nombre en el hospital", error.getMessage());
+        verify(sectores, never()).save(any());
+    }
+
+    @Test
+    void noCreaSectorSiEspecialidadNoHabilitadaEnHospital() {
+        EspecialidadMedica otra = new EspecialidadMedica();
+        otra.setId(99L);
+        otra.setCodigo("TRAUMATOLOGIA");
+        otra.setNombre("Traumatología");
+
+        ConflictoDeEstadoException error = assertThrows(ConflictoDeEstadoException.class,
+                () -> service.crearSector(actor.getId(), hospital.getId(),
+                        new GuardarSectorRequest("Sector Sur", otra.getId())));
+
+        assertEquals("La especialidad no está habilitada en el hospital", error.getMessage());
+        verify(sectores, never()).save(any());
+    }
+
+    @Test
+    void obtenerIncluyeSectoresOrdenadosPorNombre() {
+        Sector sector = new Sector();
+        sector.setId(5L);
+        sector.setNombre("Sector A");
+        sector.setHospital(hospital);
+        sector.setEspecialidad(especialidad);
+        when(especialidades.findAll()).thenReturn(java.util.List.of(especialidad));
+        when(salas.findByHospitalIdOrderByNombreAsc(hospital.getId())).thenReturn(java.util.List.of());
+        when(sectores.findByHospitalIdOrderByNombreAsc(hospital.getId())).thenReturn(java.util.List.of(sector));
+
+        var configuracion = service.obtener(actor.getId(), hospital.getId());
+
+        assertEquals(1, configuracion.sectores().size());
+        assertEquals("Sector A", configuracion.sectores().get(0).nombre());
     }
 }

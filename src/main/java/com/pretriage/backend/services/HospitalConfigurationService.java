@@ -7,11 +7,13 @@ import com.pretriage.backend.model.acceso.AuditoriaHospital;
 import com.pretriage.backend.model.hospitales.EspecialidadMedica;
 import com.pretriage.backend.model.hospitales.Hospital;
 import com.pretriage.backend.model.hospitales.Sala;
+import com.pretriage.backend.model.hospitales.Sector;
 import com.pretriage.backend.model.personas.UsuarioAuth;
 import com.pretriage.backend.repositories.RepoAuditoriasHospital;
 import com.pretriage.backend.repositories.RepoEspecialidadesMedicas;
 import com.pretriage.backend.repositories.RepoHospitales;
 import com.pretriage.backend.repositories.RepoSalas;
+import com.pretriage.backend.repositories.RepoSectores;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +31,7 @@ public class HospitalConfigurationService {
     private final RepoHospitales hospitales;
     private final RepoEspecialidadesMedicas especialidades;
     private final RepoSalas salas;
+    private final RepoSectores sectores;
     private final RepoAuditoriasHospital auditorias;
 
     @Transactional(readOnly = true)
@@ -45,7 +48,10 @@ public class HospitalConfigurationService {
         List<SalaHospitalResponse> salasHospital = salas.findByHospitalIdOrderByNombreAsc(hospitalId).stream()
                 .map(this::aSalaResponse)
                 .toList();
-        return new ConfiguracionHospitalResponse(catalogo, salasHospital);
+        List<SectorHospitalResponse> sectoresHospital = sectores.findByHospitalIdOrderByNombreAsc(hospitalId).stream()
+                .map(this::aSectorResponse)
+                .toList();
+        return new ConfiguracionHospitalResponse(catalogo, salasHospital, sectoresHospital);
     }
 
     @Transactional
@@ -53,27 +59,32 @@ public class HospitalConfigurationService {
         UsuarioAuth actor = staffAccessService.exigirAdminHospital(subject, hospitalId);
         Hospital hospital = hospital(hospitalId);
         EspecialidadMedica especialidad = especialidad(especialidadId);
-        boolean yaHabilitada = hospital.getEspecialidades().stream().anyMatch(item -> item.getId().equals(especialidadId));
+        boolean yaHabilitada = hospital.getEspecialidades().stream()
+                .anyMatch(item -> item.getId().equals(especialidadId));
         if (!yaHabilitada) {
             hospital.getEspecialidades().add(especialidad);
             hospitales.save(hospital);
-            auditar(hospital, actor, "ESPECIALIDAD_HABILITADA", "especialidad:" + especialidadId, especialidad.getNombre());
+            auditar(hospital, actor, "ESPECIALIDAD_HABILITADA", "especialidad:" + especialidadId,
+                    especialidad.getNombre());
         }
         return obtener(subject, hospitalId);
     }
 
     @Transactional
-    public ConfiguracionHospitalResponse deshabilitarEspecialidad(String subject, Long hospitalId, Long especialidadId) {
+    public ConfiguracionHospitalResponse deshabilitarEspecialidad(String subject, Long hospitalId,
+            Long especialidadId) {
         UsuarioAuth actor = staffAccessService.exigirAdminHospital(subject, hospitalId);
         Hospital hospital = hospital(hospitalId);
         EspecialidadMedica especialidad = especialidad(especialidadId);
         if (salas.existsByHospitalIdAndEspecialidadIdAndActivaTrue(hospitalId, especialidadId)) {
-            throw new ConflictoDeEstadoException("Desactivá las salas de la especialidad antes de quitarla del hospital");
+            throw new ConflictoDeEstadoException(
+                    "Desactivá las salas de la especialidad antes de quitarla del hospital");
         }
         boolean removida = hospital.getEspecialidades().removeIf(item -> item.getId().equals(especialidadId));
         if (removida) {
             hospitales.save(hospital);
-            auditar(hospital, actor, "ESPECIALIDAD_DESHABILITADA", "especialidad:" + especialidadId, especialidad.getNombre());
+            auditar(hospital, actor, "ESPECIALIDAD_DESHABILITADA", "especialidad:" + especialidadId,
+                    especialidad.getNombre());
         }
         return obtener(subject, hospitalId);
     }
@@ -98,7 +109,8 @@ public class HospitalConfigurationService {
     }
 
     @Transactional
-    public SalaHospitalResponse actualizarSala(String subject, Long hospitalId, Long salaId, GuardarSalaRequest request) {
+    public SalaHospitalResponse actualizarSala(String subject, Long hospitalId, Long salaId,
+            GuardarSalaRequest request) {
         UsuarioAuth actor = staffAccessService.exigirAdminHospital(subject, hospitalId);
         Hospital hospital = hospital(hospitalId);
         Sala sala = sala(hospitalId, salaId);
@@ -116,16 +128,36 @@ public class HospitalConfigurationService {
 
     @Transactional
     public SalaHospitalResponse actualizarEstadoSala(String subject, Long hospitalId, Long salaId,
-                                                       ActualizarEstadoSalaRequest request) {
+            ActualizarEstadoSalaRequest request) {
         UsuarioAuth actor = staffAccessService.exigirAdminHospital(subject, hospitalId);
         Hospital hospital = hospital(hospitalId);
         Sala sala = sala(hospitalId, salaId);
-        if (request.activa()) especialidadHabilitada(hospital, sala.getEspecialidad().getId());
+        if (request.activa())
+            especialidadHabilitada(hospital, sala.getEspecialidad().getId());
         sala.setActiva(request.activa());
         sala = salas.save(sala);
         auditar(hospital, actor, request.activa() ? "SALA_ACTIVADA" : "SALA_DESACTIVADA",
                 "sala:" + salaId, sala.getNombre());
         return aSalaResponse(sala);
+    }
+
+    @Transactional
+    public SectorHospitalResponse crearSector(String subject, Long hospitalId, GuardarSectorRequest request) {
+        UsuarioAuth actor = staffAccessService.exigirAdminHospital(subject, hospitalId);
+        Hospital hospital = hospital(hospitalId);
+        EspecialidadMedica especialidad = especialidadHabilitada(hospital, request.especialidadId());
+        String nombre = request.nombre().trim();
+        if (sectores.existsByHospitalIdAndNombreIgnoreCase(hospitalId, nombre)) {
+            throw new ConflictoDeEstadoException("Ya existe un sector con ese nombre en el hospital");
+        }
+        Sector sector = new Sector();
+        sector.setNombre(nombre);
+        sector.setHospital(hospital);
+        sector.setEspecialidad(especialidad);
+        sector = sectores.save(sector);
+        auditar(hospital, actor, "SECTOR_CREADO", "sector:" + sector.getId(),
+                nombre + " · " + especialidad.getNombre());
+        return aSectorResponse(sector);
     }
 
     private Hospital hospital(Long id) {
@@ -150,6 +182,11 @@ public class HospitalConfigurationService {
     private SalaHospitalResponse aSalaResponse(Sala sala) {
         return new SalaHospitalResponse(sala.getId(), sala.getNombre(), sala.isActiva(), sala.getEspecialidad().getId(),
                 sala.getEspecialidad().getCodigo(), sala.getEspecialidad().getNombre());
+    }
+
+    private SectorHospitalResponse aSectorResponse(Sector sector) {
+        return new SectorHospitalResponse(sector.getId(), sector.getNombre(), sector.getEspecialidad().getId(),
+                sector.getEspecialidad().getCodigo(), sector.getEspecialidad().getNombre());
     }
 
     private void auditar(Hospital hospital, UsuarioAuth actor, String accion, String objetivo, String resultado) {

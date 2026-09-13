@@ -18,11 +18,20 @@ public final class HospitalConfigurationDtos {
 
     public record ConfiguracionHospitalResponse(
             List<EspecialidadHospitalResponse> especialidades,
-            List<SalaHospitalResponse> salas) {}
+            List<SalaHospitalResponse> salas,
+            List<SectorHospitalResponse> sectores) {}
 
     public record GuardarSalaRequest(
             @NotBlank @Size(max = 100) String nombre,
             @NotNull Long especialidadId) {}
 
     public record ActualizarEstadoSalaRequest(@NotNull Boolean activa) {}
+
+    public record SectorHospitalResponse(
+            Long id, String nombre, Long especialidadId,
+            String especialidadCodigo, String especialidadNombre) {}
+
+    public record GuardarSectorRequest(
+            @NotBlank @Size(max = 100) String nombre,
+            @NotNull Long especialidadId) {}
 }
