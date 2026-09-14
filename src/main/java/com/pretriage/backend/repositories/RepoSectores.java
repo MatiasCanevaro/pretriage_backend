@@ -12,6 +12,8 @@ public interface RepoSectores extends JpaRepository<Sector, Long> {
 
     boolean existsByHospitalIdAndNombreIgnoreCase(Long hospitalId, String nombre);
 
+    boolean existsByHospitalIdAndNombreIgnoreCaseAndIdNot(Long hospitalId, String nombre, Long idNot);
+
     List<Sector> findByHospitalIdOrderByNombreAsc(Long hospitalId);
 
     Optional<Sector> findByIdAndHospitalId(Long id, Long hospitalId);

@@ -53,11 +53,11 @@ The system manages the first medical attention workflow:
 - `HospitalController`
 - `Hospital`
 - `EspecialidadMedica`
-- `Sector` (`hospital`+`especialidad` grouping, multiple per specialty, `HospitalConfigurationService.crearSector`/`RepoSectores`, `SectorHospitalResponse`/`GuardarSectorRequest`, listed in `GET /configuracion`)
+- `Sector` (`hospital`+`especialidad` grouping, `activa` default `true`, multiple per specialty, `HospitalConfigurationService.crearSector`/`actualizarSector`/`eliminarSector` + `RepoSectores/RepoSalas/RepoConsultasMedicas/RepoSesionesAtencionMedica` checks `existsBySalaIdIn...`, `SectorHospitalResponse`/`GuardarSectorRequest`/`ActualizarSectorRequest`, listed in `GET /configuracion`, `PUT`/`DELETE` blocked if `Sala` has non-terminal `ConsultaMedica` or `ACTIVA/PAUSADA` session)
 - `RepoHospitales`
 - `RepoEspecialidadesMedicas`
 - `RepoSectores`
-- `HospitalConfigurationController`/`HospitalConfigurationService` (`GET /configuracion` returns `especialidades`+`salas`+`sectores`, `POST /sectores`)
+- `HospitalConfigurationController`/`HospitalConfigurationService` (`GET /configuracion` returns `especialidades`+`salas`+`sectores`, `POST /sectores`, `PUT /sectores/{sectorId}`, `DELETE /sectores/{sectorId}` → `204`)
 
 ### Queue And Estimation
 

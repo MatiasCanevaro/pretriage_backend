@@ -853,8 +853,45 @@ Success `200` (`SectorHospitalResponse`):
 {
   "id": 10,
   "nombre": "Sector Rojo",
+  "activa": true,
   "especialidadId": 1,
   "especialidadCodigo": "CLINICA_MEDICA",
   "especialidadNombre": "Clínica médica"
 }
 ```
+
+### Update Sector
+
+```http
+PUT /api/admin/hospitales/{hospitalId}/configuracion/sectores/{sectorId}
+```
+
+Hospital admin only. Updates `nombre`, `especialidad` and `activa`. Specialty must be enabled for the hospital. Name uniqueness is `hospitalId + nombre` case-insensitive excluding self (`RepoSectores.existsByHospitalIdAndNombreIgnoreCaseAndIdNot`) -> `409`. Trimmed before check.
+
+Body (`ActualizarSectorRequest`):
+
+```json
+{
+  "nombre": "Sector Rojo - Ala Norte",
+  "especialidadId": 1,
+  "activa": true
+}
+```
+
+Validation: `nombre` `@NotBlank @Size(max=100)`, `especialidadId` `@NotNull`, `activa` `@NotNull` -> `400`. `404` if hospital/sector/specialty not found or sector does not belong to hospital (`findByIdAndHospitalId`). If any `Sala` of the sector has `ConsultaMedica` with `estadoConsulta NOT IN (FINALIZADA,CANCELADA)` (`RepoConsultasMedicas.existsBySalaIdInAndEstadoConsultaNotIn`) -> `409 { "error": "No se puede modificar/eliminar un sector con salas que aún tienen pacientes asignados" }`. Audits `SECTOR_ACTUALIZADO`.
+
+Success `200` (`SectorHospitalResponse` with updated `activa`).
+
+### Delete Sector
+
+```http
+DELETE /api/admin/hospitales/{hospitalId}/configuracion/sectores/{sectorId}
+```
+
+Hospital admin only. Returns `204 No Content` on success.
+
+Blocking rules (both checked, `409` if violated):
+* Same patient check as `PUT`: if any `Sala` of the sector has patients (`existsBySalaIdInAndEstadoConsultaNotIn`) -> `409` same message.
+* If any `Sala` of the sector has `SesionAtencionMedica` with `estado IN (ACTIVA, PAUSADA)` (`RepoSesionesAtencionMedica.existsBySalaIdInAndEstadoIn`) -> `409 { "error": "No se puede eliminar un sector con sesiones de atención activas o pausadas" }`.
+
+If sector has empty salas (no patients/sessions), `DELETE` desvincula salas (`sala.setSector(null)`) and deletes sector. `404` if sector not in hospital. Audits `SECTOR_ELIMINADO`.

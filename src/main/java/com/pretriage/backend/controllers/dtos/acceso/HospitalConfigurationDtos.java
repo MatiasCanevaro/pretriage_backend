@@ -28,10 +28,15 @@ public final class HospitalConfigurationDtos {
     public record ActualizarEstadoSalaRequest(@NotNull Boolean activa) {}
 
     public record SectorHospitalResponse(
-            Long id, String nombre, Long especialidadId,
+            Long id, String nombre, boolean activa, Long especialidadId,
             String especialidadCodigo, String especialidadNombre) {}
 
     public record GuardarSectorRequest(
             @NotBlank @Size(max = 100) String nombre,
             @NotNull Long especialidadId) {}
+
+    public record ActualizarSectorRequest(
+            @NotBlank @Size(max = 100) String nombre,
+            @NotNull Long especialidadId,
+            @NotNull Boolean activa) {}
 }

@@ -26,6 +26,8 @@ public class Sector {
 
     private String nombre;
 
+    private boolean activa = true;
+
     @ManyToOne
     @JoinColumn(name = "id_hospital", referencedColumnName = "id")
     private Hospital hospital;

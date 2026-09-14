@@ -16,4 +16,5 @@ public interface RepoSalas extends JpaRepository<Sala, Long> {
     boolean existsByHospitalIdAndNombreIgnoreCase(Long hospitalId, String nombre);
     boolean existsByHospitalIdAndNombreIgnoreCaseAndIdNot(Long hospitalId, String nombre, Long id);
     boolean existsByHospitalIdAndEspecialidadIdAndActivaTrue(Long hospitalId, Long especialidadId);
+    List<Sala> findBySectorId(Long sectorId);
 }

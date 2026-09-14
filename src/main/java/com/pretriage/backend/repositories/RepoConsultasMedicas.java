@@ -15,5 +15,8 @@ public interface RepoConsultasMedicas extends JpaRepository<ConsultaMedica, Long
 
     Optional<ConsultaMedica> findByPacienteIdAndEstadoConsultaEquals(Long idPaciente, EstadoConsulta estadoConsulta);
 
-    Optional<ConsultaMedica> findFirstByPacienteIdAndEstadoConsultaIn(Long idPaciente, Collection<EstadoConsulta> estadosConsulta);
+    Optional<ConsultaMedica> findFirstByPacienteIdAndEstadoConsultaIn(Long idPaciente,
+            Collection<EstadoConsulta> estadosConsulta);
+
+    boolean existsBySalaIdInAndEstadoConsultaNotIn(Collection<Long> salaIds, Collection<EstadoConsulta> estados);
 }

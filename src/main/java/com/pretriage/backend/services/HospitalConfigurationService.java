@@ -4,16 +4,20 @@ import com.pretriage.backend.controllers.dtos.acceso.HospitalConfigurationDtos.*
 import com.pretriage.backend.exceptions.ConflictoDeEstadoException;
 import com.pretriage.backend.exceptions.RecursoNoEncontradoException;
 import com.pretriage.backend.model.acceso.AuditoriaHospital;
+import com.pretriage.backend.model.consultas.EstadoConsulta;
+import com.pretriage.backend.model.consultas.EstadoSesionMedica;
 import com.pretriage.backend.model.hospitales.EspecialidadMedica;
 import com.pretriage.backend.model.hospitales.Hospital;
 import com.pretriage.backend.model.hospitales.Sala;
 import com.pretriage.backend.model.hospitales.Sector;
 import com.pretriage.backend.model.personas.UsuarioAuth;
 import com.pretriage.backend.repositories.RepoAuditoriasHospital;
+import com.pretriage.backend.repositories.RepoConsultasMedicas;
 import com.pretriage.backend.repositories.RepoEspecialidadesMedicas;
 import com.pretriage.backend.repositories.RepoHospitales;
 import com.pretriage.backend.repositories.RepoSalas;
 import com.pretriage.backend.repositories.RepoSectores;
+import com.pretriage.backend.repositories.RepoSesionesAtencionMedica;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +36,8 @@ public class HospitalConfigurationService {
     private final RepoEspecialidadesMedicas especialidades;
     private final RepoSalas salas;
     private final RepoSectores sectores;
+    private final RepoConsultasMedicas consultasMedicas;
+    private final RepoSesionesAtencionMedica sesionesAtencionMedica;
     private final RepoAuditoriasHospital auditorias;
 
     @Transactional(readOnly = true)
@@ -152,12 +158,50 @@ public class HospitalConfigurationService {
         }
         Sector sector = new Sector();
         sector.setNombre(nombre);
+        sector.setActiva(true);
         sector.setHospital(hospital);
         sector.setEspecialidad(especialidad);
         sector = sectores.save(sector);
         auditar(hospital, actor, "SECTOR_CREADO", "sector:" + sector.getId(),
                 nombre + " · " + especialidad.getNombre());
         return aSectorResponse(sector);
+    }
+
+    @Transactional
+    public SectorHospitalResponse actualizarSector(String subject, Long hospitalId, Long sectorId,
+            ActualizarSectorRequest request) {
+        UsuarioAuth actor = staffAccessService.exigirAdminHospital(subject, hospitalId);
+        Hospital hospital = hospital(hospitalId);
+        Sector sector = sector(hospitalId, sectorId);
+        EspecialidadMedica especialidad = especialidadHabilitada(hospital, request.especialidadId());
+        String nombre = request.nombre().trim();
+        if (sectores.existsByHospitalIdAndNombreIgnoreCaseAndIdNot(hospitalId, nombre, sectorId)) {
+            throw new ConflictoDeEstadoException("Ya existe un sector con ese nombre en el hospital");
+        }
+        validarSectorSinPacientes(sectorId);
+        sector.setNombre(nombre);
+        sector.setEspecialidad(especialidad);
+        sector.setActiva(request.activa());
+        sector = sectores.save(sector);
+        auditar(hospital, actor, "SECTOR_ACTUALIZADO", "sector:" + sectorId,
+                nombre + " · " + especialidad.getNombre() + (sector.isActiva() ? " ACTIVO" : " INACTIVO"));
+        return aSectorResponse(sector);
+    }
+
+    @Transactional
+    public void eliminarSector(String subject, Long hospitalId, Long sectorId) {
+        UsuarioAuth actor = staffAccessService.exigirAdminHospital(subject, hospitalId);
+        Hospital hospital = hospital(hospitalId);
+        Sector sector = sector(hospitalId, sectorId);
+        validarSectorSinPacientes(sectorId);
+        validarSectorSinSesionesActivas(sectorId);
+        List<Sala> salasDelSector = salas.findBySectorId(sectorId);
+        for (Sala sala : salasDelSector) {
+            sala.setSector(null);
+            salas.save(sala);
+        }
+        sectores.delete(sector);
+        auditar(hospital, actor, "SECTOR_ELIMINADO", "sector:" + sectorId, sector.getNombre());
     }
 
     private Hospital hospital(Long id) {
@@ -179,14 +223,42 @@ public class HospitalConfigurationService {
                 .orElseThrow(() -> new RecursoNoEncontradoException("Sala no encontrada"));
     }
 
+    private Sector sector(Long hospitalId, Long sectorId) {
+        return sectores.findByIdAndHospitalId(sectorId, hospitalId)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Sector no encontrado"));
+    }
+
+    private void validarSectorSinPacientes(Long sectorId) {
+        List<Sala> salasDelSector = salas.findBySectorId(sectorId);
+        if (salasDelSector.isEmpty()) return;
+        List<Long> salaIds = salasDelSector.stream().map(Sala::getId).toList();
+        if (consultasMedicas.existsBySalaIdInAndEstadoConsultaNotIn(salaIds,
+                List.of(EstadoConsulta.FINALIZADA, EstadoConsulta.CANCELADA))) {
+            throw new ConflictoDeEstadoException(
+                    "No se puede modificar/eliminar un sector con salas que aún tienen pacientes asignados");
+        }
+    }
+
+    private void validarSectorSinSesionesActivas(Long sectorId) {
+        List<Sala> salasDelSector = salas.findBySectorId(sectorId);
+        if (salasDelSector.isEmpty()) return;
+        List<Long> salaIds = salasDelSector.stream().map(Sala::getId).toList();
+        if (sesionesAtencionMedica.existsBySalaIdInAndEstadoIn(salaIds,
+                List.of(EstadoSesionMedica.ACTIVA, EstadoSesionMedica.PAUSADA))) {
+            throw new ConflictoDeEstadoException(
+                    "No se puede eliminar un sector con sesiones de atención activas o pausadas");
+        }
+    }
+
     private SalaHospitalResponse aSalaResponse(Sala sala) {
         return new SalaHospitalResponse(sala.getId(), sala.getNombre(), sala.isActiva(), sala.getEspecialidad().getId(),
                 sala.getEspecialidad().getCodigo(), sala.getEspecialidad().getNombre());
     }
 
     private SectorHospitalResponse aSectorResponse(Sector sector) {
-        return new SectorHospitalResponse(sector.getId(), sector.getNombre(), sector.getEspecialidad().getId(),
-                sector.getEspecialidad().getCodigo(), sector.getEspecialidad().getNombre());
+        return new SectorHospitalResponse(sector.getId(), sector.getNombre(), sector.isActiva(),
+                sector.getEspecialidad().getId(), sector.getEspecialidad().getCodigo(),
+                sector.getEspecialidad().getNombre());
     }
 
     private void auditar(Hospital hospital, UsuarioAuth actor, String accion, String objetivo, String resultado) {

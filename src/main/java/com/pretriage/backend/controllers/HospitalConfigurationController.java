@@ -4,6 +4,8 @@ import com.pretriage.backend.controllers.dtos.acceso.HospitalConfigurationDtos.*
 import com.pretriage.backend.services.HospitalConfigurationService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
@@ -53,6 +55,19 @@ public class HospitalConfigurationController {
     public SectorHospitalResponse crearSector(@AuthenticationPrincipal Jwt jwt, @PathVariable Long hospitalId,
             @Valid @RequestBody GuardarSectorRequest request) {
         return service.crearSector(jwt.getSubject(), hospitalId, request);
+    }
+
+    @PutMapping("/sectores/{sectorId}")
+    public SectorHospitalResponse actualizarSector(@AuthenticationPrincipal Jwt jwt, @PathVariable Long hospitalId,
+            @PathVariable Long sectorId, @Valid @RequestBody ActualizarSectorRequest request) {
+        return service.actualizarSector(jwt.getSubject(), hospitalId, sectorId, request);
+    }
+
+    @DeleteMapping("/sectores/{sectorId}")
+    public ResponseEntity<Void> eliminarSector(@AuthenticationPrincipal Jwt jwt, @PathVariable Long hospitalId,
+            @PathVariable Long sectorId) {
+        service.eliminarSector(jwt.getSubject(), hospitalId, sectorId);
+        return ResponseEntity.noContent().build();
     }
 
 }

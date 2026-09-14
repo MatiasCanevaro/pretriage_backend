@@ -196,6 +196,7 @@ erDiagram
     SECTOR {
         Long id
         String nombre
+        boolean activa
     }
     ASIGNACION_MEDICO_HOSPITAL {
         Long id
