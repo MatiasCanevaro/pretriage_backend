@@ -14,10 +14,11 @@ Prefer codebase-memory-mcp for code discovery:
 Use grep/rg only for configs, scripts, literals, or when graph results are insufficient.
 
 ## Source Of Truth
-- Queue state: `EntradaCola`.
-- Estimated attention time: `EstimacionAtencionService`.
+- Queue state: `EntradaCola` (per `GestorDeCola` of hospital + specialty + sector).
+- Sector assignment: `AsignacionSectorService` (active sector with fewest `EN_COLA`, ties by name ASC, requires an active room).
+- Estimated attention time: `EstimacionAtencionService` (per-patient scoped to the patient's sector; hospital-ranking estimate is hospital+specialty wide).
 - AI triage structured result: `Chat.resultadoTriageJson`.
-- Doctor active capacity: `SesionAtencionMedica` with `EstadoSesionMedica.ACTIVA`.
+- Doctor active capacity: `SesionAtencionMedica` with `EstadoSesionMedica.ACTIVA` (per hospital+especialidad+sector).
 - Hospital specialty availability: `Hospital.especialidades`.
 - Reception admission: `AdmisionRecepcion` + `SesionRecepcion`; it does not use `Chat`.
 - Shared queue entry for digital and reception flows: `IngresoColaService`.
@@ -25,8 +26,8 @@ Use grep/rg only for configs, scripts, literals, or when graph results are insuf
 ## Domain Rules
 - Patients choose a medical specialty before choosing a hospital.
 - Hospitals are filtered by distance and selected specialty.
-- Queue is per hospital and specialty through `GestorDeCola`.
-- Every active queued consultation should have an `EntradaCola`.
+- Queue is per hospital, specialty and sector through `GestorDeCola`.
+- Every active queued consultation should have an `EntradaCola` and an assigned `ConsultaMedica.sector`.
 - New estimation logic must not use `GestorDeCola.consultasEnEspera`.
 - Only `EntradaCola.EN_COLA` counts for estimated attention time.
 - `EN_ESPERA`, `ATRASADO`, `CANCELADA`, and `FINALIZADA` do not count as waiting queue entries.
@@ -41,7 +42,7 @@ Use grep/rg only for configs, scripts, literals, or when graph results are insuf
 
 ## Verification
 - Compile: `./mvnw.cmd test -DskipTests`
-- Focused estimation tests: `./mvnw.cmd "-Dtest=AtencionHospitalServiceTest,EstimacionAtencionServiceTest" test`
+- Focused estimation tests: `./mvnw.cmd "-Dtest=AtencionHospitalServiceTest,EstimacionAtencionServiceTest,AsignacionSectorServiceTest,IngresoColaServiceTest" test`
 - Full suite needs Docker Desktop access: `./mvnw.cmd test`
 - Real chat E2E: `python scripts/e2e_chat.py --messages-file scripts/chat_case_example.txt`
 

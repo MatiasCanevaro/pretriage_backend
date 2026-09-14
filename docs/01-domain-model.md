@@ -17,6 +17,7 @@ reception-created patients.
 - `nivelDeGravedadBot`
 - `medico`
 - `sala`
+- `sector` (assigned automatically when the patient enters the queue)
 
 Relevant states in `EstadoConsulta`:
 
@@ -66,7 +67,7 @@ catalog of symptom names identified during triage.
 
 `Hospital` has many specialties. A patient can select only hospitals that support the chosen specialty.
 
-`Sector` groups rooms within a hospital for a single specialty. Important fields: `nombre` (unique per hospital, case-insensitive, `@Size(max=100)` trimmed), `activa` (`boolean` default `true`, toggled via `PUT`), `hospital` (`ManyToOne`), `especialidad` (`ManyToOne`), `salas` (`OneToMany(mappedBy=sector)`). A specialty can have multiple sectors in the same hospital (e.g., “Clínica Médica – Ala Norte/Sur”). Sectors are managed by `ADMIN_HOSPITAL` via `HospitalConfigurationService` (`POST /sectores` `crearSector`, `PUT /sectores/{sectorId}` `actualizarSector` with `nombre`+`especialidadId`+`activa`, `DELETE /sectores/{sectorId}` `eliminarSector` → `204`) and listed in `GET /configuracion` (`ConfiguracionHospitalResponse.sectores`, `SectorHospitalResponse` with `activa`). Creation requires the specialty to be enabled for the hospital and audits `SECTOR_CREADO`; update audits `SECTOR_ACTUALIZADO` and delete audits `SECTOR_ELIMINADO` and desvincula empty `Sala`s (`sala.setSector(null)`). `PUT` is blocked with `409` if any `Sala` of the sector has `ConsultaMedica` with `estadoConsulta NOT IN (FINALIZADA,CANCELADA)` (`RepoConsultasMedicas.existsBySalaIdInAndEstadoConsultaNotIn`); `DELETE` additionally blocks if any `Sala` has `SesionAtencionMedica` `ACTIVA`/`PAUSADA` (`RepoSesionesAtencionMedica.existsBySalaIdInAndEstadoIn`). Future assignment (`AsignacionSectorService`, `GestorDeCola(sector)`, `ConsultaMedica.sector`) is out of scope for this increment.
+`Sector` groups rooms within a hospital for a single specialty. Important fields: `nombre` (unique per hospital, case-insensitive, `@Size(max=100)` trimmed), `activa` (`boolean` default `true`, toggled via `PUT`), `hospital` (`ManyToOne`), `especialidad` (`ManyToOne`), `salas` (`OneToMany(mappedBy=sector)`), `pacientesAsignados` (`OneToMany(mappedBy=sector)`). A specialty can have multiple sectors in the same hospital (e.g., “Clínica Médica – Ala Norte/Sur”). Sectors are managed by `ADMIN_HOSPITAL` via `HospitalConfigurationService` (`POST /sectores` `crearSector`, `PUT /sectores/{sectorId}` `actualizarSector` with `nombre`+`especialidadId`+`activa`, `DELETE /sectores/{sectorId}` `eliminarSector` → `204`) and listed in `GET /configuracion` (`ConfiguracionHospitalResponse.sectores`, `SectorHospitalResponse` with `activa`). Creation requires the specialty to be enabled for the hospital and audits `SECTOR_CREADO`; update audits `SECTOR_ACTUALIZADO` and delete audits `SECTOR_ELIMINADO` and desvincula empty `Sala`s (`sala.setSector(null)`). `PUT` is blocked with `409` if any `Sala` of the sector has `ConsultaMedica` with `estadoConsulta NOT IN (FINALIZADA,CANCELADA)` (`RepoConsultasMedicas.existsBySalaIdInAndEstadoConsultaNotIn`); `DELETE` additionally blocks if any `Sala` has `SesionAtencionMedica` `ACTIVA`/`PAUSADA` (`RepoSesionesAtencionMedica.existsBySalaIdInAndEstadoIn`). Consultation/session assignment is performed by `AsignacionSectorService` and stored in `GestorDeCola(sector)` and `ConsultaMedica.sector`.
 
 `Sala` belongs to a hospital, a specialty and a sector (`Sala.sector` `ManyToOne`, assigned at creation). Rooms are managed under `.../configuracion/sectores/{sectorId}/salas` (`POST` `crearSala`, `PUT /salas/{salaId}` `actualizarSala`, `PATCH /salas/{salaId}/estado` `actualizarEstadoSala`); the room's specialty must match the sector's specialty and its name is unique per `hospitalId + sectorId` case-insensitive (`RepoSalas.existsByHospitalIdAndSectorIdAndNombreIgnoreCase` / `existsByHospitalIdAndNombreIgnoreCaseAndSectorIdAndIdNot`). Deshabilitating a specialty is also sector-scoped (`DELETE .../sectores/{sectorId}/especialidades/{especialidadId}`) and blocked with `409` if the specialty has active rooms in that sector (`existsByHospitalIdAndEspecialidadIdAndSectorIdAndActivaTrue`). A room can be used by one doctor session at a time. `SalaHospitalResponse` exposes `sectorId` and `sectorNombre`.
 
@@ -109,7 +110,7 @@ one-to-one `Direccion`; `Paciente` also keeps a `coordenadaActual`.
 
 ## Queue
 
-`GestorDeCola` is the queue container per hospital and specialty.
+`GestorDeCola` is the queue container per hospital, specialty and sector (unique on `id_hospital`, `id_especialidad_medica` and `id_sector`).
 
 `EntradaCola` is the source of truth for queue state. Important fields:
 
@@ -152,6 +153,7 @@ Relevant states in `EstadoEntradaCola`:
 - `medico`
 - `hospital`
 - `especialidad`
+- `sector`
 - `sala`
 - `estado`
 - `fechaHoraInicio`

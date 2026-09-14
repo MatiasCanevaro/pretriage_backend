@@ -13,6 +13,9 @@ A receptionist can admit a patient identified by DNI, collect a structured clini
 - `AdmisionRecepcion` stores the structured form and resulting triage JSON for audit.
 - `ConsultaMedica.codigoLlamado` is an anonymous public code for the hospital screen.
 - `IngresoColaService` is the shared entry point for both digital and reception flows.
+- `AsignacionSectorService.asignarSector` assigns the sector to every new
+  reception consultation before it is saved; the consultation then enters the
+  `hospital+especialidad+sector` queue.
 
 ## Flow
 
@@ -23,9 +26,12 @@ A receptionist can admit a patient identified by DNI, collect a structured clini
 5. Complete the whole structured form.
 6. Finalize once. `TriageFormularioService` classifies the form in one AI call, without conversation.
 7. The receptionist cannot submit or modify priority.
-8. The admission, consultation, and queue entry are finalized transactionally.
-9. The response includes `codigoLlamado` and dynamic estimation.
-10. An open admission can be resumed from its metadata or cancelled before finalization.
+8. The sector is assigned automatically at admission creation
+   (`AsignacionSectorService`, sector with fewest `EN_COLA` among the hospital+specialty
+   sectors that are active and have active rooms).
+9. The admission, consultation, and queue entry are finalized transactionally.
+10. The response includes `codigoLlamado` and dynamic estimation.
+11. An open admission can be resumed from its metadata or cancelled before finalization.
 
 ## Rules
 

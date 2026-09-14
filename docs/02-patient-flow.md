@@ -19,13 +19,18 @@ flowchart TD
 2. Backend retrieves nearby hospitals from Google Places and filters by specialty stored locally.
 3. Patient selects a hospital by `placeId` and `codigoEspecialidad`.
 4. Backend creates or updates the active `ConsultaMedica` with the selected hospital and specialty.
-5. The consultation enters the queue immediately: `EN_COLA` state and an `EntradaCola` with default priority are created.
-6. Patient starts chat (optional).
-7. Bot asks clinical questions.
-8. When triage finishes, `Chat.resultadoTriageJson` is stored.
-9. `nivelDeGravedadBot` is mapped from AI priority.
-10. The existing `EntradaCola` priority is updated with the pretriage result.
-11. Estimated attention time is returned dynamically.
+5. Backend assigns a sector to the consultation (`AsignacionSectorService`: active sector of the hospital+specialty with the fewest `EN_COLA` entries and at least one active room). If no sector is available the selection fails.
+6. The consultation enters the sector queue immediately: `EN_COLA` state and an `EntradaCola` with default priority are created, tied to the `GestorDeCola` of `hospital+especialidad+sector`.
+7. Patient starts chat (optional).
+8. Bot asks clinical questions.
+9. When triage finishes, `Chat.resultadoTriageJson` is stored.
+10. `nivelDeGravedadBot` is mapped from AI priority.
+11. The existing `EntradaCola` priority is updated with the pretriage result.
+12. Estimated attention time is returned dynamically.
+
+`GET /api/atencion/hospital` (selected hospital) returns the assigned
+`sectorId`, `nombreSector` and the sector's active `salas` in addition to the
+hospital data.
 
 ## Waiting And Absence Rules
 

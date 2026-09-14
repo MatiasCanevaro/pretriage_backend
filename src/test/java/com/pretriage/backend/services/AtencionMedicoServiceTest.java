@@ -10,6 +10,7 @@ import com.pretriage.backend.model.consultas.*;
 import com.pretriage.backend.model.hospitales.EspecialidadMedica;
 import com.pretriage.backend.model.hospitales.Hospital;
 import com.pretriage.backend.model.hospitales.Sala;
+import com.pretriage.backend.model.hospitales.Sector;
 import com.pretriage.backend.model.personas.Medico;
 import com.pretriage.backend.model.personas.Paciente;
 import com.pretriage.backend.repositories.*;
@@ -101,6 +102,8 @@ class AtencionMedicoServiceTest {
                 especialidad.setId(2L);
                 GestorDeCola gestor = new GestorDeCola();
                 gestor.setId(3L);
+                Sector sector = new Sector();
+                sector.setId(7L);
                 Paciente paciente = new Paciente();
                 paciente.setId(4L);
                 paciente.setNombre("Ana");
@@ -117,11 +120,12 @@ class AtencionMedicoServiceTest {
                 sesion.setId(6L);
                 sesion.setHospital(hospital);
                 sesion.setEspecialidad(especialidad);
+                sesion.setSector(sector);
                 sesion.setEstado(EstadoSesionMedica.ACTIVA);
 
                 when(repoSesionesAtencionMedica.findByIdAndMedicoUsuarioAuthId(6L, "auth0"))
                                 .thenReturn(Optional.of(sesion));
-                when(repoGestoresDeColas.findByHospitalIdAndEspecialidadId(1L, 2L))
+                when(repoGestoresDeColas.findByHospitalIdAndEspecialidadIdAndSectorId(1L, 2L, 7L))
                                 .thenReturn(Optional.of(gestor));
                 when(repoEntradasCola
                                 .findByGestorDeColaIdAndEstadoOrderByPrioridadDescOrdenRelativoAscFechaHoraIngresoAsc(
@@ -148,6 +152,9 @@ class AtencionMedicoServiceTest {
                 hospital.setId(20L);
                 EspecialidadMedica especialidad = new EspecialidadMedica();
                 especialidad.setCodigo("CLINICA_MEDICA");
+                Sector sector = new Sector();
+                sector.setId(70L);
+                sector.setNombre("Sector A");
                 Sala sala = new Sala();
                 sala.setId(30L);
                 sala.setNombre("Consultorio 1");
@@ -166,6 +173,7 @@ class AtencionMedicoServiceTest {
                 sesion.setMedico(medico);
                 sesion.setHospital(hospital);
                 sesion.setEspecialidad(especialidad);
+                sesion.setSector(sector);
                 sesion.setSala(sala);
                 sesion.setEstado(EstadoSesionMedica.ACTIVA);
 
@@ -488,6 +496,8 @@ class AtencionMedicoServiceTest {
                 especialidad.setId(2L);
                 GestorDeCola gestor = new GestorDeCola();
                 gestor.setId(3L);
+                Sector sector = new Sector();
+                sector.setId(7L);
                 Paciente paciente = new Paciente();
                 paciente.setId(4L);
                 paciente.setNombre("Juan");
@@ -506,11 +516,12 @@ class AtencionMedicoServiceTest {
                 sesion.setId(6L);
                 sesion.setHospital(hospital);
                 sesion.setEspecialidad(especialidad);
+                sesion.setSector(sector);
                 sesion.setEstado(EstadoSesionMedica.ACTIVA);
 
                 when(repoSesionesAtencionMedica.findByIdAndMedicoUsuarioAuthId(6L, "auth0"))
                                 .thenReturn(Optional.of(sesion));
-                when(repoGestoresDeColas.findByHospitalIdAndEspecialidadId(1L, 2L)).thenReturn(Optional.of(gestor));
+                when(repoGestoresDeColas.findByHospitalIdAndEspecialidadIdAndSectorId(1L, 2L, 7L)).thenReturn(Optional.of(gestor));
                 when(repoEntradasCola
                                 .findByGestorDeColaIdAndEstadoAndConsultaMedicaPacienteNumeroDocumentoOrderByPrioridadDescOrdenRelativoAscFechaHoraIngresoAsc(
                                                 3L, EstadoEntradaCola.EN_COLA, "30111222"))
@@ -542,15 +553,18 @@ class AtencionMedicoServiceTest {
                 especialidad.setId(2L);
                 GestorDeCola gestor = new GestorDeCola();
                 gestor.setId(3L);
+                Sector sector = new Sector();
+                sector.setId(7L);
                 SesionAtencionMedica sesion = new SesionAtencionMedica();
                 sesion.setId(6L);
                 sesion.setHospital(hospital);
                 sesion.setEspecialidad(especialidad);
+                sesion.setSector(sector);
                 sesion.setEstado(EstadoSesionMedica.ACTIVA);
 
                 when(repoSesionesAtencionMedica.findByIdAndMedicoUsuarioAuthId(6L, "auth0"))
                                 .thenReturn(Optional.of(sesion));
-                when(repoGestoresDeColas.findByHospitalIdAndEspecialidadId(1L, 2L)).thenReturn(Optional.of(gestor));
+                when(repoGestoresDeColas.findByHospitalIdAndEspecialidadIdAndSectorId(1L, 2L, 7L)).thenReturn(Optional.of(gestor));
                 when(repoEntradasCola
                                 .findByGestorDeColaIdAndEstadoAndConsultaMedicaPacienteNumeroDocumentoOrderByPrioridadDescOrdenRelativoAscFechaHoraIngresoAsc(
                                                 3L, EstadoEntradaCola.EN_COLA, "99999999"))
@@ -569,6 +583,8 @@ class AtencionMedicoServiceTest {
                 especialidad.setId(2L);
                 GestorDeCola gestor = new GestorDeCola();
                 gestor.setId(3L);
+                Sector sector = new Sector();
+                sector.setId(7L);
                 Paciente paciente = new Paciente();
                 paciente.setId(4L);
                 paciente.setNombre("Maria");
@@ -586,11 +602,12 @@ class AtencionMedicoServiceTest {
                 sesion.setId(6L);
                 sesion.setHospital(hospital);
                 sesion.setEspecialidad(especialidad);
+                sesion.setSector(sector);
                 sesion.setEstado(EstadoSesionMedica.ACTIVA);
 
                 when(repoSesionesAtencionMedica.findByIdAndMedicoUsuarioAuthId(6L, "auth0"))
                                 .thenReturn(Optional.of(sesion));
-                when(repoGestoresDeColas.findByHospitalIdAndEspecialidadId(1L, 2L)).thenReturn(Optional.of(gestor));
+                when(repoGestoresDeColas.findByHospitalIdAndEspecialidadIdAndSectorId(1L, 2L, 7L)).thenReturn(Optional.of(gestor));
                 when(repoEntradasCola
                                 .findByGestorDeColaIdAndEstadoAndConsultaMedicaPacienteNumeroDocumentoOrderByPrioridadDescOrdenRelativoAscFechaHoraIngresoAsc(
                                                 3L, EstadoEntradaCola.EN_COLA, "30111222"))
@@ -612,6 +629,8 @@ class AtencionMedicoServiceTest {
                 especialidad.setId(2L);
                 GestorDeCola gestor = new GestorDeCola();
                 gestor.setId(3L);
+                Sector sector = new Sector();
+                sector.setId(7L);
                 Paciente paciente = new Paciente();
                 paciente.setId(4L);
                 paciente.setNombre("Ana");
@@ -629,11 +648,12 @@ class AtencionMedicoServiceTest {
                 sesion.setId(6L);
                 sesion.setHospital(hospital);
                 sesion.setEspecialidad(especialidad);
+                sesion.setSector(sector);
                 sesion.setEstado(EstadoSesionMedica.ACTIVA);
 
                 when(repoSesionesAtencionMedica.findByIdAndMedicoUsuarioAuthId(6L, "auth0"))
                                 .thenReturn(Optional.of(sesion));
-                when(repoGestoresDeColas.findByHospitalIdAndEspecialidadId(1L, 2L)).thenReturn(Optional.of(gestor));
+                when(repoGestoresDeColas.findByHospitalIdAndEspecialidadIdAndSectorId(1L, 2L, 7L)).thenReturn(Optional.of(gestor));
                 when(repoEntradasCola
                                 .findByGestorDeColaIdAndEstadoOrderByPrioridadDescOrdenRelativoAscFechaHoraIngresoAsc(
                                                 3L, EstadoEntradaCola.EN_COLA))
@@ -662,6 +682,8 @@ class AtencionMedicoServiceTest {
                 especialidad.setId(2L);
                 GestorDeCola gestor = new GestorDeCola();
                 gestor.setId(3L);
+                Sector sector = new Sector();
+                sector.setId(7L);
                 Paciente paciente = new Paciente();
                 paciente.setId(4L);
                 paciente.setNombre("Carlos");
@@ -680,11 +702,12 @@ class AtencionMedicoServiceTest {
                 sesion.setId(6L);
                 sesion.setHospital(hospital);
                 sesion.setEspecialidad(especialidad);
+                sesion.setSector(sector);
                 sesion.setEstado(EstadoSesionMedica.ACTIVA);
 
                 when(repoSesionesAtencionMedica.findByIdAndMedicoUsuarioAuthId(6L, "auth0"))
                                 .thenReturn(Optional.of(sesion));
-                when(repoGestoresDeColas.findByHospitalIdAndEspecialidadId(1L, 2L)).thenReturn(Optional.of(gestor));
+                when(repoGestoresDeColas.findByHospitalIdAndEspecialidadIdAndSectorId(1L, 2L, 7L)).thenReturn(Optional.of(gestor));
                 when(repoEntradasCola
                                 .findByGestorDeColaIdAndEstadoOrderByPrioridadDescOrdenRelativoAscFechaHoraIngresoAsc(
                                                 3L, EstadoEntradaCola.EN_COLA))

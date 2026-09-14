@@ -7,7 +7,7 @@ This file gives future AI agents enough context to work on the project without r
 The system manages the first medical attention workflow:
 
 1. Patient chooses medical specialty.
-2. Patient chooses hospital that supports that specialty and enters the hospital/specialty queue with default priority.
+2. Patient chooses hospital that supports that specialty, is assigned to a sector, and enters the hospital/specialty/sector queue with default priority.
 3. Optional AI triage collects symptoms and assigns priority, updating the queue priority.
 4. Doctors start sessions in rooms and call patients.
 5. Estimated attention time is recalculated dynamically.
@@ -54,6 +54,8 @@ The system manages the first medical attention workflow:
 - `Hospital`
 - `EspecialidadMedica`
 - `Sector` (`hospital`+`especialidad` grouping, `activa` default `true`, multiple per specialty, `HospitalConfigurationService.crearSector`/`actualizarSector`/`eliminarSector` + `RepoSectores/RepoSalas/RepoConsultasMedicas/RepoSesionesAtencionMedica` checks `existsBySalaIdIn...`, `SectorHospitalResponse`/`GuardarSectorRequest`/`ActualizarSectorRequest`, listed in `GET /configuracion`, `PUT`/`DELETE` blocked if `Sala` has non-terminal `ConsultaMedica` or `ACTIVA/PAUSADA` session)
+- `AsignacionSectorService` (`asignarSector` picks the active sector with the fewest `EntradaCola.EN_COLA`, ties by name ASC, requires an active room)
+- `RepoSectores` (incl. `findByHospitalIdAndEspecialidadIdAndActivaTrueOrderByNombreAsc` for assignment and `findByHospitalIdAndEspecialidadCodigoAndActivaTrueOrderByNombreAsc` for the doctor flow)
 - `RepoHospitales`
 - `RepoEspecialidadesMedicas`
 - `RepoSectores`
@@ -64,15 +66,16 @@ The system manages the first medical attention workflow:
 - `EstimacionAtencionService` (`calcularPara` per-patient + `calcularEsperaParaNuevaConsulta` for hospital ranking)
 - `EntradaCola`
 - `EstadoEntradaCola`
-- `GestorDeCola`
-- `RepoEntradasCola` (`countByGestorDeColaHospitalIdAndGestorDeColaEspecialidadIdAndEstado`)
+- `GestorDeCola` (unique per hospital+especialidad+sector)
+- `RepoEntradasCola` (`countByGestorDeColaHospitalIdAndGestorDeColaEspecialidadIdAndEstado` and `countByGestorDeColaSectorIdAndEstado`)
+- `RepoGestoresDeColas` (`findByHospitalIdAndEspecialidadIdAndSectorId`)
 - `TiempoEstimadoAtencionResponse` + `EsperaNuevaConsultaCalculo`
  - `HospitalCercanoDTO` enriched with `pacientesEnCola`, `minutosEsperaEstimados`, `fechaHoraAtencionEstimada`, `disponible`
 
 ### Doctor Attention
 
-- `AtencionMedicoService`
-- `MedicoController`
+- `AtencionMedicoService` (sessions are per hospital/specialty/sector/room; `iniciarSesion` uses `sectorId`, `llamarProximo` reads the sector gestor)
+- `MedicoController` (`GET /api/hospitales/{hospitalId}/sectores?codigoEspecialidad=`, `GET /api/hospitales/{hospitalId}/sectores/{sectorId}/salas?codigoEspecialidad=`, `POST /api/medico/sesiones` with `sectorId`)
 - `SesionAtencionMedica`
 - `EstadoSesionMedica`
 - `Sala`
@@ -93,10 +96,11 @@ The system manages the first medical attention workflow:
 ## Invariants
 
 - `EntradaCola` is the queue source of truth.
-- A queue is scoped by hospital and specialty.
+- A queue is scoped by hospital, specialty and sector (`GestorDeCola` unique triple; `AsignacionSectorService` assigns the sector on hospital selection and on reception admission).
+- `IngresoColaService.ingresar(consulta, prioridad)` requires `consulta.getSector() != null`; the overload `ingresar(consulta, prioridad, sector)` assigns it.
 - Hospital selection enters the consultation into the queue directly; the AI triage is optional and only updates the queue priority.
 - Estimated attention time is dynamic and should be recalculated on every request.
-- Only `EntradaCola.EN_COLA` counts for waiting estimation (both per-patient and per-hospital ranking; never `GestorDeCola.consultasEnEspera`).
+- Only `EntradaCola.EN_COLA` counts for waiting estimation (both per-patient and per-hospital ranking; never `GestorDeCola.consultasEnEspera`). Per-patient estimation is scoped to the patient's sector (its gestor queue and the hospital+especialidad+sector `ACTIVA` sessions); hospital ranking estimation stays hospital+especialidad-wide.
 - Doctor sessions count for capacity only when `EstadoSesionMedica.ACTIVA`.
 - Nearby hospitals ranking shows only hospitals with `medicosActivos > 0` (`disponible=true`); an empty result means "no hay hospitales disponibles". Ranking wait uses end-of-queue formula `pacientesEnCola / max(medicosActivos,1) * minutosPromedioAtencion`. `ordenarPor` valid values live in `ORDENES_VALIDOS` (`distancia`, `tiempo-atencion`, combinados con `&`), orden indistinto; el combinado usa suma de rankings.
 - Paused sessions do not count as active capacity.
@@ -171,6 +175,7 @@ Documentation updates are required in the same change as code updates. When chan
 ## Reception-Assisted Admission
 
 - Reception admission uses `AdmisionRecepcion`, `SesionRecepcion`, `TriageFormularioService`, and `IngresoColaService`.
+- `AdmisionRecepcionService.crearAdmision` assigns the consultation's sector via `AsignacionSectorService.asignarSector` before saving.
 - It does not create or use `Chat`.
 - DNI is required; patients without Auth0 are valid domain patients.
 - Receptionists may be assigned to multiple hospitals but can have only one active reception session.

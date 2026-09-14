@@ -9,7 +9,7 @@ The current focus is first attention only. The system does not model referral, d
 ## Main Actors
 
 - Patient: selects specialty and hospital, completes AI triage, enters queue, checks state and estimated attention time.
-- Doctor: starts an attention session at an assigned hospital/specialty/room, calls patients, marks absences, pauses or closes the session.
+- Doctor: starts an attention session at an assigned hospital/specialty/sector/room, calls patients, marks absences, pauses or closes the session.
 - Hospital admin: manages scoped staff memberships and invitations, and hospital configuration (enabled specialties, sectors and rooms). Assignment administration remains incremental.
 - AI triage bot: collects symptoms and produces structured triage output used to assign priority.
 
@@ -19,7 +19,7 @@ The current focus is first attention only. The system does not model referral, d
 - Hospital selection: filters hospitals by selected specialty and distance; can order/filter by estimated attention time and shows only hospitals available for attention (with active doctors), displaying the estimated wait alongside each hospital.
 - Medical specialties and sectors: `EspecialidadMedica` and `Sector` (`Sector` groups rooms per hospital+specialty, multiple sectors per specialty, `POST/PUT/DELETE /api/admin/hospitales/{hospitalId}/configuracion/sectores` with `activa`, `PUT`/`DELETE` blocked if salas have patients, `DELETE` also blocked if `ACTIVA/PAUSADA` sessions, included in `GET /configuracion`). Rooms are created/updated/activated under `.../configuracion/sectores/{sectorId}/salas` and disabling a specialty is sector-scoped via `DELETE .../sectores/{sectorId}/especialidades/{especialidadId}`.
 - AI triage chat: creates a chat, stores patient and bot messages, stores structured triage JSON.
-- Queue management: uses `EntradaCola` as queue state per hospital/specialty.
+- Queue management: uses `EntradaCola` as queue state per hospital/specialty/sector; each consultation is assigned a sector (`AsignacionSectorService`) before entering its `GestorDeCola`.
 - Doctor attention: uses SesionAtencionMedica, rooms, assignments, and historical AtencionMedica records.
 - Reception admission: supports DNI-based in-person registration, structured form triage, and entry into the same dynamic queue without using chat.
 - Estimated attention time: recalculated dynamically using queue state and active doctor sessions.

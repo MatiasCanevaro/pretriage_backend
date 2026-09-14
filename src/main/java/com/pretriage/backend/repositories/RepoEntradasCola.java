@@ -43,5 +43,7 @@ public interface RepoEntradasCola extends JpaRepository<EntradaCola, Long> {
 
     long countByGestorDeColaHospitalIdAndGestorDeColaEspecialidadIdAndEstado(
             Long hospitalId, Long especialidadId, EstadoEntradaCola estado);
+
+    long countByGestorDeColaSectorIdAndEstado(Long sectorId, EstadoEntradaCola estado);
 }
 

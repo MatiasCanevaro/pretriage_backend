@@ -15,7 +15,7 @@ import lombok.Setter;
 @Getter
 @Setter
 @Entity
-@Table(uniqueConstraints = @UniqueConstraint(columnNames = { "id_hospital", "id_especialidad_medica" }))
+@Table(uniqueConstraints = @UniqueConstraint(columnNames = { "id_hospital", "id_especialidad_medica", "id_sector" }))
 public class GestorDeCola {
 
     @Id

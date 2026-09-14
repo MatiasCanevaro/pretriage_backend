@@ -14,6 +14,10 @@ public class SesionAtencionMedicaDTO {
 
     private String codigoEspecialidad;
 
+    private Long sectorId;
+
+    private String nombreSector;
+
     private Long salaId;
 
     private EstadoSesionMedica estado;

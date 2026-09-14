@@ -39,6 +39,7 @@ public class AdmisionRecepcionService {
     private final RepoDirecciones repoDirecciones;
     private final TriageFormularioService triageFormularioService;
     private final IngresoColaService ingresoColaService;
+    private final AsignacionSectorService asignacionSectorService;
     private final EstimacionAtencionService estimacionAtencionService;
     private final ObjectMapper objectMapper;
 
@@ -133,6 +134,7 @@ public class AdmisionRecepcionService {
         consulta.setFechaHoraCreacion(LocalDateTime.now());
         consulta.setEstadoConsulta(EstadoConsulta.PRETRIAGE_EN_PROCESO);
         consulta.setCodigoLlamado(generarCodigoLlamado());
+        asignacionSectorService.asignarSector(consulta);
         repoConsultasMedicas.save(consulta);
         AdmisionRecepcion admision = new AdmisionRecepcion();
         admision.setConsultaMedica(consulta);

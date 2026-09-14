@@ -36,14 +36,26 @@ public class MedicoController {
         return ResponseEntity.ok(atencionMedicoService.obtenerSesionActual(jwt.getSubject()));
     }
 
-    @GetMapping("/api/hospitales/{hospitalId}/salas")
-    public ResponseEntity<List<SalaDTO>> obtenerSalas(
+    @GetMapping("/api/hospitales/{hospitalId}/sectores")
+    public ResponseEntity<List<SectorDTO>> obtenerSectores(
             @PathVariable Long hospitalId,
             @RequestParam String codigoEspecialidad,
             @AuthenticationPrincipal Jwt jwt) {
         String auth0Id = jwt.getSubject();
 
-        return ResponseEntity.ok(atencionMedicoService.obtenerSalas(hospitalId, codigoEspecialidad, auth0Id));
+        return ResponseEntity.ok(atencionMedicoService.obtenerSectores(hospitalId, codigoEspecialidad, auth0Id));
+    }
+
+    @GetMapping("/api/hospitales/{hospitalId}/sectores/{sectorId}/salas")
+    public ResponseEntity<List<SalaDTO>> obtenerSalas(
+            @PathVariable Long hospitalId,
+            @PathVariable Long sectorId,
+            @RequestParam String codigoEspecialidad,
+            @AuthenticationPrincipal Jwt jwt) {
+        String auth0Id = jwt.getSubject();
+
+        return ResponseEntity.ok(
+                atencionMedicoService.obtenerSalas(hospitalId, sectorId, codigoEspecialidad, auth0Id));
     }
 
     @PostMapping("/api/medico/sesiones")
@@ -54,6 +66,7 @@ public class MedicoController {
                 jwt.getSubject(),
                 request.getHospitalId(),
                 request.getCodigoEspecialidad(),
+                request.getSectorId(),
                 request.getSalaId()));
     }
 

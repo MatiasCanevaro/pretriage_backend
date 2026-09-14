@@ -10,26 +10,25 @@ import com.pretriage.backend.controllers.dtos.PretriajeConsultaDTO;
 import com.pretriage.backend.controllers.dtos.RevisionPrioridadDTO;
 import com.pretriage.backend.controllers.dtos.RevisionPrioridadRequest;
 import com.pretriage.backend.controllers.dtos.SalaDTO;
+import com.pretriage.backend.controllers.dtos.SectorDTO;
 import com.pretriage.backend.controllers.dtos.SesionAtencionMedicaDTO;
 import com.pretriage.backend.controllers.dtos.SesionMedicaActualDTO;
 import com.pretriage.backend.controllers.dtos.TriageResultDTO;
-import com.pretriage.backend.exceptions.ArchivoS3Exception;
 import com.pretriage.backend.exceptions.ConflictoDeEstadoException;
 import com.pretriage.backend.model.consultas.*;
 import com.pretriage.backend.model.hospitales.EspecialidadMedica;
 import com.pretriage.backend.model.hospitales.Hospital;
 import com.pretriage.backend.model.hospitales.Sala;
+import com.pretriage.backend.model.hospitales.Sector;
 import com.pretriage.backend.model.personas.AsignacionMedicoHospital;
 import com.pretriage.backend.model.personas.Medico;
 import com.pretriage.backend.model.personas.Paciente;
 import com.pretriage.backend.repositories.*;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
-import lombok.Value;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
-import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -61,7 +60,6 @@ public class AtencionMedicoService {
     private final ObjectMapper objectMapper;
 
     private final PacienteService pacienteService;
-    private final GestionDeArchivosService gestionDeArchivosService;
     private final UsuariosService usuariosService;
     private final SalaService salaService;
     private final EstudioClinicoService estudioClinicoService;
@@ -73,10 +71,15 @@ public class AtencionMedicoService {
                 .toList();
     }
 
-    public List<SalaDTO> obtenerSalas(Long hospitalId, String codigoEspecialidad, String auth0Id) {
+    public List<SectorDTO> obtenerSectores(Long hospitalId, String codigoEspecialidad, String auth0Id) {
+        usuariosService.validarSiEsUsuarioValido(auth0Id);
+        return salaService.obtenerSectores(hospitalId, codigoEspecialidad);
+    }
+
+    public List<SalaDTO> obtenerSalas(Long hospitalId, Long sectorId, String codigoEspecialidad, String auth0Id) {
         usuariosService.validarSiEsUsuarioValido(auth0Id);
 
-        return salaService.obtenerSalas(hospitalId, codigoEspecialidad);
+        return salaService.obtenerSalas(hospitalId, sectorId, codigoEspecialidad);
     }
 
     public SesionMedicaActualDTO obtenerSesionActual(String auth0Id) {
@@ -151,22 +154,25 @@ public class AtencionMedicoService {
 
     @Transactional
     public SesionAtencionMedicaDTO iniciarSesion(String auth0Id, Long hospitalId, String codigoEspecialidad,
-            Long salaId) {
+            Long sectorId, Long salaId) {
         Medico medico = obtenerMedico(auth0Id);
         Hospital hospital = repoHospitales.findById(hospitalId)
                 .orElseThrow(() -> new NoSuchElementException("Hospital inexistente"));
         EspecialidadMedica especialidad = repoEspecialidadesMedicas.findByCodigo(codigoEspecialidad)
                 .orElseThrow(() -> new NoSuchElementException("Especialidad medica inexistente"));
+        Sector sector = salaService.obtenerSector(sectorId, hospitalId);
         Sala sala = salaService.obtenerSala(salaId, hospitalId);
 
         validarAsignacion(medico, hospital, especialidad);
-        validarSala(sala, hospital, especialidad);
+        validarSector(sector, especialidad);
+        validarSala(sala, hospital, especialidad, sector);
         validarRecursosDisponibles(medico, sala);
 
         SesionAtencionMedica sesion = new SesionAtencionMedica();
         sesion.setMedico(medico);
         sesion.setHospital(hospital);
         sesion.setEspecialidad(especialidad);
+        sesion.setSector(sector);
         sesion.setSala(sala);
         sesion.setEstado(EstadoSesionMedica.ACTIVA);
         sesion.setFechaHoraInicio(LocalDateTime.now());
@@ -210,8 +216,10 @@ public class AtencionMedicoService {
         SesionAtencionMedica sesion = obtenerSesionActiva(auth0Id, sesionId);
         validarSinConsultaEnCurso(sesion);
         GestorDeCola gestorDeCola = repoGestoresDeColas
-                .findByHospitalIdAndEspecialidadId(sesion.getHospital().getId(), sesion.getEspecialidad().getId())
-                .orElseThrow(() -> new NoSuchElementException("No existe cola para la especialidad del hospital"));
+                .findByHospitalIdAndEspecialidadIdAndSectorId(
+                        sesion.getHospital().getId(), sesion.getEspecialidad().getId(),
+                        sesion.getSector().getId())
+                .orElseThrow(() -> new NoSuchElementException("No existe cola para la especialidad del sector"));
 
         EntradaCola entrada = repoEntradasCola
                 .findFirstByGestorDeColaIdAndEstadoOrderByPrioridadDescOrdenRelativoAsc(gestorDeCola.getId(),
@@ -361,8 +369,10 @@ public class AtencionMedicoService {
 
     private GestorDeCola obtenerGestorDeCola(SesionAtencionMedica sesion) {
         return repoGestoresDeColas
-                .findByHospitalIdAndEspecialidadId(sesion.getHospital().getId(), sesion.getEspecialidad().getId())
-                .orElseThrow(() -> new NoSuchElementException("No existe cola para la especialidad del hospital"));
+                .findByHospitalIdAndEspecialidadIdAndSectorId(
+                        sesion.getHospital().getId(), sesion.getEspecialidad().getId(),
+                        sesion.getSector().getId())
+                .orElseThrow(() -> new NoSuchElementException("No existe cola para la especialidad del sector"));
     }
 
     private void validarSinConsultaEnCurso(SesionAtencionMedica sesion) {
@@ -406,11 +416,20 @@ public class AtencionMedicoService {
         }
     }
 
-    private void validarSala(Sala sala, Hospital hospital, EspecialidadMedica especialidad) {
+    private void validarSector(Sector sector, EspecialidadMedica especialidad) {
+        if (!sector.isActiva()
+                || !sector.getEspecialidad().getCodigo().equals(especialidad.getCodigo())) {
+            throw new NoSuchElementException("El sector no corresponde a la especialidad indicada o no esta activo");
+        }
+    }
+
+    private void validarSala(Sala sala, Hospital hospital, EspecialidadMedica especialidad, Sector sector) {
         if (!sala.isActiva()
                 || !sala.getHospital().getId().equals(hospital.getId())
-                || !sala.getEspecialidad().getCodigo().equals(especialidad.getCodigo())) {
-            throw new NoSuchElementException("La sala no corresponde al hospital y especialidad indicados");
+                || !sala.getEspecialidad().getCodigo().equals(especialidad.getCodigo())
+                || sala.getSector() == null
+                || !sala.getSector().getId().equals(sector.getId())) {
+            throw new NoSuchElementException("La sala no corresponde al hospital, especialidad y sector indicados");
         }
     }
 
@@ -458,6 +477,8 @@ public class AtencionMedicoService {
         dto.setId(sesion.getId());
         dto.setHospitalId(sesion.getHospital().getId());
         dto.setCodigoEspecialidad(sesion.getEspecialidad().getCodigo());
+        dto.setSectorId(sesion.getSector().getId());
+        dto.setNombreSector(sesion.getSector().getNombre());
         dto.setSalaId(sesion.getSala().getId());
         dto.setEstado(sesion.getEstado());
         return dto;

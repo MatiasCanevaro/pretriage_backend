@@ -19,9 +19,11 @@ flowchart TD
 ## Session Rules
 
 - A doctor is already assigned to hospitals and specialties by the admin domain.
-- A doctor starts a session by choosing hospital, specialty, and room.
+- A doctor starts a session by choosing hospital, specialty, sector, and room.
 - A doctor cannot change specialty inside a session.
 - To change specialty, close the current session and start another.
+- A session belongs to exactly one sector; the room must belong to that sector and
+  the sector to the same hospital+specialty, or the startup is rejected.
 - A room can be used by one doctor at a time.
 - A doctor can have one active or paused session at a time.
 - After a reload or new login, the active or paused session and any `LLAMADO` or
@@ -40,7 +42,7 @@ flowchart TD
 
 When doctor calls next patient:
 
-- Backend selects next `EntradaCola.EN_COLA` for the same hospital/specialty.
+- Backend selects next `EntradaCola.EN_COLA` for the session hospital/specialty/sector.
 - Ordering is by priority descending and relative order ascending.
 - Entry becomes `LLAMADO`.
 - Consultation also becomes `LLAMADO`.
@@ -82,7 +84,8 @@ the review is pending.
 ## Queue Visibility And History
 
 - `GET /api/medico/asignaciones` returns the doctor's hospital and specialty assignments.
-- `GET /api/hospitales/{hospitalId}/salas?codigoEspecialidad={codigoEspecialidad}` returns the active rooms of a hospital for the given specialty.
+- `GET /api/hospitales/{hospitalId}/sectores?codigoEspecialidad={codigoEspecialidad}` returns the active sectors of a hospital for the given specialty.
+- `GET /api/hospitales/{hospitalId}/sectores/{sectorId}/salas?codigoEspecialidad={codigoEspecialidad}` returns the active rooms of a sector for the given specialty.
 - `GET /api/medico/sesiones/actual` returns the authenticated doctor's active or
   paused session and their currently called or in-attention consultation, if present.
 - `GET /api/medico/sesiones/{sesionId}/pacientes-disponibles?dni={dni}` lists ordered `EN_COLA` patients for the session hospital and specialty, including the preliminary priority, patient name and surname, document (`numeroDocumento`/`tipoDocumento`) and `estadoConsulta` authorized for the attending doctor. A room is not present until the patient is called. `dni` is optional exact-match filter on `Paciente.numeroDocumento` (trimmed) scoped to the session queue, executed at DB level; blank/missing returns full queue, non-matching returns `[]`.

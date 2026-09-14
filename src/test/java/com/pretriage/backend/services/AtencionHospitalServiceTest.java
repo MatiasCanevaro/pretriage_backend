@@ -14,6 +14,7 @@ import com.pretriage.backend.model.consultas.NivelDeGravedad;
 import com.pretriage.backend.model.hospitales.Direccion;
 import com.pretriage.backend.model.hospitales.EspecialidadMedica;
 import com.pretriage.backend.model.hospitales.Hospital;
+import com.pretriage.backend.model.hospitales.Sector;
 import com.pretriage.backend.model.personas.Paciente;
 import com.pretriage.backend.repositories.RepoConsultasMedicas;
 import com.pretriage.backend.repositories.RepoEntradasCola;
@@ -59,12 +60,51 @@ public class AtencionHospitalServiceTest {
         private IngresoColaService ingresoColaService;
         @Mock
         private GooglePlacesService googlePlacesService;
+        @Mock
+        private AsignacionSectorService asignacionSectorService;
 
         @InjectMocks
         private AtencionHospitalService service;
 
         @Test
         void sePuedeSeleccionarUnHospitalConEspecialidad() {
+                String auth0Id = "auth0|123";
+                String placeId = "place_1";
+                String codigoEspecialidad = "PEDIATRIA";
+
+                Paciente paciente = crearPaciente(10L);
+                EspecialidadMedica especialidad = crearEspecialidad(30L, codigoEspecialidad);
+                Hospital hospital = crearHospital(20L, placeId, especialidad);
+                Sector sector = crearSector(50L, hospital, especialidad);
+                ConsultaMedica consultaMedica = crearConsultaPendiente(paciente);
+
+                when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id)).thenReturn(Optional.of(paciente));
+                when(repoEspecialidadesMedicas.findByCodigo(codigoEspecialidad)).thenReturn(Optional.of(especialidad));
+                when(repoConsultasMedicas.findFirstByPacienteIdAndEstadoConsultaIn(eq(paciente.getId()), any()))
+                                .thenReturn(Optional.of(consultaMedica));
+                when(repoHospitales.findByPlaceId(placeId)).thenReturn(Optional.of(hospital));
+                when(asignacionSectorService.asignarSector(consultaMedica)).thenAnswer(inv -> {
+                        consultaMedica.setSector(sector);
+                        return null;
+                });
+                when(ingresoColaService.ingresar(consultaMedica, NivelDeGravedad.NORMAL, sector)).thenAnswer(inv -> {
+                        consultaMedica.setNivelDeGravedadBot(NivelDeGravedad.NORMAL);
+                        consultaMedica.setEstadoConsulta(EstadoConsulta.EN_COLA);
+                        return new TiempoEstimadoAtencionResponse();
+                });
+
+                service.seleccionarHospital(auth0Id, placeId, codigoEspecialidad);
+
+                assertSame(hospital, consultaMedica.getHospital());
+                assertSame(especialidad, consultaMedica.getEspecialidad());
+                assertSame(sector, consultaMedica.getSector());
+                assertEquals(EstadoConsulta.EN_COLA, consultaMedica.getEstadoConsulta());
+                verify(asignacionSectorService).asignarSector(consultaMedica);
+                verify(ingresoColaService).ingresar(consultaMedica, NivelDeGravedad.NORMAL, sector);
+        }
+
+        @Test
+        void noSePuedeSeleccionarHospitalSiNoHaySectoresDisponibles() {
                 String auth0Id = "auth0|123";
                 String placeId = "place_1";
                 String codigoEspecialidad = "PEDIATRIA";
@@ -79,18 +119,13 @@ public class AtencionHospitalServiceTest {
                 when(repoConsultasMedicas.findFirstByPacienteIdAndEstadoConsultaIn(eq(paciente.getId()), any()))
                                 .thenReturn(Optional.of(consultaMedica));
                 when(repoHospitales.findByPlaceId(placeId)).thenReturn(Optional.of(hospital));
-                when(ingresoColaService.ingresar(consultaMedica, NivelDeGravedad.NORMAL)).thenAnswer(inv -> {
-                        consultaMedica.setNivelDeGravedadBot(NivelDeGravedad.NORMAL);
-                        consultaMedica.setEstadoConsulta(EstadoConsulta.EN_COLA);
-                        return new TiempoEstimadoAtencionResponse();
-                });
+                when(asignacionSectorService.asignarSector(consultaMedica))
+                                .thenThrow(new NoSuchElementException("No hay sectores disponibles"));
 
-                service.seleccionarHospital(auth0Id, placeId, codigoEspecialidad);
+                assertThrows(NoSuchElementException.class,
+                                () -> service.seleccionarHospital(auth0Id, placeId, codigoEspecialidad));
 
-                assertSame(hospital, consultaMedica.getHospital());
-                assertSame(especialidad, consultaMedica.getEspecialidad());
-                assertEquals(EstadoConsulta.EN_COLA, consultaMedica.getEstadoConsulta());
-                verify(ingresoColaService).ingresar(consultaMedica, NivelDeGravedad.NORMAL);
+                verifyNoInteractions(ingresoColaService);
         }
 
         @Test
@@ -125,6 +160,7 @@ public class AtencionHospitalServiceTest {
                 Paciente paciente = crearPaciente(10L);
                 EspecialidadMedica especialidad = crearEspecialidad(30L, codigoEspecialidad);
                 Hospital hospital = crearHospital(20L, placeId, especialidad);
+                Sector sector = crearSector(50L, hospital, especialidad);
                 ConsultaMedica consultaPaciente = crearConsultaPendiente(paciente);
                 consultaPaciente.setFechaHoraCreacion(LocalDateTime.of(2026, 6, 29, 10, 5));
 
@@ -146,11 +182,15 @@ public class AtencionHospitalServiceTest {
                 when(repoConsultasMedicas.findFirstByPacienteIdAndEstadoConsultaIn(eq(paciente.getId()), any()))
                                 .thenReturn(Optional.of(consultaPaciente));
                 when(repoHospitales.findByPlaceId(placeId)).thenReturn(Optional.of(hospital));
+                when(asignacionSectorService.asignarSector(consultaPaciente)).thenAnswer(inv -> {
+                        consultaPaciente.setSector(sector);
+                        return null;
+                });
 
                 TiempoEstimadoAtencionResponse responseEsperada = new TiempoEstimadoAtencionResponse();
                 responseEsperada.setPosicionEnCola(2);
                 responseEsperada.setPacientesAntes(1);
-                when(ingresoColaService.ingresar(consultaPaciente, NivelDeGravedad.NORMAL)).thenAnswer(inv -> {
+                when(ingresoColaService.ingresar(consultaPaciente, NivelDeGravedad.NORMAL, sector)).thenAnswer(inv -> {
                         consultaPaciente.setNivelDeGravedadBot(NivelDeGravedad.NORMAL);
                         consultaPaciente.setEstadoConsulta(EstadoConsulta.EN_COLA);
                         return new TiempoEstimadoAtencionResponse();
@@ -168,10 +208,12 @@ public class AtencionHospitalServiceTest {
 
                 assertSame(hospital, consultaPaciente.getHospital());
                 assertSame(especialidad, consultaPaciente.getEspecialidad());
+                assertSame(sector, consultaPaciente.getSector());
                 assertEquals(EstadoConsulta.EN_COLA, consultaPaciente.getEstadoConsulta());
                 assertEquals(NivelDeGravedad.URGENTE, consultaPaciente.getNivelDeGravedadBot());
                 assertSame(responseEsperada, response);
-                verify(ingresoColaService).ingresar(consultaPaciente, NivelDeGravedad.NORMAL);
+                verify(asignacionSectorService).asignarSector(consultaPaciente);
+                verify(ingresoColaService).ingresar(consultaPaciente, NivelDeGravedad.NORMAL, sector);
                 verify(ingresoColaService).ingresar(consultaPaciente, NivelDeGravedad.URGENTE);
         }
 
@@ -726,6 +768,15 @@ public class AtencionHospitalServiceTest {
                 especialidad.setCodigo(codigo);
                 especialidad.setNombre(codigo);
                 return especialidad;
+        }
+
+        private Sector crearSector(Long id, Hospital hospital, EspecialidadMedica especialidad) {
+                Sector sector = new Sector();
+                sector.setId(id);
+                sector.setNombre("Sector " + id);
+                sector.setHospital(hospital);
+                sector.setEspecialidad(especialidad);
+                return sector;
         }
 
         private HospitalCercanoDTO crearHospitalCercano(String placeId) {

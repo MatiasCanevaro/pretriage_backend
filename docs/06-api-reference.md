@@ -390,13 +390,21 @@ GET /api/medico/asignaciones
 
 Returns the authenticated doctor's hospital and specialty assignments.
 
+### List Sectors
+
+```http
+GET /api/hospitales/{hospitalId}/sectores?codigoEspecialidad={codigoEspecialidad}
+```
+
+Returns the active sectors (`Sector.activa=true`) of a hospital for the given specialty, ordered by name ASC.
+
 ### List Rooms
 
 ```http
-GET /api/hospitales/{hospitalId}/salas?codigoEspecialidad={codigoEspecialidad}
+GET /api/hospitales/{hospitalId}/sectores/{sectorId}/salas?codigoEspecialidad={codigoEspecialidad}
 ```
 
-Returns the active rooms of a hospital for the given specialty.
+Returns the active rooms of the given sector for the given specialty.
 
 ### Recover Current Session
 
@@ -413,7 +421,7 @@ currently called or in-attention consultation. Both values are nullable.
 POST /api/medico/sesiones
 ```
 
-Doctor selects hospital/specialty/room.
+Doctor selects hospital/specialty/sector/room (`hospitalId`, `codigoEspecialidad`, `sectorId` and `salaId` in the request body).
 
 ### Pause Session
 
@@ -451,10 +459,10 @@ POST /api/medico/sesiones/{sesionId}/consultas/{consultaId}/ausente
 GET /api/medico/sesiones/{sesionId}/pacientes-disponibles?dni={dni}
 ```
 
-Returns ordered `EntradaCola.EN_COLA` consultations for the session hospital and specialty,
+Returns ordered `EntradaCola.EN_COLA` consultations for the session hospital, specialty and sector,
 including the effective priority, patient name and surname, document (`numeroDocumento`/`tipoDocumento`) and `estadoConsulta`. For queued patients the effective priority is the preliminary backend classification. Room fields remain null until the consultation is called.
 
-`dni` is optional. When provided, the backend filters by exact match on `Paciente.numeroDocumento` (trimmed, `String` exact equals) within the same hospital/specialty queue and ordered by `prioridad DESC, ordenRelativo ASC, fechaHoraIngreso ASC`. The filtering is executed at DB level via `RepoEntradasCola.findByGestorDeColaIdAndEstadoAndConsultaMedicaPacienteNumeroDocumento...` for acceptable response times. Blank or missing `dni` returns the full ordered queue. Non-matching `dni` returns `[]` (empty JSON array, `200 OK`) — the frontend must show the “no coincidences” message.
+`dni` is optional. When provided, the backend filters by exact match on `Paciente.numeroDocumento` (trimmed, `String` exact equals) within the same hospital/specialty/sector queue and ordered by `prioridad DESC, ordenRelativo ASC, fechaHoraIngreso ASC`. The filtering is executed at DB level via `RepoEntradasCola.findByGestorDeColaIdAndEstadoAndConsultaMedicaPacienteNumeroDocumento...` for acceptable response times. Blank or missing `dni` returns the full ordered queue. Non-matching `dni` returns `[]` (empty JSON array, `200 OK`) — the frontend must show the “no coincidences” message.
 
 Example: `GET /api/medico/sesiones/42/pacientes-disponibles?dni=30111222`
 

@@ -43,10 +43,12 @@ public class EstimacionAtencionService {
             throw new NoSePudoEstimarElHorarioDeAtencion();
         }
 
-        int medicosActivos = repoSesionesAtencionMedica.countByHospitalIdAndEspecialidadIdAndEstado(
-                consultaMedica.getHospital().getId(),
-                consultaMedica.getEspecialidad().getId(),
-                EstadoSesionMedica.ACTIVA);
+        int medicosActivos = repoSesionesAtencionMedica
+                .countByHospitalIdAndEspecialidadIdAndSectorIdAndEstado(
+                        consultaMedica.getHospital().getId(),
+                        consultaMedica.getEspecialidad().getId(),
+                        consultaMedica.getSector().getId(),
+                        EstadoSesionMedica.ACTIVA);
         int medicosParaEstimacion = Math.max(medicosActivos, 1);
         int bloquesEspera = bloquesEspera(posicionBaseCero, medicosParaEstimacion);
 

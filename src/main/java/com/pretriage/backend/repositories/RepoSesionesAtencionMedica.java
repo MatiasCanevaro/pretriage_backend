@@ -22,6 +22,9 @@ public interface RepoSesionesAtencionMedica extends JpaRepository<SesionAtencion
 
     int countByHospitalIdAndEspecialidadIdAndEstado(Long idHospital, Long idEspecialidad, EstadoSesionMedica estado);
 
+    int countByHospitalIdAndEspecialidadIdAndSectorIdAndEstado(
+            Long idHospital, Long idEspecialidad, Long idSector, EstadoSesionMedica estado);
+
     boolean existsBySalaIdInAndEstadoIn(Collection<Long> salaIds, Collection<EstadoSesionMedica> estados);
 }
 

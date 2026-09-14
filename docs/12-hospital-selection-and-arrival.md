@@ -40,7 +40,10 @@ POST /api/atencion/hospital
 
 - Patient confirms their hospital choice.
 - Creates or updates the consultation with the selected hospital.
-- Enters the consultation into the queue (`EN_COLA` + `EntradaCola`) immediately with default priority (`NORMAL`).
+- Assigns a sector to the consultation (`AsignacionSectorService`: active sector of
+  the hospital+specialty with the fewest `EN_COLA` entries and at least one active room).
+- Enters the consultation into the sector queue (`EN_COLA` + `EntradaCola` for
+  `hospital+especialidad+sector`) immediately with default priority (`NORMAL`).
 - The AI triage chat is optional: if the patient completes it later, the existing `EntradaCola` priority is updated with the pretriage result.
 
 ### 2.5 Get Selected Hospital
@@ -51,6 +54,9 @@ GET /api/atencion/hospital
 
 - Returns the hospital selected in the active consultation of the authenticated patient: `idHospital`, `placeId`, `nombre`, and the formatted `direccion` (street, number, floor, postal code, city, province, joined with `, `, skipping empty components).
 - `direccion` is `null` when the hospital has no stored `Direccion`.
+- When the consultation has an assigned sector, the response also includes
+  `sectorId`, `nombreSector` and the sector's `salas` (active `Sala` list with
+  `id` and `nombre`).
 - Returns an error if the patient has no consultation with a selected hospital.
 
 ### 3. Get Arrival Time Estimates
@@ -151,8 +157,8 @@ The backend:
 
 The consultation enters the queue at hospital selection (`POST /api/atencion/hospital`):
 
-- The consultation becomes `EN_COLA` and an `EntradaCola` is created with default priority.
-- Queue position and estimated attention time are calculated based on current queue state.
+- The consultation becomes `EN_COLA` and an `EntradaCola` is created with default priority in the assigned sector's `GestorDeCola`.
+- Queue position and estimated attention time are calculated based on current queue state of that sector.
 - The AI triage chat is optional; when it finishes, the `EntradaCola` priority is updated with the pretriage result.
 
 Patients who temporarily left the queue return through (`PacienteEsperaController.reincorporarseACola`):

@@ -11,10 +11,33 @@ Do not use `GestorDeCola.consultasEnEspera` for new estimation logic. It is lega
 Each queue is per:
 
 ```text
-hospital + especialidad
+hospital + especialidad + sector
 ```
 
-This is represented by `GestorDeCola`.
+This is represented by `GestorDeCola` (unique per `id_hospital`,
+`id_especialidad_medica` and `id_sector`).
+
+## Sector Assignment
+
+When a patient selects a hospital (`AtencionHospitalService.seleccionarHospital`)
+or a receptionist creates an admission (`AdmisionRecepcionService.crearAdmision`),
+`AsignacionSectorService.asignarSector` chooses the sector for the consultation:
+
+- Candidates are `Sector` records of the hospital+specialty that are `activa=true`
+  and have at least one `Sala.activa=true`.
+- The chosen sector is the one with the fewest `EntradaCola.EN_COLA`
+  (`repoEntradasCola.countByGestorDeColaSectorIdAndEstado`), ties broken by
+  `Sector.nombre` ASC.
+- If no candidate exists, it throws `NoSuchElementException` and the patient
+  cannot enter the queue.
+- The chosen sector is stored in `ConsultaMedica.sector` and the patient is added
+  once to `Sector.pacientesAsignados`.
+
+`IngresoColaService.ingresar(consulta, prioridad)` requires
+`consulta.getSector() != null`; it resolves the `GestorDeCola` for
+`hospital+especialidad+sector`, creating it (and validating that the sector
+exists via `RepoSectores.existsById`) when missing. The overload
+`ingresar(consulta, prioridad, sector)` assigns the sector and delegates.
 
 ## Queue Ordering
 
@@ -60,10 +83,11 @@ It is not persisted as final truth.
 Formula:
 
 ```text
-pacientesAntes = index of patient in ordered EN_COLA list
-medicosActivos = count of SesionAtencionMedica.ACTIVA for same hospital/specialty
+cola              = ordered EN_COLA entries of the patient's GestorDeCola (hospital+especialidad+sector)
+pacientesAntes    = index of patient in that queue
+medicosActivos    = count of SesionAtencionMedica.ACTIVA for same hospital/especialty/sector
 medicosParaEstimacion = max(medicosActivos, 1)
-bloquesEspera = pacientesAntes / medicosParaEstimacion
+bloquesEspera     = pacientesAntes / medicosParaEstimacion
 fechaHoraAtencionEstimada = now + bloquesEspera * minutosPromedioAtencion
 ```
 
@@ -101,7 +125,7 @@ Example response:
 For the nearby-hospital ranking (`GET /api/hospitales/cercanos?ordenarPor=tiempo-atencion`) a prospective wait for a **new** patient that would join at the end of the queue is computed via `EstimacionAtencionService.calcularEsperaParaNuevaConsulta`:
 
 ```text
-pacientesEnCola        = count(EntradaCola.EN_COLA for hospital+especialidad)
+pacientesEnCola        = count(EntradaCola.EN_COLA for hospital+especialidad, all sectors)
 medicosActivos         = count(SesionAtencionMedica.ACTIVA for hospital+especialidad)
 medicosParaEstimacion  = max(medicosActivos, 1)
 bloquesEspera          = pacientesEnCola / medicosParaEstimacion   // floor division, same as per-patient formula

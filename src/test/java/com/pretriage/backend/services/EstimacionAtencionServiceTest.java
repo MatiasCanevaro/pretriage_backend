@@ -9,6 +9,7 @@ import com.pretriage.backend.model.consultas.EstadoSesionMedica;
 import com.pretriage.backend.model.consultas.GestorDeCola;
 import com.pretriage.backend.model.hospitales.EspecialidadMedica;
 import com.pretriage.backend.model.hospitales.Hospital;
+import com.pretriage.backend.model.hospitales.Sector;
 import com.pretriage.backend.repositories.RepoEntradasCola;
 import com.pretriage.backend.repositories.RepoSesionesAtencionMedica;
 import org.junit.jupiter.api.BeforeEach;
@@ -56,8 +57,8 @@ class EstimacionAtencionServiceTest {
         when(repoEntradasCola.findByGestorDeColaIdAndEstadoOrderByPrioridadDescOrdenRelativoAscFechaHoraIngresoAsc(
                 gestor.getId(), EstadoEntradaCola.EN_COLA))
                 .thenReturn(List.of(primera, segunda, paciente));
-        when(repoSesionesAtencionMedica.countByHospitalIdAndEspecialidadIdAndEstado(
-                hospital.getId(), especialidad.getId(), EstadoSesionMedica.ACTIVA))
+        when(repoSesionesAtencionMedica.countByHospitalIdAndEspecialidadIdAndSectorIdAndEstado(
+                hospital.getId(), especialidad.getId(), 5L, EstadoSesionMedica.ACTIVA))
                 .thenReturn(2);
 
         LocalDateTime antes = LocalDateTime.now();
@@ -89,8 +90,8 @@ class EstimacionAtencionServiceTest {
         when(repoEntradasCola.findByGestorDeColaIdAndEstadoOrderByPrioridadDescOrdenRelativoAscFechaHoraIngresoAsc(
                 gestor.getId(), EstadoEntradaCola.EN_COLA))
                 .thenReturn(List.of(primera, segunda, paciente));
-        when(repoSesionesAtencionMedica.countByHospitalIdAndEspecialidadIdAndEstado(
-                hospital.getId(), especialidad.getId(), EstadoSesionMedica.ACTIVA))
+        when(repoSesionesAtencionMedica.countByHospitalIdAndEspecialidadIdAndSectorIdAndEstado(
+                hospital.getId(), especialidad.getId(), 5L, EstadoSesionMedica.ACTIVA))
                 .thenReturn(0);
 
         LocalDateTime antes = LocalDateTime.now();
@@ -184,6 +185,9 @@ class EstimacionAtencionServiceTest {
         consulta.setId(id);
         consulta.setHospital(hospital);
         consulta.setEspecialidad(especialidad);
+        Sector sector = new Sector();
+        sector.setId(5L);
+        consulta.setSector(sector);
         return consulta;
     }
 

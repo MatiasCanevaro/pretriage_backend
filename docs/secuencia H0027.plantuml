@@ -260,13 +260,13 @@ else noExiste
    AdmisionRecepcionService-> AdmisionRecepcionService: validarEspecialidadDisponible(EspecialidadMedica)
    AdmisionRecepcionService -> AdmisionRecepcionService: new ConsultaMedica
 
-    AtencionHospitalService -> AsignacionSectorService : asignarSector(consultaMedica)
+    AdmisionRecepcionService -> AsignacionSectorService : asignarSector(consultaMedica)
     AsignacionSectorService -> ConsultaMedica: getEspecialidad()
     AsignacionSectorService <-- ConsultaMedica: Especialidad
     AsignacionSectorService -> RepoSectores : findByEspecialidad(Especialidad)
     AsignacionSectorService <-- RepoSectores : List<Sector>
     AsignacionSectorService -> AsignacionSectorService : seleccionarSector()
-    AtencionHospitalService <-- AsignacionSectorService: Sector(salas: List<Sala>)
+    AdmisionRecepcionService <-- AsignacionSectorService: Sector(salas: List<Sala>)
 
    AdmisionRecepcionService -> RepoConsultaMedica: save(ConsultaMedicaNueva)
    AdmisionRecepcionService <-- RepoConsultaMedica: ok
@@ -341,5 +341,106 @@ class Sala {
 }
 Sector -> "*" Sala
 Sala -> Sector
+
+@enduml
+
+@startuml Diagrama de secuencia Invitacion Medico H0027
+
+actor AdminHospital
+actor Medico
+
+== Admin crea la invitacion ==
+
+AdminHospital -> Controller: POST /api/admin/hospitales/{hospitalId}/invitaciones
+
+Controller -> StaffAccessService: crearInvitacion(userId, hospitalId, CrearInvitacionRequest(email, roles=[MEDICO], matricula, tipoMatricula, jurisdiccionMatricula, especialidadIds))
+StaffAccessService -> StaffAccessService: exigirAdminHospital(userId, hospitalId)
+StaffAccessService <-- StaffAccessService: UsuarioAuth (membresia ACTIVA con rol ADMIN_HOSPITAL)
+StaffAccessService -> RepoHospitales: findById(hospitalId)
+StaffAccessService <-- RepoHospitales: Hospital
+
+alt ya existe invitacion PENDIENTE para el email
+    Controller <-- StaffAccessService: throw ConflictoDeEstadoException
+else no existe
+    StaffAccessService -> StaffAccessService: validarDatosMedicos(roles, matricula, tipoMatricula, jurisdiccionMatricula, especialidadIds, hospital)
+    alt matricula invalida, sin jurisdiccion provincial o especialidad no habilitada
+        Controller <-- StaffAccessService: throw IllegalStateException
+    else datos validos
+        StaffAccessService -> StaffAccessService: nuevoToken() + hash(token)
+        StaffAccessService -> RepoInvitaciones: save(InvitacionHospital(PENDIENTE, emailNormalizado, roles, especialidadIds, matricula, venceEn=7 dias))
+        StaffAccessService -> InvitationEmailPort: deliver(InvitationEmailMessage(email, hospital, roles, venceEn, token))
+        alt envio correcto
+            StaffAccessService <-- InvitationEmailPort: DeliveryResult(sent=true)
+        else envio falla
+            StaffAccessService <-- InvitationEmailPort: DeliveryResult(sent=false) queda PENDIENTE_ENTREGA
+        end
+        StaffAccessService -> RepoAuditorias: save(AuditoriaHospital, accion=INVITACION_CREADA)
+    end
+end
+
+Controller <-- StaffAccessService: InvitacionResponse(id, hospital, email, estado, roles, especialidadIds, matricula, venceEn, emailEnviado)
+AdminHospital <-- Controller: InvitacionResponse(...)
+
+opt reenviar (rotacion de token)
+    AdminHospital -> Controller: POST /api/admin/hospitales/{hospitalId}/invitaciones/{invitacionId}/reenviar
+    Controller -> StaffAccessService: reenviarInvitacion(userId, hospitalId, invitacionId)
+    StaffAccessService -> StaffAccessService: verificar estado != ACEPTADA y != REVOCADA
+    StaffAccessService -> StaffAccessService: nuevoToken() + hash(token) (rota el secreto anterior)
+    StaffAccessService -> RepoInvitaciones: save(PENDIENTE, venceEn=7 dias)
+    StaffAccessService -> InvitationEmailPort: deliver(...)
+    StaffAccessService -> RepoAuditorias: save(INVITACION_REENVIADA)
+    AdminHospital <-- Controller: InvitacionResponse(...)
+end
+
+opt revocar
+    AdminHospital -> Controller: DELETE /api/admin/hospitales/{hospitalId}/invitaciones/{invitacionId}
+    Controller -> StaffAccessService: revocarInvitacion(userId, hospitalId, invitacionId)
+    StaffAccessService -> RepoInvitaciones: save(REVOCADA)
+    StaffAccessService -> RepoAuditorias: save(INVITACION_REVOCADA)
+    AdminHospital <-- Controller: 204 No Content
+end
+
+== El medico revisa la invitacion ==
+
+Medico -> Controller: GET /api/invitaciones/{token}/resumen
+
+Controller -> StaffAccessService: resumir(token)
+StaffAccessService -> RepoInvitaciones: findByTokenHash(hash(token))
+StaffAccessService <-- RepoInvitaciones: InvitacionHospital
+StaffAccessService -> StaffAccessService: estadoActual() (EXPIRADA si vencio)
+Controller <-- StaffAccessService: InvitacionResumenResponse(hospitalNombre, roles, especialidadIds, matricula, venceEn, cuentaExistente)
+Medico <-- Controller: InvitacionResumenResponse(...)
+
+== El medico acepta ==
+
+alt existe cuenta (usuario autenticado)
+    Medico -> Controller: POST /api/invitaciones/{token}/aceptar
+    Controller -> StaffAccessService: aceptar(userId, token)
+    StaffAccessService -> StaffAccessService: invitacionValida(token, exigirPendiente=true)
+    StaffAccessService -> StaffAccessService: verificar email del usuario == email de la invitacion
+else nuevo usuario
+    Medico -> Controller: POST /api/invitaciones/{token}/registro (RegistrarInvitadoRequest(nombre, apellido, documento, password))
+    Controller -> StaffAccessService: registrarYAceptar(token, request)
+    StaffAccessService -> StaffAccessService: invitacionValida(token, exigirPendiente=true)
+    StaffAccessService -> AuthService: registrarUsuarioYObtenerAuth0Id(email, password)
+    StaffAccessService <-- AuthService: auth0Id
+    StaffAccessService -> RepoUsuariosAuth: save(UsuarioAuth(emailNormalizado, rol=USER))
+end
+
+group aceptar(invitacion, usuario)
+    StaffAccessService -> RepoMembresias: findByUsuarioIdAndHospitalId o new
+    StaffAccessService -> RepoMembresias: save(MembresiaHospital(ACTIVA, roles=[MEDICO], creadaPor=invitadaPor, fechaAceptacion))
+    StaffAccessService -> StaffAccessService: materializarPerfilesCompatibles(usuario, invitacion)
+    StaffAccessService -> RepoMedicos: findByUsuarioAuthId o new Medico(matricula)
+    StaffAccessService -> RepoCredenciales: save(CredencialProfesional, si no existe)
+    loop por cada especialidadId de la invitacion
+        StaffAccessService -> RepoAsignaciones: save(AsignacionMedicoHospital(medico, hospital, especialidad))
+    end
+    StaffAccessService -> RepoInvitaciones: save(ACEPTADA, aceptadaPor, fechaAceptacion)
+    StaffAccessService -> RepoAuditorias: save(INVITACION_ACEPTADA)
+end
+
+Controller <-- StaffAccessService: MembresiaResponse(id, hospitalId, hospitalNombre, ACTIVA, roles=[MEDICO])
+Medico <-- Controller: MembresiaResponse(...)
 
 @enduml

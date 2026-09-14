@@ -1,5 +1,7 @@
 package com.pretriage.backend.controllers.dtos;
 
+import java.util.List;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -14,5 +16,11 @@ public class HospitalSeleccionadoResponse {
     private String nombre;
 
     private String direccion;
+
+    private Long sectorId;
+
+    private String nombreSector;
+
+    private List<SalaDTO> salas;
 
 }

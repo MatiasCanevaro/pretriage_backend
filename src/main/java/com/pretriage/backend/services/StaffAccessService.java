@@ -325,9 +325,6 @@ public class StaffAccessService {
         membresias.save(membresia);
     }
 
-    // TODO agregar o pensar en endpoint para actualizar la asignación a un sector
-    // (un patch o put del admin debería ser)
-    // TODO AGREGAR SECTOR A LA INVITACION Y AL ASIGNAR A UN MEDICO
     private void materializarPerfilesCompatibles(UsuarioAuth usuario, InvitacionHospital invitacion) {
         if (invitacion.getRolesSolicitados().contains(RolMembresiaHospital.RECEPCIONISTA)) {
             Recepcionista recepcionista = recepcionistas.findRecepcionistaByUsuarioAuthId(usuario.getId())

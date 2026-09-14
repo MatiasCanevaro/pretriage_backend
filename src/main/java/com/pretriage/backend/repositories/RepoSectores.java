@@ -19,4 +19,9 @@ public interface RepoSectores extends JpaRepository<Sector, Long> {
     Optional<Sector> findByIdAndHospitalId(Long id, Long hospitalId);
 
     List<Sector> findByHospitalIdAndEspecialidadId(Long hospitalId, Long especialidadId);
+
+    List<Sector> findByHospitalIdAndEspecialidadIdAndActivaTrueOrderByNombreAsc(Long hospitalId, Long especialidadId);
+
+    List<Sector> findByHospitalIdAndEspecialidadCodigoAndActivaTrueOrderByNombreAsc(Long hospitalId,
+            String codigoEspecialidad);
 }

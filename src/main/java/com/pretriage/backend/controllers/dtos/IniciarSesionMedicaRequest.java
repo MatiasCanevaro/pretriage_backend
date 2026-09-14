@@ -16,5 +16,8 @@ public class IniciarSesionMedicaRequest {
     private String codigoEspecialidad;
 
     @NotNull
+    private Long sectorId;
+
+    @NotNull
     private Long salaId;
 }

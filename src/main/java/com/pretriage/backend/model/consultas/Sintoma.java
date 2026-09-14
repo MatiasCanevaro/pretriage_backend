@@ -1,7 +1,6 @@
 package com.pretriage.backend.model.consultas;
 
 import jakarta.persistence.*;
-import jdk.jfr.Enabled;
 import lombok.Getter;
 import lombok.Setter;
 

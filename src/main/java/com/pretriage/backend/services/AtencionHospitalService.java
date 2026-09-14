@@ -4,6 +4,7 @@ import com.pretriage.backend.controllers.dtos.EsperaNuevaConsultaCalculo;
 import com.pretriage.backend.controllers.dtos.EspecialidadMedicaDTO;
 import com.pretriage.backend.controllers.dtos.HospitalCercanoDTO;
 import com.pretriage.backend.controllers.dtos.HospitalSeleccionadoResponse;
+import com.pretriage.backend.controllers.dtos.SalaDTO;
 import com.pretriage.backend.controllers.dtos.TiempoEstimadoArriboHospitalResponse;
 import com.pretriage.backend.controllers.dtos.TiempoEstimadoAtencionResponse;
 import com.pretriage.backend.exceptions.AtencionEnCursoException;
@@ -13,6 +14,8 @@ import com.pretriage.backend.model.consultas.NivelDeGravedad;
 import com.pretriage.backend.model.hospitales.Direccion;
 import com.pretriage.backend.model.hospitales.EspecialidadMedica;
 import com.pretriage.backend.model.hospitales.Hospital;
+import com.pretriage.backend.model.hospitales.Sala;
+import com.pretriage.backend.model.hospitales.Sector;
 import com.pretriage.backend.model.personas.Paciente;
 import com.pretriage.backend.repositories.RepoConsultasMedicas;
 import com.pretriage.backend.repositories.RepoEspecialidadesMedicas;
@@ -25,7 +28,6 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -74,6 +76,7 @@ public class AtencionHospitalService {
 
     private final EstimacionAtencionService estimacionAtencionService;
     private final IngresoColaService ingresoColaService;
+    private final AsignacionSectorService asignacionSectorService;
 
     private final PacienteService pacienteService;
     private final GooglePlacesService googlePlacesService;
@@ -203,7 +206,8 @@ public class AtencionHospitalService {
 
         consultaMedica.setHospital(hospital);
         consultaMedica.setEspecialidad(especialidad);
-        ingresoColaService.ingresar(consultaMedica, NivelDeGravedad.NORMAL);
+        asignarSectorSiEsNecesario(consultaMedica);
+        ingresoColaService.ingresar(consultaMedica, NivelDeGravedad.NORMAL, consultaMedica.getSector());
     }
 
     private ConsultaMedica obtenerOCrearConsultaParaSeleccionarHospital(Paciente paciente) {
@@ -242,6 +246,15 @@ public class AtencionHospitalService {
         response.setNombre(hospital.getNombre());
         Direccion direccion = hospital.getDireccion();
         response.setDireccion(direccion != null ? direccion.formateada() : null);
+        Sector sector = consultaMedica.getSector();
+        if (sector != null) {
+            response.setSectorId(sector.getId());
+            response.setNombreSector(sector.getNombre());
+            response.setSalas(sector.getSalas().stream()
+                    .filter(Sala::isActiva)
+                    .map(this::mapearSalaDTO)
+                    .toList());
+        }
         return response;
     }
 
@@ -346,5 +359,21 @@ public class AtencionHospitalService {
             throw new NoSuchElementException("No existe el Hospital con id: " + idHospital);
         }
         return opHospital.get();
+    }
+
+    private void asignarSectorSiEsNecesario(ConsultaMedica consultaMedica) {
+        Sector sector = consultaMedica.getSector();
+        if (sector == null
+                || !sector.getHospital().getId().equals(consultaMedica.getHospital().getId())
+                || !sector.getEspecialidad().getId().equals(consultaMedica.getEspecialidad().getId())) {
+            asignacionSectorService.asignarSector(consultaMedica);
+        }
+    }
+
+    private SalaDTO mapearSalaDTO(Sala sala) {
+        SalaDTO dto = new SalaDTO();
+        dto.setId(sala.getId());
+        dto.setNombre(sala.getNombre());
+        return dto;
     }
 }

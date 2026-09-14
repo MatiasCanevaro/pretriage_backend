@@ -31,6 +31,7 @@ class AdmisionRecepcionServiceTest {
     @Mock RepoDirecciones repoDirecciones;
     @Mock RepoEspecialidadesMedicas repoEspecialidadesMedicas; @Mock TriageFormularioService triageFormularioService;
     @Mock IngresoColaService ingresoColaService; @Mock EstimacionAtencionService estimacionAtencionService;
+    @Mock AsignacionSectorService asignacionSectorService;
     @Mock ObjectMapper objectMapper;
     @InjectMocks AdmisionRecepcionService service;
 
@@ -189,11 +190,22 @@ class AdmisionRecepcionServiceTest {
         when(repoConsultasMedicas.save(any())).thenAnswer(inv -> {
             ConsultaMedica consulta = inv.getArgument(0); consulta.setId(5L); return consulta;
         });
+        when(asignacionSectorService.asignarSector(any(ConsultaMedica.class))).thenAnswer(inv -> {
+            ConsultaMedica consulta = inv.getArgument(0);
+            Sector sector = new Sector(); sector.setId(50L); sector.setNombre("Sector A");
+            consulta.setSector(sector);
+            return sector;
+        });
         when(repoAdmisionesRecepcion.save(any())).thenAnswer(inv -> {
             AdmisionRecepcion admision = inv.getArgument(0); admision.setId(7L); return admision;
         });
 
         service.crearAdmision("auth", request);
+
+        var consultaCaptor = org.mockito.ArgumentCaptor.forClass(ConsultaMedica.class);
+        verify(repoConsultasMedicas).save(consultaCaptor.capture());
+        assertEquals("Sector A", consultaCaptor.getValue().getSector().getNombre());
+        verify(asignacionSectorService).asignarSector(consultaCaptor.getValue());
 
         var pacienteCaptor = org.mockito.ArgumentCaptor.forClass(Paciente.class);
         verify(repoPacientes).save(pacienteCaptor.capture());

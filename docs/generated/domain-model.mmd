@@ -229,6 +229,7 @@ erDiagram
     CONSULTA_MEDICA }o--|| ESPECIALIDAD_MEDICA : especialidad
     CONSULTA_MEDICA }o--|| MEDICO : medico
     CONSULTA_MEDICA }o--|| SALA : sala
+    CONSULTA_MEDICA }o--|| SECTOR : sector
     CONSULTA_MEDICA }o--|| PACIENTE : paciente
     CONSULTA_MEDICA ||--o{ SINTOMA : sintomasBot
     CONSULTA_MEDICA ||--o{ MENSAJE : chat
@@ -246,6 +247,7 @@ erDiagram
     SESION_ATENCION_MEDICA }o--|| HOSPITAL : hospital
     SESION_ATENCION_MEDICA }o--|| ESPECIALIDAD_MEDICA : especialidad
     SESION_ATENCION_MEDICA }o--|| SALA : sala
+    SESION_ATENCION_MEDICA }o--|| SECTOR : sector
     CREDENCIAL }o--|| OBRA_SOCIAL : obraSocial
     CREDENCIAL }o--|| PACIENTE : paciente
     DIRECCION ||--|| COORDENADA : coordenada

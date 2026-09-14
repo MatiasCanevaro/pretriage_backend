@@ -3,6 +3,7 @@ package com.pretriage.backend.model.consultas;
 import com.pretriage.backend.model.hospitales.EspecialidadMedica;
 import com.pretriage.backend.model.hospitales.Hospital;
 import com.pretriage.backend.model.hospitales.Sala;
+import com.pretriage.backend.model.hospitales.Sector;
 import com.pretriage.backend.model.personas.Medico;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -41,6 +42,10 @@ public class SesionAtencionMedica {
     @ManyToOne
     @JoinColumn(name = "id_sala", referencedColumnName = "id")
     private Sala sala;
+
+    @ManyToOne
+    @JoinColumn(name = "id_sector", referencedColumnName = "id")
+    private Sector sector;
 
     @Enumerated(EnumType.STRING)
     private EstadoSesionMedica estado;
