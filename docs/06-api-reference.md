@@ -787,15 +787,19 @@ Example `sectores` item:
 ### Enable or Disable Specialty
 
 ```http
-POST /api/admin/hospitales/{hospitalId}/configuracion/especialidades/{especialidadId}
-DELETE /api/admin/hospitales/{hospitalId}/configuracion/especialidades/{especialidadId}
+POST   /api/admin/hospitales/{hospitalId}/configuracion/especialidades/{especialidadId}
+DELETE /api/admin/hospitales/{hospitalId}/configuracion/sectores/{sectorId}/especialidades/{especialidadId}
 ```
+
+`DELETE` / deshabilitar is scoped to a sector: it only blocks when the specialty still has active rooms inside that sector (`RepoSalas.existsByHospitalIdAndEspecialidadIdAndSectorIdAndActivaTrue`). Returns `ConfiguracionHospitalResponse`.
 
 ### Create Room
 
 ```http
-POST /api/admin/hospitales/{hospitalId}/configuracion/salas
+POST /api/admin/hospitales/{hospitalId}/configuracion/sectores/{sectorId}/salas
 ```
+
+Rooms are created inside a sector, so `{sectorId}` is required in the path. The room is assigned to that sector and its specialty must match the sector's specialty (`409 { "error": "La especialidad de la sala debe coincidir con la especialidad del sector" }`). Room name uniqueness is now `hospitalId + sectorId + nombre` case-insensitive (`RepoSalas.existsByHospitalIdAndSectorIdAndNombreIgnoreCase`) -> `409 { "error": "Ya existe una sala con ese nombre en el sector" }`.
 
 Body:
 
@@ -809,16 +813,18 @@ Body:
 ### Update Room
 
 ```http
-PUT /api/admin/hospitales/{hospitalId}/configuracion/salas/{salaId}
+PUT /api/admin/hospitales/{hospitalId}/configuracion/sectores/{sectorId}/salas/{salaId}
 ```
 
-Uses the same body as room creation.
+Uses the same body as room creation. The room must belong to the sector in the URL (`404 { "error": "La sala no pertenece al sector" }`) and its specialty must match the sector's specialty. Name uniqueness is `hospitalId + sectorId + nombre` excluding self (`RepoSalas.existsByHospitalIdAndNombreIgnoreCaseAndSectorIdAndIdNot`) -> `409`.
 
 ### Activate or Deactivate Room
 
 ```http
-PATCH /api/admin/hospitales/{hospitalId}/configuracion/salas/{salaId}/estado
+PATCH /api/admin/hospitales/{hospitalId}/configuracion/sectores/{sectorId}/salas/{salaId}/estado
 ```
+
+The room must belong to the sector in the URL; activating re-validates that the room's specialty is still enabled for the hospital.
 
 Body:
 
@@ -827,6 +833,8 @@ Body:
   "activa": false
 }
 ```
+
+Room responses (`SalaHospitalResponse`) include the sector: `sectorId` and `sectorNombre` in addition to the specialty fields.
 
 ### Create Sector
 

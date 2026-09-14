@@ -1,5 +1,6 @@
 package com.pretriage.backend.services;
 
+import com.pretriage.backend.controllers.dtos.acceso.HospitalConfigurationDtos.ActualizarEstadoSalaRequest;
 import com.pretriage.backend.controllers.dtos.acceso.HospitalConfigurationDtos.ActualizarSectorRequest;
 import com.pretriage.backend.controllers.dtos.acceso.HospitalConfigurationDtos.GuardarSalaRequest;
 import com.pretriage.backend.controllers.dtos.acceso.HospitalConfigurationDtos.GuardarSectorRequest;
@@ -51,6 +52,7 @@ class HospitalConfigurationServiceTest {
         private HospitalConfigurationService service;
         private Hospital hospital;
         private EspecialidadMedica especialidad;
+        private Sector sector;
         private UsuarioAuth actor;
 
         @BeforeEach
@@ -66,6 +68,13 @@ class HospitalConfigurationServiceTest {
                 especialidad.setCodigo("CLINICA_MEDICA");
                 especialidad.setNombre("Clínica médica");
                 hospital.getEspecialidades().add(especialidad);
+                sector = new Sector();
+                sector.setId(2L);
+                sector.setNombre("Sector Norte");
+                sector.setActiva(true);
+                sector.setHospital(hospital);
+                sector.setEspecialidad(especialidad);
+                lenient().when(sectores.findByIdAndHospitalId(sector.getId(), hospital.getId())).thenReturn(Optional.of(sector));
                 actor = new UsuarioAuth();
                 actor.setId("auth0|admin");
                 when(staffAccessService.exigirAdminHospital(actor.getId(), hospital.getId())).thenReturn(actor);
@@ -73,37 +82,222 @@ class HospitalConfigurationServiceTest {
         }
 
         @Test
-        void creaUnaSalaParaUnaEspecialidadHabilitada() {
-                when(salas.existsByHospitalIdAndNombreIgnoreCase(hospital.getId(), "Consultorio 1")).thenReturn(false);
+        void creaUnaSalaParaUnaEspecialidadHabilitadaAsignadaAlSector() {
+                when(salas.existsByHospitalIdAndSectorIdAndNombreIgnoreCase(hospital.getId(), sector.getId(),
+                                "Consultorio 1")).thenReturn(false);
                 when(salas.save(any(Sala.class))).thenAnswer(invocation -> {
                         Sala sala = invocation.getArgument(0);
                         sala.setId(12L);
                         return sala;
                 });
 
-                var response = service.crearSala(actor.getId(), hospital.getId(),
+                var response = service.crearSala(actor.getId(), hospital.getId(), sector.getId(),
                                 new GuardarSalaRequest(" Consultorio 1 ", especialidad.getId()));
 
                 assertEquals(12L, response.id());
                 assertEquals("Consultorio 1", response.nombre());
+                assertEquals(sector.getId(), response.sectorId());
+                assertEquals(sector.getNombre(), response.sectorNombre());
                 assertEquals(especialidad.getId(), response.especialidadId());
                 assertTrue(response.activa());
                 verify(auditorias).save(any());
         }
 
         @Test
-        void noDeshabilitaUnaEspecialidadConSalasActivas() {
+        void noDeshabilitaUnaEspecialidadConSalasActivasEnElSector() {
                 when(especialidades.findById(especialidad.getId())).thenReturn(Optional.of(especialidad));
-                when(salas.existsByHospitalIdAndEspecialidadIdAndActivaTrue(hospital.getId(), especialidad.getId()))
-                                .thenReturn(true);
+                when(salas.existsByHospitalIdAndEspecialidadIdAndSectorIdAndActivaTrue(hospital.getId(),
+                                especialidad.getId(), sector.getId())).thenReturn(true);
 
                 ConflictoDeEstadoException error = assertThrows(ConflictoDeEstadoException.class,
                                 () -> service.deshabilitarEspecialidad(actor.getId(), hospital.getId(),
-                                                especialidad.getId()));
+                                                especialidad.getId(), sector.getId()));
 
                 assertEquals("Desactivá las salas de la especialidad antes de quitarla del hospital",
                                 error.getMessage());
                 verify(hospitales, never()).save(any());
+        }
+
+        @Test
+        void deshabilitarEspecialidadSinSalasActivasEnElSector() {
+                when(especialidades.findById(especialidad.getId())).thenReturn(Optional.of(especialidad));
+                when(salas.existsByHospitalIdAndEspecialidadIdAndSectorIdAndActivaTrue(hospital.getId(),
+                                especialidad.getId(), sector.getId())).thenReturn(false);
+                when(especialidades.findAll()).thenReturn(java.util.List.of(especialidad));
+                when(salas.findByHospitalIdOrderByNombreAsc(hospital.getId())).thenReturn(java.util.List.of());
+                when(sectores.findByHospitalIdOrderByNombreAsc(hospital.getId())).thenReturn(java.util.List.of());
+
+                var configuracion = service.deshabilitarEspecialidad(actor.getId(), hospital.getId(),
+                                especialidad.getId(), sector.getId());
+
+                assertFalse(configuracion.especialidades().get(0).habilitada());
+                verify(hospitales).save(hospital);
+                verify(auditorias).save(any());
+        }
+
+        @Test
+        void noCreaSalaSiNombreDuplicadoEnElSector() {
+                when(salas.existsByHospitalIdAndSectorIdAndNombreIgnoreCase(hospital.getId(), sector.getId(),
+                                "Consultorio 1")).thenReturn(true);
+
+                ConflictoDeEstadoException error = assertThrows(ConflictoDeEstadoException.class,
+                                () -> service.crearSala(actor.getId(), hospital.getId(), sector.getId(),
+                                                new GuardarSalaRequest("Consultorio 1", especialidad.getId())));
+
+                assertEquals("Ya existe una sala con ese nombre en el sector", error.getMessage());
+                verify(salas, never()).save(any());
+        }
+
+        @Test
+        void noCreaSalaSiSectorNoExiste() {
+                when(sectores.findByIdAndHospitalId(99L, hospital.getId())).thenReturn(Optional.empty());
+
+                assertThrows(RecursoNoEncontradoException.class,
+                                () -> service.crearSala(actor.getId(), hospital.getId(), 99L,
+                                                new GuardarSalaRequest("Consultorio 1", especialidad.getId())));
+        }
+
+        @Test
+        void noCreaSalaSiEspecialidadNoCoincideConLaDelSector() {
+                EspecialidadMedica otra = new EspecialidadMedica();
+                otra.setId(99L);
+                otra.setCodigo("TRAUMATOLOGIA");
+                otra.setNombre("Traumatología");
+                hospital.getEspecialidades().add(otra);
+
+                ConflictoDeEstadoException error = assertThrows(ConflictoDeEstadoException.class,
+                                () -> service.crearSala(actor.getId(), hospital.getId(), sector.getId(),
+                                                new GuardarSalaRequest("Consultorio 1", otra.getId())));
+
+                assertEquals("La especialidad de la sala debe coincidir con la especialidad del sector",
+                                error.getMessage());
+                verify(salas, never()).save(any());
+        }
+
+        @Test
+        void actualizaSalaCambiaNombreYEspecialidad() {
+                Sala sala = new Sala();
+                sala.setId(12L);
+                sala.setNombre("Consultorio Viejo");
+                sala.setActiva(true);
+                sala.setHospital(hospital);
+                sala.setSector(sector);
+                sala.setEspecialidad(especialidad);
+                when(salas.findByIdAndHospitalId(12L, hospital.getId())).thenReturn(Optional.of(sala));
+                when(salas.existsByHospitalIdAndNombreIgnoreCaseAndSectorIdAndIdNot(hospital.getId(), "Consultorio 1",
+                                sector.getId(), 12L)).thenReturn(false);
+                when(salas.save(any(Sala.class))).thenAnswer(inv -> inv.getArgument(0));
+
+                var response = service.actualizarSala(actor.getId(), hospital.getId(), sector.getId(), 12L,
+                                new GuardarSalaRequest(" Consultorio 1 ", especialidad.getId()));
+
+                assertEquals("Consultorio 1", response.nombre());
+                assertEquals(sector.getId(), response.sectorId());
+                assertEquals(sector.getNombre(), response.sectorNombre());
+                verify(auditorias).save(any());
+        }
+
+        @Test
+        void noActualizaSalaSiNombreDuplicadoEnElSector() {
+                Sala sala = new Sala();
+                sala.setId(12L);
+                sala.setNombre("Consultorio Viejo");
+                sala.setHospital(hospital);
+                sala.setSector(sector);
+                sala.setEspecialidad(especialidad);
+                when(salas.findByIdAndHospitalId(12L, hospital.getId())).thenReturn(Optional.of(sala));
+                when(salas.existsByHospitalIdAndNombreIgnoreCaseAndSectorIdAndIdNot(hospital.getId(),
+                                "Consultorio Duplicado", sector.getId(), 12L)).thenReturn(true);
+
+                ConflictoDeEstadoException error = assertThrows(ConflictoDeEstadoException.class,
+                                () -> service.actualizarSala(actor.getId(), hospital.getId(), sector.getId(), 12L,
+                                                new GuardarSalaRequest("Consultorio Duplicado",
+                                                                especialidad.getId())));
+
+                assertEquals("Ya existe una sala con ese nombre en el sector", error.getMessage());
+                verify(salas, never()).save(any());
+        }
+
+        @Test
+        void noActualizaSalaSiSalaNoPerteneceAlSector() {
+                Sector otroSector = new Sector();
+                otroSector.setId(55L);
+                otroSector.setNombre("Sector Sur");
+                otroSector.setHospital(hospital);
+                otroSector.setEspecialidad(especialidad);
+                Sala sala = new Sala();
+                sala.setId(12L);
+                sala.setNombre("Consultorio 1");
+                sala.setHospital(hospital);
+                sala.setSector(otroSector);
+                sala.setEspecialidad(especialidad);
+                when(salas.findByIdAndHospitalId(12L, hospital.getId())).thenReturn(Optional.of(sala));
+
+                assertThrows(RecursoNoEncontradoException.class,
+                                () -> service.actualizarSala(actor.getId(), hospital.getId(), sector.getId(), 12L,
+                                                new GuardarSalaRequest("Consultorio 1", especialidad.getId())));
+        }
+
+        @Test
+        void noActualizaSalaSiSectorNoExiste() {
+                Sala sala = new Sala();
+                sala.setId(12L);
+                sala.setNombre("Consultorio 1");
+                sala.setHospital(hospital);
+                sala.setEspecialidad(especialidad);
+                when(salas.findByIdAndHospitalId(12L, hospital.getId())).thenReturn(Optional.of(sala));
+                when(sectores.findByIdAndHospitalId(99L, hospital.getId())).thenReturn(Optional.empty());
+
+                assertThrows(RecursoNoEncontradoException.class,
+                                () -> service.actualizarSala(actor.getId(), hospital.getId(), 99L, 12L,
+                                                new GuardarSalaRequest("Consultorio 1", especialidad.getId())));
+        }
+
+        @Test
+        void actualizaEstadoSalaActivaYDesactiva() {
+                Sala sala = new Sala();
+                sala.setId(12L);
+                sala.setNombre("Consultorio 1");
+                sala.setActiva(false);
+                sala.setHospital(hospital);
+                sala.setSector(sector);
+                sala.setEspecialidad(especialidad);
+                when(salas.findByIdAndHospitalId(12L, hospital.getId())).thenReturn(Optional.of(sala));
+                when(salas.save(any(Sala.class))).thenAnswer(inv -> inv.getArgument(0));
+
+                var activa = service.actualizarEstadoSala(actor.getId(), hospital.getId(), sector.getId(), 12L,
+                                new ActualizarEstadoSalaRequest(true));
+
+                assertEquals(true, activa.activa());
+
+                var desactiva = service.actualizarEstadoSala(actor.getId(), hospital.getId(), sector.getId(), 12L,
+                                new ActualizarEstadoSalaRequest(false));
+
+                assertEquals(false, desactiva.activa());
+                verify(auditorias, times(2)).save(any());
+        }
+
+        @Test
+        void noActivaSalaSiEspecialidadNoHabilitada() {
+                EspecialidadMedica otra = new EspecialidadMedica();
+                otra.setId(99L);
+                otra.setCodigo("TRAUMATOLOGIA");
+                otra.setNombre("Traumatología");
+                Sala sala = new Sala();
+                sala.setId(12L);
+                sala.setNombre("Consultorio 1");
+                sala.setActiva(false);
+                sala.setHospital(hospital);
+                sala.setSector(sector);
+                sala.setEspecialidad(otra);
+                when(salas.findByIdAndHospitalId(12L, hospital.getId())).thenReturn(Optional.of(sala));
+
+                ConflictoDeEstadoException error = assertThrows(ConflictoDeEstadoException.class,
+                                () -> service.actualizarEstadoSala(actor.getId(), hospital.getId(), sector.getId(),
+                                                12L, new ActualizarEstadoSalaRequest(true)));
+
+                assertEquals("La especialidad no está habilitada en el hospital", error.getMessage());
+                verify(salas, never()).save(any());
         }
 
         @Test

@@ -27,28 +27,29 @@ public class HospitalConfigurationController {
         return service.habilitarEspecialidad(jwt.getSubject(), hospitalId, especialidadId);
     }
 
-    @DeleteMapping("/especialidades/{especialidadId}")
+    @DeleteMapping("/sectores/{sectorId}/especialidades/{especialidadId}")
     public ConfiguracionHospitalResponse deshabilitarEspecialidad(@AuthenticationPrincipal Jwt jwt,
-            @PathVariable Long hospitalId, @PathVariable Long especialidadId) {
-        return service.deshabilitarEspecialidad(jwt.getSubject(), hospitalId, especialidadId);
+            @PathVariable Long hospitalId, @PathVariable Long sectorId, @PathVariable Long especialidadId) {
+        return service.deshabilitarEspecialidad(jwt.getSubject(), hospitalId, especialidadId, sectorId);
     }
 
-    @PostMapping("/salas")
+    @PostMapping("/sectores/{sectorId}/salas")
     public SalaHospitalResponse crearSala(@AuthenticationPrincipal Jwt jwt, @PathVariable Long hospitalId,
-            @Valid @RequestBody GuardarSalaRequest request) {
-        return service.crearSala(jwt.getSubject(), hospitalId, request);
+            @PathVariable Long sectorId, @Valid @RequestBody GuardarSalaRequest request) {
+        return service.crearSala(jwt.getSubject(), hospitalId, sectorId, request);
     }
 
-    @PutMapping("/salas/{salaId}")
+    @PutMapping("/sectores/{sectorId}/salas/{salaId}")
     public SalaHospitalResponse actualizarSala(@AuthenticationPrincipal Jwt jwt, @PathVariable Long hospitalId,
-            @PathVariable Long salaId, @Valid @RequestBody GuardarSalaRequest request) {
-        return service.actualizarSala(jwt.getSubject(), hospitalId, salaId, request);
+            @PathVariable Long sectorId, @PathVariable Long salaId, @Valid @RequestBody GuardarSalaRequest request) {
+        return service.actualizarSala(jwt.getSubject(), hospitalId, sectorId, salaId, request);
     }
 
-    @PatchMapping("/salas/{salaId}/estado")
+    @PatchMapping("/sectores/{sectorId}/salas/{salaId}/estado")
     public SalaHospitalResponse actualizarEstadoSala(@AuthenticationPrincipal Jwt jwt, @PathVariable Long hospitalId,
-            @PathVariable Long salaId, @Valid @RequestBody ActualizarEstadoSalaRequest request) {
-        return service.actualizarEstadoSala(jwt.getSubject(), hospitalId, salaId, request);
+            @PathVariable Long sectorId, @PathVariable Long salaId,
+            @Valid @RequestBody ActualizarEstadoSalaRequest request) {
+        return service.actualizarEstadoSala(jwt.getSubject(), hospitalId, sectorId, salaId, request);
     }
 
     @PostMapping("/sectores")

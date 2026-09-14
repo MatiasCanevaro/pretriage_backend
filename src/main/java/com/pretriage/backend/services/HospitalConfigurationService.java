@@ -78,11 +78,12 @@ public class HospitalConfigurationService {
 
     @Transactional
     public ConfiguracionHospitalResponse deshabilitarEspecialidad(String subject, Long hospitalId,
-            Long especialidadId) {
+            Long especialidadId, Long sectorId) {
         UsuarioAuth actor = staffAccessService.exigirAdminHospital(subject, hospitalId);
         Hospital hospital = hospital(hospitalId);
         EspecialidadMedica especialidad = especialidad(especialidadId);
-        if (salas.existsByHospitalIdAndEspecialidadIdAndActivaTrue(hospitalId, especialidadId)) {
+        sector(hospitalId, sectorId);
+        if (salas.existsByHospitalIdAndEspecialidadIdAndSectorIdAndActivaTrue(hospitalId, especialidadId, sectorId)) {
             throw new ConflictoDeEstadoException(
                     "Desactivá las salas de la especialidad antes de quitarla del hospital");
         }
@@ -96,54 +97,63 @@ public class HospitalConfigurationService {
     }
 
     @Transactional
-    public SalaHospitalResponse crearSala(String subject, Long hospitalId, GuardarSalaRequest request) {
+    public SalaHospitalResponse crearSala(String subject, Long hospitalId, Long sectorId, GuardarSalaRequest request) {
         UsuarioAuth actor = staffAccessService.exigirAdminHospital(subject, hospitalId);
         Hospital hospital = hospital(hospitalId);
         EspecialidadMedica especialidad = especialidadHabilitada(hospital, request.especialidadId());
+        Sector sector = sector(hospitalId, sectorId);
+        validarEspecialidadDelSector(sector, request.especialidadId());
         String nombre = request.nombre().trim();
-        if (salas.existsByHospitalIdAndNombreIgnoreCase(hospitalId, nombre)) {
-            throw new ConflictoDeEstadoException("Ya existe una sala con ese nombre en el hospital");
+        if (salas.existsByHospitalIdAndSectorIdAndNombreIgnoreCase(hospitalId, sectorId, nombre)) {
+            throw new ConflictoDeEstadoException("Ya existe una sala con ese nombre en el sector");
         }
         Sala sala = new Sala();
         sala.setNombre(nombre);
         sala.setHospital(hospital);
         sala.setEspecialidad(especialidad);
+        sala.setSector(sector);
         sala.setActiva(true);
         sala = salas.save(sala);
-        auditar(hospital, actor, "SALA_CREADA", "sala:" + sala.getId(), nombre);
+        auditar(hospital, actor, "SALA_CREADA", "sala:" + sala.getId(), nombre + " · " + sector.getNombre());
         return aSalaResponse(sala);
     }
 
     @Transactional
-    public SalaHospitalResponse actualizarSala(String subject, Long hospitalId, Long salaId,
+    public SalaHospitalResponse actualizarSala(String subject, Long hospitalId, Long sectorId, Long salaId,
             GuardarSalaRequest request) {
         UsuarioAuth actor = staffAccessService.exigirAdminHospital(subject, hospitalId);
         Hospital hospital = hospital(hospitalId);
         Sala sala = sala(hospitalId, salaId);
+        Sector sector = sector(hospitalId, sectorId);
+        validarSalaEnSector(sala, sector);
+        validarEspecialidadDelSector(sector, request.especialidadId());
         EspecialidadMedica especialidad = especialidadHabilitada(hospital, request.especialidadId());
         String nombre = request.nombre().trim();
-        if (salas.existsByHospitalIdAndNombreIgnoreCaseAndIdNot(hospitalId, nombre, salaId)) {
-            throw new ConflictoDeEstadoException("Ya existe una sala con ese nombre en el hospital");
+        if (salas.existsByHospitalIdAndNombreIgnoreCaseAndSectorIdAndIdNot(hospitalId, nombre, sectorId, salaId)) {
+            throw new ConflictoDeEstadoException("Ya existe una sala con ese nombre en el sector");
         }
         sala.setNombre(nombre);
         sala.setEspecialidad(especialidad);
         sala = salas.save(sala);
-        auditar(hospital, actor, "SALA_ACTUALIZADA", "sala:" + salaId, nombre + " · " + especialidad.getNombre());
+        auditar(hospital, actor, "SALA_ACTUALIZADA", "sala:" + salaId,
+                nombre + " · " + especialidad.getNombre() + " · " + sector.getNombre());
         return aSalaResponse(sala);
     }
 
     @Transactional
-    public SalaHospitalResponse actualizarEstadoSala(String subject, Long hospitalId, Long salaId,
+    public SalaHospitalResponse actualizarEstadoSala(String subject, Long hospitalId, Long sectorId, Long salaId,
             ActualizarEstadoSalaRequest request) {
         UsuarioAuth actor = staffAccessService.exigirAdminHospital(subject, hospitalId);
         Hospital hospital = hospital(hospitalId);
         Sala sala = sala(hospitalId, salaId);
+        Sector sector = sector(hospitalId, sectorId);
+        validarSalaEnSector(sala, sector);
         if (request.activa())
             especialidadHabilitada(hospital, sala.getEspecialidad().getId());
         sala.setActiva(request.activa());
         sala = salas.save(sala);
         auditar(hospital, actor, request.activa() ? "SALA_ACTIVADA" : "SALA_DESACTIVADA",
-                "sala:" + salaId, sala.getNombre());
+                "sala:" + salaId, sala.getNombre() + " · " + sector.getNombre());
         return aSalaResponse(sala);
     }
 
@@ -218,6 +228,19 @@ public class HospitalConfigurationService {
                 .orElseThrow(() -> new ConflictoDeEstadoException("La especialidad no está habilitada en el hospital"));
     }
 
+    private void validarEspecialidadDelSector(Sector sector, Long especialidadId) {
+        if (!sector.getEspecialidad().getId().equals(especialidadId)) {
+            throw new ConflictoDeEstadoException(
+                    "La especialidad de la sala debe coincidir con la especialidad del sector");
+        }
+    }
+
+    private void validarSalaEnSector(Sala sala, Sector sector) {
+        if (sala.getSector() == null || !sala.getSector().getId().equals(sector.getId())) {
+            throw new RecursoNoEncontradoException("La sala no pertenece al sector");
+        }
+    }
+
     private Sala sala(Long hospitalId, Long salaId) {
         return salas.findByIdAndHospitalId(salaId, hospitalId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Sala no encontrada"));
@@ -251,7 +274,10 @@ public class HospitalConfigurationService {
     }
 
     private SalaHospitalResponse aSalaResponse(Sala sala) {
-        return new SalaHospitalResponse(sala.getId(), sala.getNombre(), sala.isActiva(), sala.getEspecialidad().getId(),
+        return new SalaHospitalResponse(sala.getId(), sala.getNombre(), sala.isActiva(),
+                sala.getSector() == null ? null : sala.getSector().getId(),
+                sala.getSector() == null ? null : sala.getSector().getNombre(),
+                sala.getEspecialidad().getId(),
                 sala.getEspecialidad().getCodigo(), sala.getEspecialidad().getNombre());
     }
 

@@ -13,8 +13,9 @@ public final class HospitalConfigurationDtos {
             Long id, String codigo, String nombre, boolean habilitada) {}
 
     public record SalaHospitalResponse(
-            Long id, String nombre, boolean activa, Long especialidadId,
-            String especialidadCodigo, String especialidadNombre) {}
+            Long id, String nombre, boolean activa,
+            Long sectorId, String sectorNombre,
+            Long especialidadId, String especialidadCodigo, String especialidadNombre) {}
 
     public record ConfiguracionHospitalResponse(
             List<EspecialidadHospitalResponse> especialidades,

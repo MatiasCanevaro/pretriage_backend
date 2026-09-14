@@ -57,7 +57,7 @@ The system manages the first medical attention workflow:
 - `RepoHospitales`
 - `RepoEspecialidadesMedicas`
 - `RepoSectores`
-- `HospitalConfigurationController`/`HospitalConfigurationService` (`GET /configuracion` returns `especialidades`+`salas`+`sectores`, `POST /sectores`, `PUT /sectores/{sectorId}`, `DELETE /sectores/{sectorId}` → `204`)
+- `HospitalConfigurationController`/`HospitalConfigurationService` (`GET /configuracion` returns `especialidades`+`salas`+`sectores`, `POST /sectores`, `PUT /sectores/{sectorId}`, `DELETE /sectores/{sectorId}` → `204`; rooms are sector-scoped: `POST/PUT /sectores/{sectorId}/salas[/{salaId}]`, `PATCH /sectores/{sectorId}/salas/{salaId}/estado`, `DELETE /sectores/{sectorId}/especialidades/{especialidadId}`, uniqueness/activa-checks via `RepoSalas.existsByHospitalIdAndSectorIdAndNombreIgnoreCase`/`existsByHospitalIdAndNombreIgnoreCaseAndSectorIdAndIdNot`/`existsByHospitalIdAndEspecialidadIdAndSectorIdAndActivaTrue`, `SalaHospitalResponse` exposes `sectorId`/`sectorNombre`)
 
 ### Queue And Estimation
 

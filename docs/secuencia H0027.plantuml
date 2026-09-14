@@ -19,7 +19,7 @@ alt modificarSector
     AdminHospital <-- Controller : ok
 end
 alt deshabilitar especialidad
-AdminHospital -> Controller: DELETE /api/admin/hospitales/{hospitalId}/configuracion/especialidades/{especialidadId}
+AdminHospital -> Controller: DELETE /api/admin/hospitales/{hospitalId}/configuracion/sectores/{sectorId}/especialidades/{especialidadId}
 
 Controller -> HospitalConfiguracionService : deshabilitarEspecialidad(userId, especialidadId, hospitalId, sectorId)
 HospitalConfiguracionService -> StaffAccessService : exiguirAdmin(userId, hospitalId)
@@ -39,7 +39,7 @@ Controller <-- HospitalConfiguracionService: ConfiguracionHospitalResponse(espec
 AdminHospital <-- Controller :ConfiguracionHospitalResponse(especialidades, salas, sectores)
 end
 alt crear sala
-AdminHospital -> Controller: POST /api/admin/hospitales/{hospitalId}/configuracion/salas
+AdminHospital -> Controller: POST /api/admin/hospitales/{hospitalId}/configuracion/sectores/{sectorId}/salas
 
 Controller -> HospitalConfiguracionService: crearSala(userId, hospitalId, sectorId, GuardarSalaRequest(nombre,especialidad))
 HospitalConfiguracionService -> StaffAccessService : exiguirAdmin(userId, hospitalId)
@@ -61,7 +61,7 @@ Controller <-- HospitalConfiguracionService: SalaHospitalResponse
 AdminHospital <-- Controller: SalaHospitalResponse
 end
 alt actualizar sala
-AdminHospital -> Controller: PUT /api/admin/hospitales/{hospitalId}/configuracion/salas/{salaId}
+AdminHospital -> Controller: PUT /api/admin/hospitales/{hospitalId}/configuracion/sectores/{sectorId}/salas/{salaId}
 Controller -> HospitalConfiguracionService: actualizarSala(userId, hospitalId,sectorId, salaId, GuardarSalaRequest(nombre,especialidad))
 HospitalConfiguracionService -> StaffAccessService : exiguirAdmin(userId, hospitalId)
 HospitalConfiguracionService <-- StaffAccessService: UsuarioAuth
@@ -82,7 +82,7 @@ Controller <-- HospitalConfiguracionService: SalaHospitalResponse
 AdminHospital <-- Controller: SalaHospitalResponse
 end
 alt actualizar estado sala
-AdminHospital -> Controller: PATCH /api/admin/hospitales/{hospitalId}/configuracion/salas/{salaId}/estado
+AdminHospital -> Controller: PATCH /api/admin/hospitales/{hospitalId}/configuracion/sectores/{sectorId}/salas/{salaId}/estado
 Controller -> HospitalConfiguracionService: actualizarEstadoSala(userId, hospitalid, sectorId, salaId, ActualizarEstadoSalaRequest(activa))
 HospitalConfiguracionService -> StaffAccessService : exiguirAdmin(userId, hospitalId)
 HospitalConfiguracionService <-- StaffAccessService: UsuarioAuth

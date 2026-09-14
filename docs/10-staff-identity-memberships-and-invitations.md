@@ -374,16 +374,18 @@ POST   /api/invitaciones/{token}/registro
 POST   /api/invitaciones/{token}/aceptar
 GET    /api/admin/hospitales/{hospitalId}/configuracion
 POST   /api/admin/hospitales/{hospitalId}/configuracion/especialidades/{especialidadId}
-DELETE /api/admin/hospitales/{hospitalId}/configuracion/especialidades/{especialidadId}
-POST   /api/admin/hospitales/{hospitalId}/configuracion/salas
-PUT    /api/admin/hospitales/{hospitalId}/configuracion/salas/{salaId}
-PATCH  /api/admin/hospitales/{hospitalId}/configuracion/salas/{salaId}/estado
+DELETE /api/admin/hospitales/{hospitalId}/configuracion/sectores/{sectorId}/especialidades/{especialidadId}
+POST   /api/admin/hospitales/{hospitalId}/configuracion/sectores/{sectorId}/salas
+PUT    /api/admin/hospitales/{hospitalId}/configuracion/sectores/{sectorId}/salas/{salaId}
+PATCH  /api/admin/hospitales/{hospitalId}/configuracion/sectores/{sectorId}/salas/{salaId}/estado
 ```
 
 The specialty catalog is global; a hospital admin manages which catalog entries are
-offered by their hospital. Rooms belong to one hospital and one enabled specialty.
-They are activated or deactivated rather than deleted to preserve historical
-references, and disabling a specialty requires deactivating its rooms first.
+offered by their hospital. Rooms belong to one hospital, one enabled specialty and
+one sector: they are created/updated/activated under `/sectores/{sectorId}/salas`
+and their specialty must match the sector's specialty. Rooms are activated or
+deactivated rather than deleted to preserve historical references, and disabling a
+specialty requires first deactivating its rooms in the sector.
 
 The public `/api/register` endpoint now rejects doctor, receptionist and admin
 registration. Invitation registration derives hospital roles from the stored

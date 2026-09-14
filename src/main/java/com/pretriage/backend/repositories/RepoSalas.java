@@ -13,8 +13,10 @@ public interface RepoSalas extends JpaRepository<Sala, Long> {
     List<Sala> findByHospitalIdAndEspecialidadCodigoAndActivaTrue(Long idHospital, String codigoEspecialidad);
     List<Sala> findByHospitalIdOrderByNombreAsc(Long hospitalId);
     Optional<Sala> findByIdAndHospitalId(Long id, Long hospitalId);
-    boolean existsByHospitalIdAndNombreIgnoreCase(Long hospitalId, String nombre);
-    boolean existsByHospitalIdAndNombreIgnoreCaseAndIdNot(Long hospitalId, String nombre, Long id);
-    boolean existsByHospitalIdAndEspecialidadIdAndActivaTrue(Long hospitalId, Long especialidadId);
+    boolean existsByHospitalIdAndEspecialidadIdAndSectorIdAndActivaTrue(Long hospitalId, Long especialidadId,
+            Long sectorId);
+    boolean existsByHospitalIdAndSectorIdAndNombreIgnoreCase(Long hospitalId, Long sectorId, String nombre);
+    boolean existsByHospitalIdAndNombreIgnoreCaseAndSectorIdAndIdNot(Long hospitalId, String nombre, Long sectorId,
+            Long idNot);
     List<Sala> findBySectorId(Long sectorId);
 }
