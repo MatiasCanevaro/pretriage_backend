@@ -26,6 +26,8 @@ import java.util.NoSuchElementException;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -108,7 +110,7 @@ class EsperaPacienteServiceTest {
     }
 
     @Test
-    void cancelaSeleccionDesdeLlamadoYLimpiaMedicoYSala() {
+    void rechazaCancelacionSeleccionDesdeLlamado() {
         Paciente paciente = new Paciente(); paciente.setId(2L);
         ConsultaMedica consulta = new ConsultaMedica(); consulta.setId(5L); consulta.setPaciente(paciente);
         consulta.setEstadoConsulta(EstadoConsulta.LLAMADO);
@@ -119,14 +121,16 @@ class EsperaPacienteServiceTest {
         when(pacienteService.obtenerPacienteConUsuarioAuthId("auth")).thenReturn(Optional.of(paciente));
         when(repoEntradasCola.findFirstByConsultaMedicaPacienteIdOrderByIdDesc(2L))
                 .thenReturn(Optional.of(entrada));
-        when(repoChat.findFirstByPacienteUsuarioAuthIdAndFinalizadoFalse("auth")).thenReturn(Optional.empty());
+        
+        assertThrows(ConflictoDeEstadoException.class, ()->{
+            service.cancelarSeleccion("auth");
+        });
+       
 
-        service.cancelarSeleccion("auth");
-
-        assertEquals(EstadoEntradaCola.CANCELADA, entrada.getEstado());
-        assertEquals(EstadoConsulta.CANCELADA, consulta.getEstadoConsulta());
-        assertNull(consulta.getMedico());
-        assertNull(consulta.getSala());
+        assertNotEquals(EstadoEntradaCola.CANCELADA, entrada.getEstado());
+        assertNotEquals(EstadoConsulta.CANCELADA, consulta.getEstadoConsulta());
+        assertNotNull(consulta.getMedico());
+        assertNotNull(consulta.getSala());
     }
 
     @Test
