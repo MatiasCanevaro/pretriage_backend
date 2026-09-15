@@ -6,6 +6,7 @@ import com.pretriage.backend.model.consultas.EntradaCola;
 import com.pretriage.backend.model.consultas.EstadoConsulta;
 import com.pretriage.backend.model.consultas.EstadoEntradaCola;
 import com.pretriage.backend.model.consultas.TipoPausaCola;
+import com.pretriage.backend.model.hospitales.Sector;
 import com.pretriage.backend.model.personas.Paciente;
 import com.pretriage.backend.repositories.RepoConsultasMedicas;
 import com.pretriage.backend.repositories.RepoEntradasCola;
@@ -176,6 +177,9 @@ public class EsperaPacienteService {
         dto.setEstadoEntradaCola(entrada.getEstado());
         dto.setTipoPausa(entrada.getTipoPausa());
         dto.setFechaHoraLimiteRespuesta(entrada.getFechaHoraLimiteRespuesta());
+        Sector sector = entrada.getConsultaMedica().getSector();
+        dto.setSectorId(sector != null ? sector.getId() : null);
+        dto.setNombreSector(sector != null ? sector.getNombre() : null);
         if (entrada.getEstado() == EstadoEntradaCola.EN_COLA) {
             dto.setTiempoEstimadoAtencion(estimacionAtencionService.calcularPara(entrada.getConsultaMedica()));
         }

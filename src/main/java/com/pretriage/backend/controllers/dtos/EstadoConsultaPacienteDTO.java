@@ -22,6 +22,10 @@ public class EstadoConsultaPacienteDTO {
 
     private LocalDateTime fechaHoraLimiteRespuesta;
 
+    private Long sectorId;
+
+    private String nombreSector;
+
     private TiempoEstimadoAtencionResponse tiempoEstimadoAtencion;
 }
 

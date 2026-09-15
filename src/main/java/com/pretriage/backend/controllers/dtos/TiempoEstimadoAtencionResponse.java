@@ -25,6 +25,10 @@ public class TiempoEstimadoAtencionResponse {
 
     private int minutosPromedioAtencion;
 
+    private Long sectorId;
+
+    private String nombreSector;
+
     private String codigoSala;
 
     private String mensaje;

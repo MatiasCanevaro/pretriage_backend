@@ -90,7 +90,7 @@ The system manages the first medical attention workflow:
 
 - `EsperaPacienteService` (`ausentarme`→`pausa-manual`, `estoyAtrasado`→`atraso/confirmar`, `sigoAsistiendo`→`atraso/renovar`, `llegue`→`reincorporar`)
 - `PacienteEsperaController` (`@RequestMapping /api/paciente/consulta` + `GET /estado` unchanged + `POST /cola/pausa-manual`, `POST /cola/atraso/confirmar`, `POST /cola/atraso/renovar`, `POST /cola/reincorporar`)
-- `EstadoConsultaPacienteDTO`
+- `EstadoConsultaPacienteDTO` (includes `sectorId`/`nombreSector` of the assigned sector)
 - `TipoPausaCola`
 
 ## Invariants
@@ -130,6 +130,7 @@ It also exposes operational metadata:
 - `pacientesAntes`
 - `minutosPromedioAtencion`
 - `mensaje`
+- `sectorId` / `nombreSector` (assigned sector from `ConsultaMedica.sector`)
 
 Do not remove `fechaHoraAtencionEstimada` because existing clients may depend on it.
 

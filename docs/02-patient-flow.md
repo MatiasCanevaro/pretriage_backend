@@ -30,7 +30,10 @@ flowchart TD
 
 `GET /api/atencion/hospital` (selected hospital) returns the assigned
 `sectorId`, `nombreSector` and the sector's active `salas` in addition to the
-hospital data.
+hospital data. The same assigned sector (`sectorId`/`nombreSector`) is also
+returned by `GET /api/paciente/consulta/estado` and in every estimated-time
+response (`TiempoEstimadoAtencionResponse`), so the patient always knows which
+sector to wait in.
 
 ## Waiting And Absence Rules
 

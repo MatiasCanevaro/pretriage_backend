@@ -222,7 +222,7 @@ the queue (`EN_COLA` + `EntradaCola`) with default priority (`NORMAL`). The AI
 triage chat is optional; when it finishes, the queue priority is updated with the
 pretriage result.
 
-Returns `204 No Content`. The dynamic estimate is available via `GET /api/atencion/tiempo-estimado` (`TiempoEstimadoAtencionResponse` with `consultaId`, `fechaHoraAtencionEstimada`, `posicionEnCola`, `pacientesAntes`, `minutosPromedioAtencion`, `hayMedicosActivos`, `medicosActivos`, `medicosParaEstimacion`, `codigoSala` from `Sala.nombre` — `null` until the doctor calls the patient — and `mensaje` when `hayMedicosActivos=false`).
+Returns `204 No Content`. The dynamic estimate is available via `GET /api/atencion/tiempo-estimado` (`TiempoEstimadoAtencionResponse` with `consultaId`, `fechaHoraAtencionEstimada`, `posicionEnCola`, `pacientesAntes`, `minutosPromedioAtencion`, `hayMedicosActivos`, `medicosActivos`, `medicosParaEstimacion`, `sectorId`, `nombreSector` from `ConsultaMedica.sector`, `codigoSala` from `Sala.nombre` — `null` until the doctor calls the patient — and `mensaje` when `hayMedicosActivos=false`).
 
 ### Get Selected Hospital
 
@@ -303,7 +303,7 @@ stored address is updated with the submitted values.
 GET /api/atencion/tiempo-estimado
 ```
 
-Returns dynamic estimate based on `EntradaCola` (`EN_COLA` only, ordered by `prioridad DESC`, `ordenRelativo ASC`, `fechaHoraIngreso ASC`) and active doctor sessions (`SesionAtencionMedica` `ACTIVA`; if none, estimates with one virtual doctor and `hayMedicosActivos=false`). Response is `TiempoEstimadoAtencionResponse` with `consultaId`, `fechaHoraAtencionEstimada`, `posicionEnCola`, `pacientesAntes`, `minutosPromedioAtencion`, `hayMedicosActivos`, `medicosActivos`, `medicosParaEstimacion`, `codigoSala` (`Sala.nombre`, `null` until `LLAMADO`/`EN_ATENCION` when a room is assigned), and `mensaje` when no doctors are active. See also `POST /api/atencion/hospital` which returns the same payload at queue entry.
+Returns dynamic estimate based on `EntradaCola` (`EN_COLA` only, ordered by `prioridad DESC`, `ordenRelativo ASC`, `fechaHoraIngreso ASC`) and active doctor sessions (`SesionAtencionMedica` `ACTIVA`; if none, estimates with one virtual doctor and `hayMedicosActivos=false`). Response is `TiempoEstimadoAtencionResponse` with `consultaId`, `fechaHoraAtencionEstimada`, `posicionEnCola`, `pacientesAntes`, `minutosPromedioAtencion`, `hayMedicosActivos`, `medicosActivos`, `medicosParaEstimacion`, `sectorId`, `nombreSector` (`ConsultaMedica.sector`), `codigoSala` (`Sala.nombre`, `null` until `LLAMADO`/`EN_ATENCION` when a room is assigned), and `mensaje` when no doctors are active. See also `POST /api/atencion/hospital` which returns the same payload at queue entry.
 
 ## Chat
 
@@ -337,7 +337,7 @@ GET /api/chat/{id}
 
 ## Patient Queue State
 
-All endpoints in this section are under `PacienteEsperaController` (`EsperaPacienteService`) and operate on the active `EntradaCola` of the authenticated patient. Every response is `EstadoConsultaPacienteDTO` (`consultaId`, `estadoConsulta`, `estadoEntradaCola`, `tipoPausa`, `fechaHoraLimiteRespuesta`, `tiempoEstimadoAtencion` which is non-null only when `estadoEntradaCola == EN_COLA`).
+All endpoints in this section are under `PacienteEsperaController` (`EsperaPacienteService`) and operate on the active `EntradaCola` of the authenticated patient. Every response is `EstadoConsultaPacienteDTO` (`consultaId`, `estadoConsulta`, `estadoEntradaCola`, `tipoPausa`, `fechaHoraLimiteRespuesta`, `sectorId`, `nombreSector` from `ConsultaMedica.sector`, `tiempoEstimadoAtencion` which is non-null only when `estadoEntradaCola == EN_COLA`).
 
 ```http
 GET /api/paciente/consulta/estado

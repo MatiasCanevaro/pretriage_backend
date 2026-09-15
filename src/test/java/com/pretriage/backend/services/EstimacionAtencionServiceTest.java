@@ -71,6 +71,8 @@ class EstimacionAtencionServiceTest {
         assertEquals(3, response.getPosicionEnCola());
         assertEquals(2, response.getPacientesAntes());
         assertEquals(10, response.getMinutosPromedioAtencion());
+        assertEquals(5L, response.getSectorId());
+        assertEquals("Cardio", response.getNombreSector());
         assertNull(response.getMensaje());
         assertFalse(response.getFechaHoraAtencionEstimada().isBefore(antes.plusMinutes(10)));
         assertFalse(response.getFechaHoraAtencionEstimada().isAfter(despues.plusMinutes(10)));
@@ -102,6 +104,8 @@ class EstimacionAtencionServiceTest {
         assertEquals(0, response.getMedicosActivos());
         assertEquals(1, response.getMedicosParaEstimacion());
         assertEquals(2, response.getPacientesAntes());
+        assertEquals(5L, response.getSectorId());
+        assertEquals("Cardio", response.getNombreSector());
         assertNotNull(response.getMensaje());
         assertFalse(response.getFechaHoraAtencionEstimada().isBefore(antes.plusMinutes(20)));
         assertFalse(response.getFechaHoraAtencionEstimada().isAfter(despues.plusMinutes(20)));
@@ -187,6 +191,7 @@ class EstimacionAtencionServiceTest {
         consulta.setEspecialidad(especialidad);
         Sector sector = new Sector();
         sector.setId(5L);
+        sector.setNombre("Cardio");
         consulta.setSector(sector);
         return consulta;
     }

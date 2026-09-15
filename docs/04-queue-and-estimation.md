@@ -97,6 +97,13 @@ The average duration is configurable:
 pretriage.estimacion.minutos-promedio-atencion=10
 ```
 
+Every estimate response also identifies the assigned sector within the hospital:
+
+- `sectorId`
+- `nombreSector`
+
+These come from `ConsultaMedica.sector` and tell the patient where to wait once they are called.
+
 ## No Active Doctors
 
 If there are no active doctors:
@@ -116,6 +123,8 @@ Example response:
   "posicionEnCola": 1,
   "pacientesAntes": 0,
   "minutosPromedioAtencion": 10,
+  "sectorId": 12,
+  "nombreSector": "Guardia",
   "mensaje": "No hay medicos atendiendo esta especialidad en este momento. La hora es una estimacion tentativa."
 }
 ```

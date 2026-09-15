@@ -70,8 +70,10 @@ class AdmisionRecepcionServiceTest {
         Paciente paciente = new Paciente(); paciente.setId(2L);
         Hospital hospital = new Hospital(); hospital.setId(3L);
         EspecialidadMedica especialidad = new EspecialidadMedica(); especialidad.setId(4L);
+        Sector sector = new Sector(); sector.setId(10L); sector.setNombre("Pediatria");
         ConsultaMedica consulta = new ConsultaMedica(); consulta.setId(5L); consulta.setPaciente(paciente);
-        consulta.setHospital(hospital); consulta.setEspecialidad(especialidad); consulta.setCodigoLlamado("R-ABC123");
+        consulta.setHospital(hospital); consulta.setEspecialidad(especialidad); consulta.setSector(sector);
+        consulta.setCodigoLlamado("R-ABC123");
         Recepcionista recepcionista = new Recepcionista(); recepcionista.setId(1L);
         SesionRecepcion sesion = new SesionRecepcion(); sesion.setId(6L); sesion.setRecepcionista(recepcionista);
         sesion.setHospital(hospital); sesion.setEstado(EstadoSesionRecepcion.ACTIVA);
@@ -97,6 +99,8 @@ class AdmisionRecepcionServiceTest {
 
         assertEquals(EstadoAdmisionRecepcion.FINALIZADA, admision.getEstado());
         assertEquals(NivelDeGravedad.URGENTE, dto.prioridad());
+        assertEquals(10L, dto.sectorId());
+        assertEquals("Pediatria", dto.nombreSector());
         verify(ingresoColaService).ingresar(consulta, NivelDeGravedad.URGENTE);
     }
 

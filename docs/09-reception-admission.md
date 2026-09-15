@@ -30,7 +30,7 @@ A receptionist can admit a patient identified by DNI, collect a structured clini
    (`AsignacionSectorService`, sector with fewest `EN_COLA` among the hospital+specialty
    sectors that are active and have active rooms).
 9. The admission, consultation, and queue entry are finalized transactionally.
-10. The response includes `codigoLlamado` and dynamic estimation.
+10. The response includes `codigoLlamado`, the assigned `sectorId`/`nombreSector` and dynamic estimation.
 11. An open admission can be resumed from its metadata or cancelled before finalization.
 
 ## Rules
@@ -89,7 +89,9 @@ POST /api/recepcion/admisiones/{admisionId}/cancelar
 The admission list returns only open admissions for the active session, ordered by
 `fechaHoraInicio ASC`. Detail responses expose patient, hospital, specialty and terminal-state
 metadata, but never the stored clinical form or raw triage JSON. For a finalized consultation
-that remains `EN_COLA`, detail retrieval recalculates the current dynamic estimate.
+that remains `EN_COLA`, detail retrieval recalculates the current dynamic estimate. The
+finalization response (`AdmisionRecepcionDTO`) exposes the assigned `sectorId`/`nombreSector`
+and the estimated attention time (`estimacion`, which also carries `sectorId`/`nombreSector`).
 
 Reception endpoints use `400` for validation, `403` for ownership/role violations, `404`
 for missing reception resources, and `409` for active-consultation or invalid-state conflicts.

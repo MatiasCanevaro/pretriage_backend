@@ -62,6 +62,8 @@ public class EstimacionAtencionService {
         response.setPacientesAntes(posicionBaseCero);
         response.setPosicionEnCola(posicionBaseCero + 1);
         response.setMinutosPromedioAtencion(minutosPromedioAtencion);
+        response.setSectorId(consultaMedica.getSector() != null ? consultaMedica.getSector().getId() : null);
+        response.setNombreSector(consultaMedica.getSector() != null ? consultaMedica.getSector().getNombre() : null);
         response.setCodigoSala(consultaMedica.getCodigoSala());
 
         if (medicosActivos == 0) {

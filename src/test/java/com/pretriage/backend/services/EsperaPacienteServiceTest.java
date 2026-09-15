@@ -1,9 +1,12 @@
 package com.pretriage.backend.services;
 
+import com.pretriage.backend.controllers.dtos.TiempoEstimadoAtencionResponse;
 import com.pretriage.backend.model.consultas.ConsultaMedica;
 import com.pretriage.backend.model.consultas.EntradaCola;
 import com.pretriage.backend.model.consultas.EstadoConsulta;
 import com.pretriage.backend.model.consultas.EstadoEntradaCola;
+import com.pretriage.backend.model.hospitales.Sector;
+import com.pretriage.backend.model.personas.Paciente;
 import com.pretriage.backend.repositories.RepoConsultasMedicas;
 import com.pretriage.backend.repositories.RepoEntradasCola;
 import org.junit.jupiter.api.Test;
@@ -14,9 +17,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -45,5 +51,26 @@ class EsperaPacienteServiceTest {
         assertEquals(EstadoConsulta.CANCELADA, consulta.getEstadoConsulta());
         verify(repoEntradasCola).save(entrada);
         verify(repoConsultasMedicas).save(consulta);
+    }
+
+    @Test
+    void obtenerEstadoIncluyeSectorDelPaciente() {
+        Paciente paciente = new Paciente(); paciente.setId(2L);
+        Sector sector = new Sector(); sector.setId(8L); sector.setNombre("Guardia");
+        ConsultaMedica consulta = new ConsultaMedica(); consulta.setId(5L); consulta.setPaciente(paciente);
+        consulta.setSector(sector); consulta.setEstadoConsulta(EstadoConsulta.EN_COLA);
+        EntradaCola entrada = new EntradaCola(); entrada.setId(1L); entrada.setConsultaMedica(consulta);
+        entrada.setEstado(EstadoEntradaCola.EN_COLA);
+        TiempoEstimadoAtencionResponse estimacion = new TiempoEstimadoAtencionResponse();
+        when(pacienteService.obtenerPacienteConUsuarioAuthId("auth")).thenReturn(Optional.of(paciente));
+        when(repoEntradasCola.findFirstByConsultaMedicaPacienteIdAndEstadoIn(eq(2L), any()))
+                .thenReturn(Optional.of(entrada));
+        when(estimacionAtencionService.calcularPara(consulta)).thenReturn(estimacion);
+
+        var dto = service.obtenerEstado("auth");
+
+        assertEquals(8L, dto.getSectorId());
+        assertEquals("Guardia", dto.getNombreSector());
+        assertSame(estimacion, dto.getTiempoEstimadoAtencion());
     }
 }
