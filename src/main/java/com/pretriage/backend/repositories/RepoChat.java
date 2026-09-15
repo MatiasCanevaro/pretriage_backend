@@ -9,4 +9,6 @@ import java.util.Optional;
 @Repository
 public interface RepoChat extends JpaRepository<Chat, Long> {
     Optional<Chat> findByIdAndPacienteUsuarioAuthId(Long id, String auth0Id);
+
+    Optional<Chat> findFirstByPacienteUsuarioAuthIdAndFinalizadoFalse(String auth0Id);
 }

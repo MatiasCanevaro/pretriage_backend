@@ -88,10 +88,11 @@ The system manages the first medical attention workflow:
 
 ### Patient Waiting State
 
-- `EsperaPacienteService` (`ausentarme`→`pausa-manual`, `estoyAtrasado`→`atraso/confirmar`, `sigoAsistiendo`→`atraso/renovar`, `llegue`→`reincorporar`)
-- `PacienteEsperaController` (`@RequestMapping /api/paciente/consulta` + `GET /estado` unchanged + `POST /cola/pausa-manual`, `POST /cola/atraso/confirmar`, `POST /cola/atraso/renovar`, `POST /cola/reincorporar`)
+- `EsperaPacienteService` (`ausentarme`→`pausa-manual`, `estoyAtrasado`→`atraso/confirmar`, `sigoAsistiendo`→`atraso/renovar`, `llegue`→`reincorporar`, `cancelarSeleccion`→`cancelar`)
+- `PacienteEsperaController` (`@RequestMapping /api/paciente/consulta` + `GET /estado` unchanged + `POST /cola/pausa-manual`, `POST /cola/atraso/confirmar`, `POST /cola/atraso/renovar`, `POST /cola/reincorporar`, `POST /cancelar`)
 - `EstadoConsultaPacienteDTO` (includes `sectorId`/`nombreSector` of the assigned sector)
 - `TipoPausaCola`
+- `RepoChat` (`findFirstByPacienteUsuarioAuthIdAndFinalizadoFalse` to finalize the open triage chat on cancellation)
 
 ## Invariants
 
@@ -113,6 +114,10 @@ The system manages the first medical attention workflow:
 - A doctor cannot call another patient while one is called or in attention.
 - `AtencionMedica` is created on presence confirmation and finalized with the consultation.
 - `EN_ESPERA` entries are cancelled after one hour measured from `fechaHoraSalidaTemporal`.
+- A patient can cancel the active hospital selection at any time (`POST /api/paciente/consulta/cancelar`) while its `EntradaCola` is `EN_COLA`, `LLAMADO`, `EN_ESPERA` or `ATRASADO`; cancellation is terminal and idempotent (`CANCELADA` → no-op success).
+- Cancellation marks `EntradaCola.CANCELADA` + `ConsultaMedica.CANCELADA` (clears `medico`/`sala`), excludes the entry from estimation, prevents the doctor from calling or re-seeing the patient, and finalizes an open AI triage chat.
+- `EN_ATENCION` (consultation in progress) and `FINALIZADA` cannot be cancelled (`409 ConflictoDeEstadoException`).
+- Reception admissions are not cancelled by the patient endpoint; they use `AdmisionRecepcionService.cancelar`.
 - SSE subscriptions validate that the authenticated patient owns the consultation.
 
 ## Estimation Contract

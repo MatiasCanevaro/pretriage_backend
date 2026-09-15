@@ -72,6 +72,19 @@ Both manual waiting (`POST /api/paciente/consulta/cola/pausa-manual`) and absenc
 - `ConsultaMedica.estadoConsulta = CANCELADA`
 - Persisted records remain as history but no longer belong to the active queue.
 
+## Voluntary Cancellation
+
+Patients can cancel their active hospital selection at any point of the attention flow (`POST /api/paciente/consulta/cancelar` — `EsperaPacienteService.cancelarSeleccion`, `docs/06-api-reference.md#cancel-hospital-selection`). The client requests confirmation before calling the endpoint, which is **idempotent**.
+
+From `EN_COLA`, `LLAMADO`, `EN_ESPERA` (manual or `AUSENTE_AL_LLAMADO`) or `ATRASADO`:
+
+- `EntradaCola.estado = CANCELADA` (clears `tipoPausa`, `fechaHoraLimiteRespuesta`, `fechaHoraUltimaRepregunta`).
+- `ConsultaMedica.estadoConsulta = CANCELADA` (clears `medico` and `sala`).
+- The entry stops counting for estimation and is no longer offered to the doctor (`listarPacientesDisponibles`/`llamarProximo` only read `EN_COLA`; `obtenerSesionActual` only `LLAMADO`/`EN_ATENCION`), so a cancelled patient can never be called again within that selection.
+- If the AI triage chat is still open, it is finalized (`Chat.finalizado = true`).
+
+It is **not** possible to cancel a consultation in `EN_ATENCION` (in progress) or already `FINALIZADA` (409 `ConflictoDeEstadoException`). Cancellation is terminal: the selection cannot be resumed or re-linked. Reception admissions are out of scope for this endpoint (cancelled through `POST /api/recepcion/admisiones/{admisionId}/cancelar`, `docs/09-reception-admission.md`).
+
 ## Medical Studies Management
 
 Patients can manage their medical study files (radiology scans, lab reports, etc.) independently of the attention flow:

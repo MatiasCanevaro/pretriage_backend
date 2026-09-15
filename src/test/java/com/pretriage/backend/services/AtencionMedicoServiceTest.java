@@ -196,6 +196,43 @@ class AtencionMedicoServiceTest {
         }
 
         @Test
+        void noMuestraLaConsultaActualCuandoLaEntradaFueCancelada() {
+                Medico medico = new Medico();
+                medico.setId(10L);
+                Hospital hospital = new Hospital();
+                hospital.setId(20L);
+                EspecialidadMedica especialidad = new EspecialidadMedica();
+                especialidad.setCodigo("CLINICA_MEDICA");
+                Sector sector = new Sector();
+                sector.setId(70L);
+                sector.setNombre("Sector A");
+                Sala sala = new Sala();
+                sala.setId(30L);
+                SesionAtencionMedica sesion = new SesionAtencionMedica();
+                sesion.setId(60L);
+                sesion.setMedico(medico);
+                sesion.setHospital(hospital);
+                sesion.setEspecialidad(especialidad);
+                sesion.setSector(sector);
+                sesion.setSala(sala);
+                sesion.setEstado(EstadoSesionMedica.ACTIVA);
+
+                when(repoMedico.findByUsuarioAuthId("auth0")).thenReturn(Optional.of(medico));
+                when(repoSesionesAtencionMedica.findFirstByMedicoUsuarioAuthIdAndEstadoInOrderByFechaHoraInicioDesc(
+                                "auth0", List.of(EstadoSesionMedica.ACTIVA, EstadoSesionMedica.PAUSADA)))
+                                .thenReturn(Optional.of(sesion));
+                when(repoEntradasCola
+                                .findFirstByConsultaMedicaMedicoUsuarioAuthIdAndEstadoInOrderByFechaHoraLlamadoDesc(
+                                                "auth0", List.of(EstadoEntradaCola.LLAMADO, EstadoEntradaCola.EN_ATENCION)))
+                                .thenReturn(Optional.empty());
+
+                SesionMedicaActualDTO resultado = service.obtenerSesionActual("auth0");
+
+                assertEquals(60L, resultado.getSesion().getId());
+                assertNull(resultado.getConsultaActual());
+        }
+
+        @Test
         void creaLaAtencionHistoricaCuandoElPacienteConfirmaPresencia() {
                 Medico medico = new Medico();
                 medico.setId(10L);

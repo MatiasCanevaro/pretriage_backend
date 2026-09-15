@@ -38,6 +38,11 @@ public class PacienteEsperaController {
         return ResponseEntity.ok(esperaPacienteService.llegue(jwt.getSubject()));
     }
 
+    @PostMapping("/cancelar")
+    public ResponseEntity<EstadoConsultaPacienteDTO> cancelarSeleccion(@AuthenticationPrincipal Jwt jwt) {
+        return ResponseEntity.ok(esperaPacienteService.cancelarSeleccion(jwt.getSubject()));
+    }
+
     @GetMapping("/estado")
     public ResponseEntity<EstadoConsultaPacienteDTO> obtenerEstado(@AuthenticationPrincipal Jwt jwt) {
         return ResponseEntity.ok(esperaPacienteService.obtenerEstado(jwt.getSubject()));

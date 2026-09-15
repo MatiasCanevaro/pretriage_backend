@@ -1,6 +1,7 @@
 package com.pretriage.backend.services;
 
 import com.pretriage.backend.controllers.dtos.EstadoConsultaPacienteDTO;
+import com.pretriage.backend.exceptions.ConflictoDeEstadoException;
 import com.pretriage.backend.model.consultas.ConsultaMedica;
 import com.pretriage.backend.model.consultas.EntradaCola;
 import com.pretriage.backend.model.consultas.EstadoConsulta;
@@ -8,6 +9,7 @@ import com.pretriage.backend.model.consultas.EstadoEntradaCola;
 import com.pretriage.backend.model.consultas.TipoPausaCola;
 import com.pretriage.backend.model.hospitales.Sector;
 import com.pretriage.backend.model.personas.Paciente;
+import com.pretriage.backend.repositories.RepoChat;
 import com.pretriage.backend.repositories.RepoConsultasMedicas;
 import com.pretriage.backend.repositories.RepoEntradasCola;
 import jakarta.transaction.Transactional;
@@ -27,9 +29,19 @@ public class EsperaPacienteService {
     private static final int MINUTOS_REPREGUNTA_ATRASADO = 30;
     private static final int MINUTOS_MAXIMOS_EN_ESPERA = 60;
 
+    private static final List<EstadoEntradaCola> ESTADOS_ENTRADA_PACIENTE = List.of(
+            EstadoEntradaCola.EN_COLA,
+            EstadoEntradaCola.LLAMADO,
+            EstadoEntradaCola.EN_ESPERA,
+            EstadoEntradaCola.ATRASADO,
+            EstadoEntradaCola.EN_ATENCION,
+            EstadoEntradaCola.FINALIZADA,
+            EstadoEntradaCola.CANCELADA);
+
     private final PacienteService pacienteService;
     private final RepoEntradasCola repoEntradasCola;
     private final RepoConsultasMedicas repoConsultasMedicas;
+    private final RepoChat repoChat;
     private final EstimacionAtencionService estimacionAtencionService;
 
     @Transactional
@@ -105,6 +117,47 @@ public class EsperaPacienteService {
     public EstadoConsultaPacienteDTO obtenerEstado(String auth0Id) {
         Paciente paciente = obtenerPaciente(auth0Id);
         return mapear(obtenerEntradaActivaPaciente(paciente));
+    }
+
+    @Transactional
+    public EstadoConsultaPacienteDTO cancelarSeleccion(String auth0Id) {
+        Paciente paciente = obtenerPaciente(auth0Id);
+        EntradaCola entrada = repoEntradasCola
+                .findFirstByConsultaMedicaPacienteIdAndEstadoIn(paciente.getId(), ESTADOS_ENTRADA_PACIENTE)
+                .orElseThrow(() -> new NoSuchElementException(
+                        "El paciente no tiene una seleccion de hospital activa para cancelar"));
+
+        if (entrada.getEstado() == EstadoEntradaCola.EN_ATENCION) {
+            throw new ConflictoDeEstadoException("No puede cancelar una consulta con atencion en curso");
+        }
+        if (entrada.getEstado() == EstadoEntradaCola.FINALIZADA) {
+            throw new ConflictoDeEstadoException("La consulta ya finalizo y no se puede cancelar");
+        }
+        if (entrada.getEstado() == EstadoEntradaCola.CANCELADA) {
+            return mapear(entrada);
+        }
+
+        ConsultaMedica consulta = entrada.getConsultaMedica();
+        entrada.setEstado(EstadoEntradaCola.CANCELADA);
+        entrada.setTipoPausa(null);
+        entrada.setFechaHoraLimiteRespuesta(null);
+        entrada.setFechaHoraUltimaRepregunta(null);
+        consulta.setEstadoConsulta(EstadoConsulta.CANCELADA);
+        consulta.setMedico(null);
+        consulta.setSala(null);
+        finalizarChatAbierto(auth0Id);
+
+        repoConsultasMedicas.save(consulta);
+        repoEntradasCola.save(entrada);
+        return mapear(entrada);
+    }
+
+    private void finalizarChatAbierto(String auth0Id) {
+        repoChat.findFirstByPacienteUsuarioAuthIdAndFinalizadoFalse(auth0Id)
+                .ifPresent(chat -> {
+                    chat.setFinalizado(true);
+                    repoChat.save(chat);
+                });
     }
 
     @Scheduled(fixedDelay = 60000)

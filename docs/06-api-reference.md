@@ -380,6 +380,26 @@ Patient physically arrives and re-enters `EN_COLA`. Accepts two origins (both do
 * From `EN_ESPERA(ESPERA_MANUAL)` → `EN_COLA` restoring the **previous relative position** (keeps `ordenRelativo`).
 Other states are rejected with `IllegalStateException`. On success `tiempoEstimadoAtencion` is recalculated dynamically. Replaces `POST /api/paciente/consulta/llegue`.
 
+### Cancel Hospital Selection
+
+```http
+POST /api/paciente/consulta/cancelar
+```
+
+Patient voluntarily and definitively abandons their **active hospital selection** at any point of the attention flow (`EsperaPacienteService.cancelarSeleccion`). The client requests confirmation (dialog) before calling this endpoint, which is **idempotent** and safe to retry.
+
+Allowed `EntradaCola` states (`ESPERA_PACIENTE`/`ESTADOS_ENTRADA_PACIENTE`):
+
+* `EN_COLA`, `LLAMADO`, `EN_ESPERA`, `ATRASADO` → entry transitions to `CANCELADA` (clears `tipoPausa`, `fechaHoraLimiteRespuesta`, `fechaHoraUltimaRepregunta`); `ConsultaMedica` transitions to `CANCELADA` (clears `medico` and `sala`). The entry stops counting for estimation and availability, the doctor can no longer call or re-see the patient (`listarPacientesDisponibles`/`llamarProximo` only read `EN_COLA`, `obtenerSesionActual` only `LLAMADO`/`EN_ATENCION`), and any open AI triage chat is finalized (`RepoChat.findFirstByPacienteUsuarioAuthIdAndFinalizadoFalse`).
+* `CANCELADA` → no-op success (idempotent retry).
+
+Rejected with `409 ConflictoDeEstadoException`:
+
+* `EN_ATENCION` → `"No puede cancelar una consulta con atencion en curso"` (consultation in progress).
+* `FINALIZADA` → `"La consulta ya finalizo y no se puede cancelar"`.
+
+Rejected with `400 NoSuchElementException` when the patient has no active hospital selection (e.g. only a `PENDIENTE` consultation or no record). No body; authenticated by `Jwt.getSubject()`. Returns `EstadoConsultaPacienteDTO` (`estadoEntradaCola=CANCELADA`, `estadoConsulta=CANCELADA`, `tiempoEstimadoAtencion=null`).
+
 ## Doctor
 
 ### List Assignments

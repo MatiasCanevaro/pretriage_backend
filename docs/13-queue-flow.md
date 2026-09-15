@@ -32,16 +32,22 @@ flowchart TD
 
     F --> I["Paciente nuevamente en espera"]
 ```
-3. Flujo de cancelación voluntaria
+3. Flujo de cancelación voluntaria (`POST /api/paciente/consulta/cancelar`)
 ```mermaid
 flowchart TD
-    A["Paciente con turno activo"] --> B{"¿Cancela el turno?"}
+    A["Selección de hospital activa (EN_COLA / LLAMADO / EN_ESPERA / ATRASADO)"] --> B{"¿Cancela la selección?"}
 
-    B -->|"No"| C["Continúa con el turno"]
-    B -->|"Sí"| D["Desencolar automáticamente"]
-    
-    D --> E["Turno cancelado"]
+    B -->|"No"| C["Continúa con la atención"]
+    B -->|"Sí"| D["Confirmación (diálogo del cliente)"]
+    D --> E["Desencolar automáticamente"]
+    E --> F["Estado CANCELADA"]
+
+    F --> G["Deja de contar para la estimación"]
+    F --> H["El médico ya no lo puede llamar ni ver"]
+    F --> I["Si el triage IA sigue abierto, se cierra"]
+    F --> J["La selección no se puede retomar"]
 ```
+Nota: `EN_ATENCION` (consulta en curso) y `FINALIZADA` no son cancelables (`409 ConflictoDeEstadoException`). La cancelación es idempotente: un segundo intento sobre una entrada ya `CANCELADA` responde exitoso sin cambios. Fuera de alcance: admisiones de recepción (se cancelan con `POST /api/recepcion/admisiones/{admisionId}/cancelar`).
 4. Flujo de llamado médico, ausencia y reencolamiento (`cola/atraso/confirmar` / `cola/atraso/renovar` / `cola/reincorporar`)
 ```mermaid
 flowchart TD
