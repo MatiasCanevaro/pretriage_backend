@@ -27,7 +27,7 @@ public class CambioContraseniaController {
     }
 
     @GetMapping("/validar")
-    public ResponseEntity<Map<String, Object>> validarToken(@RequestParam String token) {
+    public ResponseEntity<Map<String, Object>> validarToken(@RequestParam("token") String token) {
         cambioContraseniaService.validarTokenCambioContrasenia(token);
         return ResponseEntity.ok(Map.of("valido", true, "message", "Token válido"));
     }

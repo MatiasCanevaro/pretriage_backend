@@ -12,59 +12,59 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/api/admin/hospitales/{hospitalId}/configuracion")
+@RequestMapping("/api/admin/hospitales")
 public class HospitalConfigurationController {
     private final HospitalConfigurationService service;
 
-    @GetMapping
+    @GetMapping("/{hospitalId}/configuracion")
     public ConfiguracionHospitalResponse obtener(@AuthenticationPrincipal Jwt jwt, @PathVariable Long hospitalId) {
         return service.obtener(jwt.getSubject(), hospitalId);
     }
 
-    @PostMapping("/especialidades/{especialidadId}")
+    @PostMapping("/{hospitalId}/configuracion/especialidades/{especialidadId}")
     public ConfiguracionHospitalResponse habilitarEspecialidad(@AuthenticationPrincipal Jwt jwt,
             @PathVariable Long hospitalId, @PathVariable Long especialidadId) {
         return service.habilitarEspecialidad(jwt.getSubject(), hospitalId, especialidadId);
     }
 
-    @DeleteMapping("/sectores/{sectorId}/especialidades/{especialidadId}")
+    @DeleteMapping("/{hospitalId}/configuracion/sectores/{sectorId}/especialidades/{especialidadId}")
     public ConfiguracionHospitalResponse deshabilitarEspecialidad(@AuthenticationPrincipal Jwt jwt,
             @PathVariable Long hospitalId, @PathVariable Long sectorId, @PathVariable Long especialidadId) {
         return service.deshabilitarEspecialidad(jwt.getSubject(), hospitalId, especialidadId, sectorId);
     }
 
-    @PostMapping("/sectores/{sectorId}/salas")
+    @PostMapping("/{hospitalId}/configuracion/sectores/{sectorId}/salas")
     public SalaHospitalResponse crearSala(@AuthenticationPrincipal Jwt jwt, @PathVariable Long hospitalId,
             @PathVariable Long sectorId, @Valid @RequestBody GuardarSalaRequest request) {
         return service.crearSala(jwt.getSubject(), hospitalId, sectorId, request);
     }
 
-    @PutMapping("/sectores/{sectorId}/salas/{salaId}")
+    @PutMapping("/{hospitalId}/configuracion/sectores/{sectorId}/salas/{salaId}")
     public SalaHospitalResponse actualizarSala(@AuthenticationPrincipal Jwt jwt, @PathVariable Long hospitalId,
             @PathVariable Long sectorId, @PathVariable Long salaId, @Valid @RequestBody GuardarSalaRequest request) {
         return service.actualizarSala(jwt.getSubject(), hospitalId, sectorId, salaId, request);
     }
 
-    @PatchMapping("/sectores/{sectorId}/salas/{salaId}/estado")
+    @PatchMapping("/{hospitalId}/configuracion/sectores/{sectorId}/salas/{salaId}/estado")
     public SalaHospitalResponse actualizarEstadoSala(@AuthenticationPrincipal Jwt jwt, @PathVariable Long hospitalId,
             @PathVariable Long sectorId, @PathVariable Long salaId,
             @Valid @RequestBody ActualizarEstadoSalaRequest request) {
         return service.actualizarEstadoSala(jwt.getSubject(), hospitalId, sectorId, salaId, request);
     }
 
-    @PostMapping("/sectores")
+    @PostMapping("/{hospitalId}/configuracion/sectores")
     public SectorHospitalResponse crearSector(@AuthenticationPrincipal Jwt jwt, @PathVariable Long hospitalId,
             @Valid @RequestBody GuardarSectorRequest request) {
         return service.crearSector(jwt.getSubject(), hospitalId, request);
     }
 
-    @PutMapping("/sectores/{sectorId}")
+    @PutMapping("/{hospitalId}/configuracion/sectores/{sectorId}")
     public SectorHospitalResponse actualizarSector(@AuthenticationPrincipal Jwt jwt, @PathVariable Long hospitalId,
             @PathVariable Long sectorId, @Valid @RequestBody ActualizarSectorRequest request) {
         return service.actualizarSector(jwt.getSubject(), hospitalId, sectorId, request);
     }
 
-    @DeleteMapping("/sectores/{sectorId}")
+    @DeleteMapping("/{hospitalId}/configuracion/sectores/{sectorId}")
     public ResponseEntity<Void> eliminarSector(@AuthenticationPrincipal Jwt jwt, @PathVariable Long hospitalId,
             @PathVariable Long sectorId) {
         service.eliminarSector(jwt.getSubject(), hospitalId, sectorId);

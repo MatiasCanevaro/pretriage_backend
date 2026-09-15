@@ -5,12 +5,14 @@ import com.pretriage.backend.repositories.RepoEspecialidadesMedicas;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 
 @Component
 @RequiredArgsConstructor
+@Order(1)
 public class EspecialidadesMedicasSeeder implements ApplicationRunner {
 
     private final RepoEspecialidadesMedicas repoEspecialidadesMedicas;

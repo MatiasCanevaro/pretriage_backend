@@ -5,99 +5,101 @@ import com.pretriage.backend.services.StaffAccessService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
 @RestController
+@RequestMapping("/api")
 @RequiredArgsConstructor
 public class StaffAccessController {
     private final StaffAccessService service;
 
-    @GetMapping("/api/staff/me")
-    public StaffMeResponse me(@org.springframework.security.core.annotation.AuthenticationPrincipal Jwt jwt) {
+    @GetMapping("/staff/me")
+    public StaffMeResponse me(@ AuthenticationPrincipal Jwt jwt) {
         return service.obtenerContexto(jwt.getSubject());
     }
 
-    @GetMapping("/api/admin/hospitales/{hospitalId}/personal")
-    public List<PersonalResponse> personal(@org.springframework.security.core.annotation.AuthenticationPrincipal Jwt jwt,
-                                           @PathVariable Long hospitalId) {
+    @GetMapping("/admin/hospitales/{hospitalId}/personal")
+    public List<PersonalResponse> personal(@AuthenticationPrincipal Jwt jwt,
+                                           @PathVariable("hospitalId") Long hospitalId) {
         return service.listarPersonal(jwt.getSubject(), hospitalId);
     }
 
-    @GetMapping("/api/admin/hospitales/{hospitalId}/invitaciones")
-    public List<InvitacionResponse> invitaciones(@org.springframework.security.core.annotation.AuthenticationPrincipal Jwt jwt,
-                                                 @PathVariable Long hospitalId) {
+    @GetMapping("/admin/hospitales/{hospitalId}/invitaciones")
+    public List<InvitacionResponse> invitaciones(@AuthenticationPrincipal Jwt jwt,
+                                                 @PathVariable("hospitalId") Long hospitalId) {
         return service.listarInvitaciones(jwt.getSubject(), hospitalId);
     }
 
-    @PostMapping("/api/admin/hospitales/{hospitalId}/invitaciones")
-    public InvitacionResponse invitar(@org.springframework.security.core.annotation.AuthenticationPrincipal Jwt jwt,
-                                      @PathVariable Long hospitalId,
+    @PostMapping("/admin/hospitales/{hospitalId}/invitaciones")
+    public InvitacionResponse invitar(@AuthenticationPrincipal Jwt jwt,
+                                      @PathVariable("hospitalId") Long hospitalId,
                                       @Valid @RequestBody CrearInvitacionRequest request) {
         return service.crearInvitacion(jwt.getSubject(), hospitalId, request);
     }
 
-    @DeleteMapping("/api/admin/hospitales/{hospitalId}/invitaciones/{invitacionId}")
-    public ResponseEntity<Void> revocar(@org.springframework.security.core.annotation.AuthenticationPrincipal Jwt jwt,
-                                        @PathVariable Long hospitalId, @PathVariable Long invitacionId) {
+    @DeleteMapping("/admin/hospitales/{hospitalId}/invitaciones/{invitacionId}")
+    public ResponseEntity<Void> revocar(@AuthenticationPrincipal Jwt jwt,
+                                        @PathVariable("hospitalId") Long hospitalId, @PathVariable("invitacionId") Long invitacionId) {
         service.revocarInvitacion(jwt.getSubject(), hospitalId, invitacionId);
         return ResponseEntity.noContent().build();
     }
 
-    @PostMapping("/api/admin/hospitales/{hospitalId}/invitaciones/{invitacionId}/reenviar")
-    public InvitacionResponse reenviar(@org.springframework.security.core.annotation.AuthenticationPrincipal Jwt jwt,
-                                        @PathVariable Long hospitalId, @PathVariable Long invitacionId) {
+    @PostMapping("/admin/hospitales/{hospitalId}/invitaciones/{invitacionId}/reenviar")
+    public InvitacionResponse reenviar(@AuthenticationPrincipal Jwt jwt,
+                                        @PathVariable("hospitalId") Long hospitalId, @PathVariable("invitacionId") Long invitacionId) {
         return service.reenviarInvitacion(jwt.getSubject(), hospitalId, invitacionId);
     }
 
-    @PatchMapping("/api/admin/hospitales/{hospitalId}/membresias/{membresiaId}")
-    public MembresiaResponse actualizarEstado(@org.springframework.security.core.annotation.AuthenticationPrincipal Jwt jwt,
-                                               @PathVariable Long hospitalId, @PathVariable Long membresiaId,
+    @PatchMapping("/admin/hospitales/{hospitalId}/membresias/{membresiaId}")
+    public MembresiaResponse actualizarEstado(@AuthenticationPrincipal Jwt jwt,
+                                               @PathVariable("hospitalId") Long hospitalId, @PathVariable("membresiaId") Long membresiaId,
                                                @Valid @RequestBody ActualizarMembresiaRequest request) {
         return service.actualizarEstado(jwt.getSubject(), hospitalId, membresiaId, request);
     }
 
-    @PutMapping("/api/admin/hospitales/{hospitalId}/membresias/{membresiaId}/roles")
-    public MembresiaResponse actualizarRoles(@org.springframework.security.core.annotation.AuthenticationPrincipal Jwt jwt,
-                                              @PathVariable Long hospitalId, @PathVariable Long membresiaId,
+    @PutMapping("/admin/hospitales/{hospitalId}/membresias/{membresiaId}/roles")
+    public MembresiaResponse actualizarRoles(@AuthenticationPrincipal Jwt jwt,
+                                              @PathVariable("hospitalId") Long hospitalId, @PathVariable("membresiaId") Long membresiaId,
                                               @Valid @RequestBody ActualizarRolesRequest request) {
         return service.actualizarRoles(jwt.getSubject(), hospitalId, membresiaId, request);
     }
 
-    @GetMapping("/api/admin/hospitales/{hospitalId}/auditoria")
-    public List<AuditoriaResponse> auditoria(@org.springframework.security.core.annotation.AuthenticationPrincipal Jwt jwt,
-                                             @PathVariable Long hospitalId) {
+    @GetMapping("/admin/hospitales/{hospitalId}/auditoria")
+    public List<AuditoriaResponse> auditoria(@AuthenticationPrincipal Jwt jwt,
+                                             @PathVariable("hospitalId") Long hospitalId) {
         return service.listarAuditoria(jwt.getSubject(), hospitalId);
     }
 
-    @PostMapping("/api/platform/hospitales/{hospitalId}/primer-admin/invitaciones")
-    public InvitacionResponse primerAdmin(@org.springframework.security.core.annotation.AuthenticationPrincipal Jwt jwt,
-                                           @PathVariable Long hospitalId,
+    @PostMapping("/platform/hospitales/{hospitalId}/primer-admin/invitaciones")
+    public InvitacionResponse primerAdmin(@AuthenticationPrincipal Jwt jwt,
+                                           @PathVariable("hospitalId") Long hospitalId,
                                            @Valid @RequestBody CrearInvitacionRequest request) {
         return service.crearPrimerAdmin(jwt.getSubject(), hospitalId, request);
     }
 
-    @GetMapping("/api/platform/hospitales")
+    @GetMapping("/platform/hospitales")
     public List<HospitalPlataformaResponse> hospitalesPlataforma(
-            @org.springframework.security.core.annotation.AuthenticationPrincipal Jwt jwt) {
+            @AuthenticationPrincipal Jwt jwt) {
         return service.listarHospitalesPlataforma(jwt.getSubject());
     }
 
-    @GetMapping("/api/invitaciones/{token}/resumen")
-    public InvitacionResumenResponse resumen(@PathVariable String token) {
+    @GetMapping("/invitaciones/{token}/resumen")
+    public InvitacionResumenResponse resumen(@PathVariable("token") String token) {
         return service.resumir(token);
     }
 
-    @PostMapping("/api/invitaciones/{token}/aceptar")
-    public MembresiaResponse aceptar(@org.springframework.security.core.annotation.AuthenticationPrincipal Jwt jwt,
-                                     @PathVariable String token) {
+    @PostMapping("/invitaciones/{token}/aceptar")
+    public MembresiaResponse aceptar(@AuthenticationPrincipal Jwt jwt,
+                                     @PathVariable("token") String token) {
         return service.aceptar(jwt.getSubject(), token);
     }
 
-    @PostMapping("/api/invitaciones/{token}/registro")
-    public MembresiaResponse registrar(@PathVariable String token,
+    @PostMapping("/invitaciones/{token}/registro")
+    public MembresiaResponse registrar(@PathVariable("token") String token,
                                        @Valid @RequestBody RegistrarInvitadoRequest request) {
         return service.registrarYAceptar(token, request);
     }

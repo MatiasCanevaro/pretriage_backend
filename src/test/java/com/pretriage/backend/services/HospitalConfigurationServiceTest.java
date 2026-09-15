@@ -28,6 +28,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -505,8 +506,7 @@ class HospitalConfigurationServiceTest {
 
                 service.eliminarSector(actor.getId(), hospital.getId(), 22L);
 
-                assertNull(sala.getSector());
-                verify(salas).save(sala);
+                verify(salas).delete(sala);
                 verify(sectores).delete(sector);
         }
 

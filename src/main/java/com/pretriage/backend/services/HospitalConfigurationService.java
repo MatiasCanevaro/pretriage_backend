@@ -189,6 +189,11 @@ public class HospitalConfigurationService {
             throw new ConflictoDeEstadoException("Ya existe un sector con ese nombre en el hospital");
         }
         validarSectorSinPacientes(sectorId);
+
+        if(!request.activa()){
+            desactivarSalasDeSector(sector, actor);
+        }
+
         sector.setNombre(nombre);
         sector.setEspecialidad(especialidad);
         sector.setActiva(request.activa());
@@ -207,8 +212,8 @@ public class HospitalConfigurationService {
         validarSectorSinSesionesActivas(sectorId);
         List<Sala> salasDelSector = salas.findBySectorId(sectorId);
         for (Sala sala : salasDelSector) {
-            sala.setSector(null);
-            salas.save(sala);
+            salas.delete(sala);
+            auditar(hospital, actor, "SALA_ELIMINADA", "salaId:"+ sala.getId() + " sector:" + sectorId, sala.getNombre());
         }
         sectores.delete(sector);
         auditar(hospital, actor, "SECTOR_ELIMINADO", "sector:" + sectorId, sector.getNombre());
@@ -260,6 +265,17 @@ public class HospitalConfigurationService {
             throw new ConflictoDeEstadoException(
                     "No se puede modificar/eliminar un sector con salas que aún tienen pacientes asignados");
         }
+    }
+
+    private void desactivarSalasDeSector(Sector sector, UsuarioAuth actor){
+        List<Sala> salasDelSector = salas.findBySectorId(sector.getId());
+        if (salasDelSector.isEmpty()) return;
+        salasDelSector.forEach(sala -> {
+            sala.setActiva(false);
+            auditar(sector.getHospital(), actor, "SALA_DESACTIVADA",
+            "sala:" + sala.getId(), sala.getNombre() + " · " + sector.getNombre());
+            salas.save(sala);
+        });
     }
 
     private void validarSectorSinSesionesActivas(Long sectorId) {
