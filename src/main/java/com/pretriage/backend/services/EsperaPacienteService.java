@@ -29,15 +29,6 @@ public class EsperaPacienteService {
     private static final int MINUTOS_REPREGUNTA_ATRASADO = 30;
     private static final int MINUTOS_MAXIMOS_EN_ESPERA = 60;
 
-    private static final List<EstadoEntradaCola> ESTADOS_ENTRADA_PACIENTE = List.of(
-            EstadoEntradaCola.EN_COLA,
-            EstadoEntradaCola.LLAMADO,
-            EstadoEntradaCola.EN_ESPERA,
-            EstadoEntradaCola.ATRASADO,
-            EstadoEntradaCola.EN_ATENCION,
-            EstadoEntradaCola.FINALIZADA,
-            EstadoEntradaCola.CANCELADA);
-
     private final PacienteService pacienteService;
     private final RepoEntradasCola repoEntradasCola;
     private final RepoConsultasMedicas repoConsultasMedicas;
@@ -123,7 +114,7 @@ public class EsperaPacienteService {
     public EstadoConsultaPacienteDTO cancelarSeleccion(String auth0Id) {
         Paciente paciente = obtenerPaciente(auth0Id);
         EntradaCola entrada = repoEntradasCola
-                .findFirstByConsultaMedicaPacienteIdAndEstadoIn(paciente.getId(), ESTADOS_ENTRADA_PACIENTE)
+                .findFirstByConsultaMedicaPacienteIdOrderByIdDesc(paciente.getId())
                 .orElseThrow(() -> new NoSuchElementException(
                         "El paciente no tiene una seleccion de hospital activa para cancelar"));
 
@@ -132,6 +123,9 @@ public class EsperaPacienteService {
         }
         if (entrada.getEstado() == EstadoEntradaCola.FINALIZADA) {
             throw new ConflictoDeEstadoException("La consulta ya finalizo y no se puede cancelar");
+        }
+        if (entrada.getEstado() == EstadoEntradaCola.LLAMADO) {
+            throw new ConflictoDeEstadoException("El médico te esta llamando, no se puede cancelar. Si quieres cancelarlo espera a que el médico te marque ausente en el sistema y podrás cancelarlo");
         }
         if (entrada.getEstado() == EstadoEntradaCola.CANCELADA) {
             return mapear(entrada);
@@ -197,7 +191,7 @@ public class EsperaPacienteService {
     }
 
     private EntradaCola obtenerEntradaActivaPaciente(Paciente paciente) {
-        return repoEntradasCola.findFirstByConsultaMedicaPacienteIdAndEstadoIn(
+        return repoEntradasCola.findFirstByConsultaMedicaPacienteIdAndEstadoInOrderByIdDesc(
                         paciente.getId(),
                         List.of(EstadoEntradaCola.EN_COLA,
                                 EstadoEntradaCola.LLAMADO,

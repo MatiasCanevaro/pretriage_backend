@@ -18,7 +18,10 @@ public interface RepoEntradasCola extends JpaRepository<EntradaCola, Long> {
 
     Optional<EntradaCola> findByConsultaMedicaId(Long idConsultaMedica);
 
-    Optional<EntradaCola> findFirstByConsultaMedicaPacienteIdAndEstadoIn(Long idPaciente, Collection<EstadoEntradaCola> estados);
+    Optional<EntradaCola> findFirstByConsultaMedicaPacienteIdAndEstadoInOrderByIdDesc(
+            Long idPaciente, Collection<EstadoEntradaCola> estados);
+
+    Optional<EntradaCola> findFirstByConsultaMedicaPacienteIdOrderByIdDesc(Long idPaciente);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<EntradaCola> findFirstByGestorDeColaIdAndEstadoOrderByPrioridadDescOrdenRelativoAsc(Long idGestorDeCola, EstadoEntradaCola estado);

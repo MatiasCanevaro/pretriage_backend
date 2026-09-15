@@ -386,9 +386,9 @@ Other states are rejected with `IllegalStateException`. On success `tiempoEstima
 POST /api/paciente/consulta/cancelar
 ```
 
-Patient voluntarily and definitively abandons their **active hospital selection** at any point of the attention flow (`EsperaPacienteService.cancelarSeleccion`). The client requests confirmation (dialog) before calling this endpoint, which is **idempotent** and safe to retry.
+Patient voluntarily and definitively abandons their **active hospital selection** at any point of the attention flow (`EsperaPacienteService.cancelarSeleccion`). The client requests confirmation (dialog) before calling this endpoint, which is **idempotent** and safe to retry. The endpoint deterministically resolves the patient's current selection: it operates on the most recent `EntradaCola` (`RepoEntradasCola.findFirstByConsultaMedicaPacienteIdOrderByIdDesc`). Historical `CANCELADA`/`FINALIZADA` entries from previous selections are ignored, so they can neither shadow the active selection nor produce a spurious `409`/no-op response.
 
-Allowed `EntradaCola` states (`ESPERA_PACIENTE`/`ESTADOS_ENTRADA_PACIENTE`):
+Allowed `EntradaCola` states of the resolved (most recent) entry:
 
 * `EN_COLA`, `LLAMADO`, `EN_ESPERA`, `ATRASADO` → entry transitions to `CANCELADA` (clears `tipoPausa`, `fechaHoraLimiteRespuesta`, `fechaHoraUltimaRepregunta`); `ConsultaMedica` transitions to `CANCELADA` (clears `medico` and `sala`). The entry stops counting for estimation and availability, the doctor can no longer call or re-see the patient (`listarPacientesDisponibles`/`llamarProximo` only read `EN_COLA`, `obtenerSesionActual` only `LLAMADO`/`EN_ATENCION`), and any open AI triage chat is finalized (`RepoChat.findFirstByPacienteUsuarioAuthIdAndFinalizadoFalse`).
 * `CANCELADA` → no-op success (idempotent retry).

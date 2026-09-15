@@ -83,6 +83,8 @@ From `EN_COLA`, `LLAMADO`, `EN_ESPERA` (manual or `AUSENTE_AL_LLAMADO`) or `ATRA
 - The entry stops counting for estimation and is no longer offered to the doctor (`listarPacientesDisponibles`/`llamarProximo` only read `EN_COLA`; `obtenerSesionActual` only `LLAMADO`/`EN_ATENCION`), so a cancelled patient can never be called again within that selection.
 - If the AI triage chat is still open, it is finalized (`Chat.finalizado = true`).
 
+The endpoint always resolves the patient's **current** hospital selection: it operates on the most recent `EntradaCola` of the patient (`RepoEntradasCola.findFirstByConsultaMedicaPacienteIdOrderByIdDesc`). Older `EntradaCola` records from previous selections that are already `CANCELADA` or `FINALIZADA` are never considered, so a historical entry can neither shadow the active selection nor produce a spurious `409`/no-op response.
+
 It is **not** possible to cancel a consultation in `EN_ATENCION` (in progress) or already `FINALIZADA` (409 `ConflictoDeEstadoException`). Cancellation is terminal: the selection cannot be resumed or re-linked. Reception admissions are out of scope for this endpoint (cancelled through `POST /api/recepcion/admisiones/{admisionId}/cancelar`, `docs/09-reception-admission.md`).
 
 ## Medical Studies Management

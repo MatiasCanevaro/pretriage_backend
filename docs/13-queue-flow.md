@@ -47,7 +47,7 @@ flowchart TD
     F --> I["Si el triage IA sigue abierto, se cierra"]
     F --> J["La selección no se puede retomar"]
 ```
-Nota: `EN_ATENCION` (consulta en curso) y `FINALIZADA` no son cancelables (`409 ConflictoDeEstadoException`). La cancelación es idempotente: un segundo intento sobre una entrada ya `CANCELADA` responde exitoso sin cambios. Fuera de alcance: admisiones de recepción (se cancelan con `POST /api/recepcion/admisiones/{admisionId}/cancelar`).
+Note: `EN_ATENCION` (consultation in progress) and `FINALIZADA` cannot be cancelled (`409 ConflictoDeEstadoException`). Cancellation is idempotent: retrying against an entry already `CANCELADA` succeeds without changes. The endpoint always acts on the patient's most recent `EntradaCola` (the current selection) via `RepoEntradasCola.findFirstByConsultaMedicaPacienteIdOrderByIdDesc`, so historical `CANCELADA`/`FINALIZADA` entries from previous selections are ignored. Out of scope: reception admissions (cancelled via `POST /api/recepcion/admisiones/{admisionId}/cancelar`).
 4. Flujo de llamado médico, ausencia y reencolamiento (`cola/atraso/confirmar` / `cola/atraso/renovar` / `cola/reincorporar`)
 ```mermaid
 flowchart TD

@@ -74,7 +74,7 @@ class EsperaPacienteServiceTest {
         entrada.setEstado(EstadoEntradaCola.EN_COLA);
         TiempoEstimadoAtencionResponse estimacion = new TiempoEstimadoAtencionResponse();
         when(pacienteService.obtenerPacienteConUsuarioAuthId("auth")).thenReturn(Optional.of(paciente));
-        when(repoEntradasCola.findFirstByConsultaMedicaPacienteIdAndEstadoIn(eq(2L), any()))
+        when(repoEntradasCola.findFirstByConsultaMedicaPacienteIdAndEstadoInOrderByIdDesc(eq(2L), any()))
                 .thenReturn(Optional.of(entrada));
         when(estimacionAtencionService.calcularPara(consulta)).thenReturn(estimacion);
 
@@ -93,7 +93,7 @@ class EsperaPacienteServiceTest {
         EntradaCola entrada = new EntradaCola(); entrada.setConsultaMedica(consulta);
         entrada.setEstado(EstadoEntradaCola.EN_COLA);
         when(pacienteService.obtenerPacienteConUsuarioAuthId("auth")).thenReturn(Optional.of(paciente));
-        when(repoEntradasCola.findFirstByConsultaMedicaPacienteIdAndEstadoIn(eq(2L), any()))
+        when(repoEntradasCola.findFirstByConsultaMedicaPacienteIdOrderByIdDesc(2L))
                 .thenReturn(Optional.of(entrada));
         when(repoChat.findFirstByPacienteUsuarioAuthIdAndFinalizadoFalse("auth")).thenReturn(Optional.empty());
 
@@ -117,7 +117,7 @@ class EsperaPacienteServiceTest {
         EntradaCola entrada = new EntradaCola(); entrada.setConsultaMedica(consulta);
         entrada.setEstado(EstadoEntradaCola.LLAMADO);
         when(pacienteService.obtenerPacienteConUsuarioAuthId("auth")).thenReturn(Optional.of(paciente));
-        when(repoEntradasCola.findFirstByConsultaMedicaPacienteIdAndEstadoIn(eq(2L), any()))
+        when(repoEntradasCola.findFirstByConsultaMedicaPacienteIdOrderByIdDesc(2L))
                 .thenReturn(Optional.of(entrada));
         when(repoChat.findFirstByPacienteUsuarioAuthIdAndFinalizadoFalse("auth")).thenReturn(Optional.empty());
 
@@ -137,7 +137,7 @@ class EsperaPacienteServiceTest {
         EntradaCola entrada = new EntradaCola(); entrada.setConsultaMedica(consulta);
         entrada.setEstado(EstadoEntradaCola.EN_ESPERA);
         when(pacienteService.obtenerPacienteConUsuarioAuthId("auth")).thenReturn(Optional.of(paciente));
-        when(repoEntradasCola.findFirstByConsultaMedicaPacienteIdAndEstadoIn(eq(2L), any()))
+        when(repoEntradasCola.findFirstByConsultaMedicaPacienteIdOrderByIdDesc(2L))
                 .thenReturn(Optional.of(entrada));
         when(repoChat.findFirstByPacienteUsuarioAuthIdAndFinalizadoFalse("auth")).thenReturn(Optional.empty());
 
@@ -155,7 +155,7 @@ class EsperaPacienteServiceTest {
         EntradaCola entrada = new EntradaCola(); entrada.setConsultaMedica(consulta);
         entrada.setEstado(EstadoEntradaCola.ATRASADO);
         when(pacienteService.obtenerPacienteConUsuarioAuthId("auth")).thenReturn(Optional.of(paciente));
-        when(repoEntradasCola.findFirstByConsultaMedicaPacienteIdAndEstadoIn(eq(2L), any()))
+        when(repoEntradasCola.findFirstByConsultaMedicaPacienteIdOrderByIdDesc(2L))
                 .thenReturn(Optional.of(entrada));
         when(repoChat.findFirstByPacienteUsuarioAuthIdAndFinalizadoFalse("auth")).thenReturn(Optional.empty());
 
@@ -173,7 +173,7 @@ class EsperaPacienteServiceTest {
         EntradaCola entrada = new EntradaCola(); entrada.setConsultaMedica(consulta);
         entrada.setEstado(EstadoEntradaCola.EN_ATENCION);
         when(pacienteService.obtenerPacienteConUsuarioAuthId("auth")).thenReturn(Optional.of(paciente));
-        when(repoEntradasCola.findFirstByConsultaMedicaPacienteIdAndEstadoIn(eq(2L), any()))
+        when(repoEntradasCola.findFirstByConsultaMedicaPacienteIdOrderByIdDesc(2L))
                 .thenReturn(Optional.of(entrada));
 
         assertThrows(ConflictoDeEstadoException.class, () -> service.cancelarSeleccion("auth"));
@@ -187,7 +187,7 @@ class EsperaPacienteServiceTest {
         EntradaCola entrada = new EntradaCola(); entrada.setConsultaMedica(consulta);
         entrada.setEstado(EstadoEntradaCola.FINALIZADA);
         when(pacienteService.obtenerPacienteConUsuarioAuthId("auth")).thenReturn(Optional.of(paciente));
-        when(repoEntradasCola.findFirstByConsultaMedicaPacienteIdAndEstadoIn(eq(2L), any()))
+        when(repoEntradasCola.findFirstByConsultaMedicaPacienteIdOrderByIdDesc(2L))
                 .thenReturn(Optional.of(entrada));
 
         assertThrows(ConflictoDeEstadoException.class, () -> service.cancelarSeleccion("auth"));
@@ -201,7 +201,7 @@ class EsperaPacienteServiceTest {
         EntradaCola entrada = new EntradaCola(); entrada.setConsultaMedica(consulta);
         entrada.setEstado(EstadoEntradaCola.CANCELADA);
         when(pacienteService.obtenerPacienteConUsuarioAuthId("auth")).thenReturn(Optional.of(paciente));
-        when(repoEntradasCola.findFirstByConsultaMedicaPacienteIdAndEstadoIn(eq(2L), any()))
+        when(repoEntradasCola.findFirstByConsultaMedicaPacienteIdOrderByIdDesc(2L))
                 .thenReturn(Optional.of(entrada));
 
         var dto = service.cancelarSeleccion("auth");
@@ -215,7 +215,7 @@ class EsperaPacienteServiceTest {
     void rechazaCancelacionSinSeleccionActiva() {
         Paciente paciente = new Paciente(); paciente.setId(2L);
         when(pacienteService.obtenerPacienteConUsuarioAuthId("auth")).thenReturn(Optional.of(paciente));
-        when(repoEntradasCola.findFirstByConsultaMedicaPacienteIdAndEstadoIn(eq(2L), any()))
+        when(repoEntradasCola.findFirstByConsultaMedicaPacienteIdOrderByIdDesc(2L))
                 .thenReturn(Optional.empty());
 
         assertThrows(NoSuchElementException.class, () -> service.cancelarSeleccion("auth"));
@@ -230,7 +230,7 @@ class EsperaPacienteServiceTest {
         entrada.setEstado(EstadoEntradaCola.EN_COLA);
         Chat chat = new Chat(paciente);
         when(pacienteService.obtenerPacienteConUsuarioAuthId("auth")).thenReturn(Optional.of(paciente));
-        when(repoEntradasCola.findFirstByConsultaMedicaPacienteIdAndEstadoIn(eq(2L), any()))
+        when(repoEntradasCola.findFirstByConsultaMedicaPacienteIdOrderByIdDesc(2L))
                 .thenReturn(Optional.of(entrada));
         when(repoChat.findFirstByPacienteUsuarioAuthIdAndFinalizadoFalse("auth")).thenReturn(Optional.of(chat));
 
@@ -238,5 +238,62 @@ class EsperaPacienteServiceTest {
 
         assertTrue(chat.isFinalizado());
         verify(repoChat).save(chat);
+    }
+
+    @Test
+    void cancelaLaSeleccionMasRecienteAunqueExistaHistorialCancelado() {
+        Paciente paciente = new Paciente(); paciente.setId(2L);
+        ConsultaMedica historial = new ConsultaMedica(); historial.setId(1L);
+        historial.setEstadoConsulta(EstadoConsulta.CANCELADA);
+        EntradaCola anterior = new EntradaCola(); anterior.setId(1L);
+        anterior.setEstado(EstadoEntradaCola.CANCELADA);
+        anterior.setConsultaMedica(historial);
+        ConsultaMedica activa = new ConsultaMedica(); activa.setId(5L); activa.setPaciente(paciente);
+        activa.setEstadoConsulta(EstadoConsulta.EN_ESPERA);
+        EntradaCola entrada = new EntradaCola(); entrada.setId(9L);
+        entrada.setEstado(EstadoEntradaCola.EN_ESPERA);
+        entrada.setConsultaMedica(activa);
+        when(pacienteService.obtenerPacienteConUsuarioAuthId("auth")).thenReturn(Optional.of(paciente));
+        when(repoEntradasCola.findFirstByConsultaMedicaPacienteIdOrderByIdDesc(2L))
+                .thenReturn(Optional.of(entrada));
+        when(repoChat.findFirstByPacienteUsuarioAuthIdAndFinalizadoFalse("auth")).thenReturn(Optional.empty());
+
+        var dto = service.cancelarSeleccion("auth");
+
+        assertEquals(EstadoEntradaCola.CANCELADA, entrada.getEstado());
+        assertEquals(EstadoConsulta.CANCELADA, activa.getEstadoConsulta());
+        assertEquals(EstadoEntradaCola.CANCELADA, anterior.getEstado());
+        assertEquals(EstadoEntradaCola.CANCELADA, dto.getEstadoEntradaCola());
+        verify(repoEntradasCola).save(entrada);
+        verify(repoConsultasMedicas).save(activa);
+        verify(repoEntradasCola).findFirstByConsultaMedicaPacienteIdOrderByIdDesc(2L);
+        verify(repoEntradasCola, never()).save(anterior);
+        verify(repoConsultasMedicas, never()).save(historial);
+    }
+
+    @Test
+    void cancelaLaSeleccionActivaAunqueExistaHistorialFinalizado() {
+        Paciente paciente = new Paciente(); paciente.setId(2L);
+        ConsultaMedica historial = new ConsultaMedica(); historial.setId(3L);
+        historial.setEstadoConsulta(EstadoConsulta.FINALIZADA);
+        EntradaCola anterior = new EntradaCola(); anterior.setId(2L);
+        anterior.setEstado(EstadoEntradaCola.FINALIZADA);
+        anterior.setConsultaMedica(historial);
+        ConsultaMedica activa = new ConsultaMedica(); activa.setId(5L); activa.setPaciente(paciente);
+        activa.setEstadoConsulta(EstadoConsulta.EN_COLA);
+        EntradaCola entrada = new EntradaCola(); entrada.setId(9L);
+        entrada.setEstado(EstadoEntradaCola.EN_COLA);
+        entrada.setConsultaMedica(activa);
+        when(pacienteService.obtenerPacienteConUsuarioAuthId("auth")).thenReturn(Optional.of(paciente));
+        when(repoEntradasCola.findFirstByConsultaMedicaPacienteIdOrderByIdDesc(2L))
+                .thenReturn(Optional.of(entrada));
+        when(repoChat.findFirstByPacienteUsuarioAuthIdAndFinalizadoFalse("auth")).thenReturn(Optional.empty());
+
+        service.cancelarSeleccion("auth");
+
+        assertEquals(EstadoEntradaCola.CANCELADA, entrada.getEstado());
+        assertEquals(EstadoConsulta.CANCELADA, activa.getEstadoConsulta());
+        verify(repoEntradasCola).save(entrada);
+        verify(repoConsultasMedicas).save(activa);
     }
 }

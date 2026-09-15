@@ -115,6 +115,7 @@ The system manages the first medical attention workflow:
 - `AtencionMedica` is created on presence confirmation and finalized with the consultation.
 - `EN_ESPERA` entries are cancelled after one hour measured from `fechaHoraSalidaTemporal`.
 - A patient can cancel the active hospital selection at any time (`POST /api/paciente/consulta/cancelar`) while its `EntradaCola` is `EN_COLA`, `LLAMADO`, `EN_ESPERA` or `ATRASADO`; cancellation is terminal and idempotent (`CANCELADA` → no-op success).
+- The cancellation endpoint deterministically resolves the patient's **most recent** `EntradaCola` (`RepoEntradasCola.findFirstByConsultaMedicaPacienteIdOrderByIdDesc`); historical `CANCELADA`/`FINALIZADA` entries from previous selections never shadow the active one.
 - Cancellation marks `EntradaCola.CANCELADA` + `ConsultaMedica.CANCELADA` (clears `medico`/`sala`), excludes the entry from estimation, prevents the doctor from calling or re-seeing the patient, and finalizes an open AI triage chat.
 - `EN_ATENCION` (consultation in progress) and `FINALIZADA` cannot be cancelled (`409 ConflictoDeEstadoException`).
 - Reception admissions are not cancelled by the patient endpoint; they use `AdmisionRecepcionService.cancelar`.
