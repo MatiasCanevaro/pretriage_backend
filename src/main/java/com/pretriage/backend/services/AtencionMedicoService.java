@@ -44,6 +44,8 @@ public class AtencionMedicoService {
             EstadoSesionMedica.ACTIVA,
             EstadoSesionMedica.PAUSADA);
 
+    private static final int MINUTOS_MAXIMOS_EN_ESPERA = 60;	
+
     private final RepoMedico repoMedico;
     private final RepoHospitales repoHospitales;
     private final RepoEspecialidadesMedicas repoEspecialidadesMedicas;
@@ -335,6 +337,7 @@ public class AtencionMedicoService {
         entrada.setEstado(EstadoEntradaCola.EN_ESPERA);
         entrada.setTipoPausa(TipoPausaCola.AUSENTE_AL_LLAMADO);
         entrada.setFechaHoraSalidaTemporal(LocalDateTime.now());
+	entrada.setFechaHoraLimiteRespuesta(LocalDateTime.now().plusMinutes(MINUTOS_MAXIMOS_EN_ESPERA));
         consulta.setEstadoConsulta(EstadoConsulta.EN_ESPERA);
         repoEntradasCola.save(entrada);
         repoConsultasMedicas.save(consulta);

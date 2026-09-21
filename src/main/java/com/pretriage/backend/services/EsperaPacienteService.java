@@ -44,6 +44,7 @@ public class EsperaPacienteService {
         entrada.setEstado(EstadoEntradaCola.EN_ESPERA);
         entrada.setTipoPausa(TipoPausaCola.ESPERA_MANUAL);
         entrada.setFechaHoraSalidaTemporal(LocalDateTime.now());
+        entrada.setFechaHoraLimiteRespuesta(LocalDateTime.now().plusMinutes(MINUTOS_MAXIMOS_EN_ESPERA));
         entrada.getConsultaMedica().setEstadoConsulta(EstadoConsulta.EN_ESPERA);
 
         repoConsultasMedicas.save(entrada.getConsultaMedica());
