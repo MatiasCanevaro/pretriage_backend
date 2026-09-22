@@ -54,10 +54,10 @@ separately in `10-staff-identity-memberships-and-invitations.md`.
 
 ## Local persistence behavior
 
-- The default JPA schema mode changed from destructive `create` to configurable
-  `${JPA_DDL_AUTO:update}`.
-- Local data is therefore preserved across normal backend restarts unless a clean
-  schema is requested explicitly.
+- JPA schema mode is configurable through `JPA_DDL_AUTO`. The current application
+  fallback is `create-drop`; set `JPA_DDL_AUTO=update` in the local `.env` before
+  startup to preserve development data. See `07-local-development.md` for
+  DevTools restart and compilation precautions.
 
 ## Tests added or extended
 

@@ -374,7 +374,7 @@ POST   /api/invitaciones/{token}/registro
 POST   /api/invitaciones/{token}/aceptar
 GET    /api/admin/hospitales/{hospitalId}/configuracion
 POST   /api/admin/hospitales/{hospitalId}/configuracion/especialidades/{especialidadId}
-DELETE /api/admin/hospitales/{hospitalId}/configuracion/sectores/{sectorId}/especialidades/{especialidadId}
+DELETE /api/admin/hospitales/{hospitalId}/configuracion/especialidades/{especialidadId}
 POST   /api/admin/hospitales/{hospitalId}/configuracion/sectores/{sectorId}/salas
 PUT    /api/admin/hospitales/{hospitalId}/configuracion/sectores/{sectorId}/salas/{salaId}
 PATCH  /api/admin/hospitales/{hospitalId}/configuracion/sectores/{sectorId}/salas/{salaId}/estado
@@ -385,7 +385,7 @@ offered by their hospital. Rooms belong to one hospital, one enabled specialty a
 one sector: they are created/updated/activated under `/sectores/{sectorId}/salas`
 and their specialty must match the sector's specialty. Rooms are activated or
 deactivated rather than deleted to preserve historical references, and disabling a
-specialty requires first deactivating its rooms in the sector.
+specialty requires first deactivating all its rooms in the hospital, including rooms without a sector. No sector selection is required. The operation only removes the hospital-specialty association, preserves the global catalog and existing sectors/rooms, and does not cancel consultations or close medical sessions. Repeating it returns the current configuration without duplicating the audit event.
 
 The public `/api/register` endpoint now rejects doctor, receptionist and admin
 registration. Invitation registration derives hospital roles from the stored

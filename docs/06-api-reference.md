@@ -816,10 +816,14 @@ Example `sectores` item:
 
 ```http
 POST   /api/admin/hospitales/{hospitalId}/configuracion/especialidades/{especialidadId}
-DELETE /api/admin/hospitales/{hospitalId}/configuracion/sectores/{sectorId}/especialidades/{especialidadId}
+DELETE /api/admin/hospitales/{hospitalId}/configuracion/especialidades/{especialidadId}
 ```
 
-`DELETE` / deshabilitar is scoped to a sector: it only blocks when the specialty still has active rooms inside that sector (`RepoSalas.existsByHospitalIdAndEspecialidadIdAndSectorIdAndActivaTrue`). Returns `ConfiguracionHospitalResponse`.
+`DELETE` disables the specialty for the whole hospital; it requires no sector or request body. `ADMIN_HOSPITAL` authorization is checked against the hospital. It returns `200 ConfiguracionHospitalResponse`, including when the specialty is already disabled (no duplicate save or audit). Unknown hospital or specialty returns `404`.
+
+If the specialty is enabled and has any active room in this hospital, the operation returns `409 { "error": "Desactivá las salas de la especialidad antes de quitarla del hospital" }`. The check uses `RepoSalas.existsByHospitalIdAndEspecialidadIdAndActivaTrue`, covers every sector and legacy rooms with no sector, and ignores rooms of other hospitals or specialties. A hospital with no sectors can disable a specialty.
+
+Disabling removes only the `Hospital.especialidades` association and audits `ESPECIALIDAD_DESHABILITADA`. It preserves the global catalog, sectors, rooms and historical references; it neither deletes nor deactivates them in cascade. It stops offering the specialty to new admissions and does not cancel consultations or close existing medical sessions. Session/consultation state is not an additional deletion guard. The old sector-scoped `DELETE` route is removed; clients must use the hospital-scoped route.
 
 ### Create Room
 

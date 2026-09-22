@@ -78,12 +78,16 @@ public class HospitalConfigurationService {
 
     @Transactional
     public ConfiguracionHospitalResponse deshabilitarEspecialidad(String subject, Long hospitalId,
-            Long especialidadId, Long sectorId) {
+            Long especialidadId) {
         UsuarioAuth actor = staffAccessService.exigirAdminHospital(subject, hospitalId);
         Hospital hospital = hospital(hospitalId);
         EspecialidadMedica especialidad = especialidad(especialidadId);
-        sector(hospitalId, sectorId);
-        if (salas.existsByHospitalIdAndEspecialidadIdAndSectorIdAndActivaTrue(hospitalId, especialidadId, sectorId)) {
+        boolean habilitada = hospital.getEspecialidades().stream()
+                .anyMatch(item -> item.getId().equals(especialidadId));
+        if (!habilitada) {
+            return obtener(subject, hospitalId);
+        }
+        if (salas.existsByHospitalIdAndEspecialidadIdAndActivaTrue(hospitalId, especialidadId)) {
             throw new ConflictoDeEstadoException(
                     "Desactivá las salas de la especialidad antes de quitarla del hospital");
         }
