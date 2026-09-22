@@ -29,6 +29,7 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -105,35 +106,78 @@ class HospitalConfigurationServiceTest {
         }
 
         @Test
-        void noDeshabilitaUnaEspecialidadConSalasActivasEnElSector() {
+        void noDeshabilitaUnaEspecialidadConSalasActivasEnCualquierSectorOSinSector() {
                 when(especialidades.findById(especialidad.getId())).thenReturn(Optional.of(especialidad));
-                when(salas.existsByHospitalIdAndEspecialidadIdAndSectorIdAndActivaTrue(hospital.getId(),
-                                especialidad.getId(), sector.getId())).thenReturn(true);
+                when(salas.existsByHospitalIdAndEspecialidadIdAndActivaTrue(hospital.getId(),
+                                especialidad.getId())).thenReturn(true);
 
                 ConflictoDeEstadoException error = assertThrows(ConflictoDeEstadoException.class,
                                 () -> service.deshabilitarEspecialidad(actor.getId(), hospital.getId(),
-                                                especialidad.getId(), sector.getId()));
+                                                especialidad.getId()));
 
                 assertEquals("Desactivá las salas de la especialidad antes de quitarla del hospital",
                                 error.getMessage());
                 verify(hospitales, never()).save(any());
+                verifyNoInteractions(sectores, auditorias);
+                assertTrue(hospital.getEspecialidades().contains(especialidad));
         }
 
         @Test
-        void deshabilitarEspecialidadSinSalasActivasEnElSector() {
+        void deshabilitarEspecialidadSinSalasActivasNiSectores() {
                 when(especialidades.findById(especialidad.getId())).thenReturn(Optional.of(especialidad));
-                when(salas.existsByHospitalIdAndEspecialidadIdAndSectorIdAndActivaTrue(hospital.getId(),
-                                especialidad.getId(), sector.getId())).thenReturn(false);
+                when(salas.existsByHospitalIdAndEspecialidadIdAndActivaTrue(hospital.getId(),
+                                especialidad.getId())).thenReturn(false);
                 when(especialidades.findAll()).thenReturn(java.util.List.of(especialidad));
                 when(salas.findByHospitalIdOrderByNombreAsc(hospital.getId())).thenReturn(java.util.List.of());
                 when(sectores.findByHospitalIdOrderByNombreAsc(hospital.getId())).thenReturn(java.util.List.of());
 
                 var configuracion = service.deshabilitarEspecialidad(actor.getId(), hospital.getId(),
-                                especialidad.getId(), sector.getId());
+                                especialidad.getId());
 
                 assertFalse(configuracion.especialidades().get(0).habilitada());
                 verify(hospitales).save(hospital);
                 verify(auditorias).save(any());
+                verify(sectores, never()).findByIdAndHospitalId(any(), any());
+                verify(especialidades, never()).delete(any());
+                verify(salas, never()).delete(any());
+                verify(salas, never()).save(any());
+                verify(sectores, never()).delete(any());
+                verify(sectores, never()).save(any());
+        }
+
+        @Test
+        void deshabilitarEspecialidadRepetidaNoGuardaNiAuditaOtraVez() {
+                when(especialidades.findById(especialidad.getId())).thenReturn(Optional.of(especialidad));
+                when(especialidades.findAll()).thenReturn(java.util.List.of(especialidad));
+
+                service.deshabilitarEspecialidad(actor.getId(), hospital.getId(), especialidad.getId());
+                var repetida = service.deshabilitarEspecialidad(actor.getId(), hospital.getId(), especialidad.getId());
+
+                assertFalse(repetida.especialidades().getFirst().habilitada());
+                verify(hospitales).save(hospital);
+                verify(auditorias).save(argThat(auditoria ->
+                                "ESPECIALIDAD_DESHABILITADA".equals(auditoria.getAccion())
+                                                && auditoria.getHospital().equals(hospital)
+                                                && auditoria.getActor().equals(actor)));
+                verify(salas).existsByHospitalIdAndEspecialidadIdAndActivaTrue(hospital.getId(), especialidad.getId());
+        }
+
+        @Test
+        void bajaSoloConsultaSalasDelHospitalYEspecialidadSolicitadosYPreservaOtrasEspecialidades() {
+                EspecialidadMedica otraEspecialidad = new EspecialidadMedica();
+                otraEspecialidad.setId(99L);
+                hospital.getEspecialidades().add(otraEspecialidad);
+                when(especialidades.findById(especialidad.getId())).thenReturn(Optional.of(especialidad));
+                // Other hospital/specialty combinations have active rooms. Only this pair is free.
+                when(salas.existsByHospitalIdAndEspecialidadIdAndActivaTrue(anyLong(), anyLong()))
+                                .thenAnswer(invocation -> !hospital.getId().equals(invocation.getArgument(0))
+                                                || !especialidad.getId().equals(invocation.getArgument(1)));
+
+                service.deshabilitarEspecialidad(actor.getId(), hospital.getId(), especialidad.getId());
+
+                assertEquals(java.util.List.of(otraEspecialidad), hospital.getEspecialidades());
+                verify(salas).existsByHospitalIdAndEspecialidadIdAndActivaTrue(hospital.getId(), especialidad.getId());
+                verify(salas, never()).findBySectorId(any());
         }
 
         @Test

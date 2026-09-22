@@ -19,19 +19,20 @@ alt modificarSector
     AdminHospital <-- Controller : ok
 end
 alt deshabilitar especialidad
-AdminHospital -> Controller: DELETE /api/admin/hospitales/{hospitalId}/configuracion/sectores/{sectorId}/especialidades/{especialidadId}
+AdminHospital -> Controller: DELETE /api/admin/hospitales/{hospitalId}/configuracion/especialidades/{especialidadId}
 
-Controller -> HospitalConfiguracionService : deshabilitarEspecialidad(userId, especialidadId, hospitalId, sectorId)
+Controller -> HospitalConfiguracionService : deshabilitarEspecialidad(userId, hospitalId, especialidadId)
 HospitalConfiguracionService -> StaffAccessService : exiguirAdmin(userId, hospitalId)
 HospitalConfiguracionService <-- StaffAccessService: UsuarioAuth
 HospitalConfiguracionService -> HospitalConfiguracionService: hospital()
 HospitalConfiguracionService -> HospitalConfiguracionService: especialidad()
-HospitalConfiguracionService -> HospitalConfiguracionService: sector()
-HospitalConfiguracionService -> RepoSalas: existsByHospitalIdAndEspecialidadIdAndSectorIdAndActivaTrue(hospitalId, especialidadId, sectorId)
+note over HospitalConfiguracionService: Si ya esta deshabilitada, devuelve configuracion sin guardar ni auditar
+HospitalConfiguracionService -> RepoSalas: existsByHospitalIdAndEspecialidadIdAndActivaTrue(hospitalId, especialidadId)
 alt existe
     HospitalConfiguracionService --> Controller: throw ConflictoDeEstadoException
 else no existe
-    HospitalConfiguracionService-> HospitalConfiguracionService: eliminarEspecialidad()
+    HospitalConfiguracionService-> HospitalConfiguracionService: quitarAsociacionHospitalEspecialidad()
+    note over HospitalConfiguracionService: Conserva catalogo, sectores, salas, consultas y sesiones
     HospitalConfiguracionService -> HospitalConfiguracionService: obtenerConfiguracionHospital()
 end
 
