@@ -27,10 +27,10 @@ public class HospitalConfigurationController {
         return service.habilitarEspecialidad(jwt.getSubject(), hospitalId, especialidadId);
     }
 
-    @DeleteMapping("/{hospitalId}/configuracion/sectores/{sectorId}/especialidades/{especialidadId}")
+    @DeleteMapping("/{hospitalId}/configuracion/especialidades/{especialidadId}")
     public ConfiguracionHospitalResponse deshabilitarEspecialidad(@AuthenticationPrincipal Jwt jwt,
-            @PathVariable Long hospitalId, @PathVariable Long sectorId, @PathVariable Long especialidadId) {
-        return service.deshabilitarEspecialidad(jwt.getSubject(), hospitalId, especialidadId, sectorId);
+            @PathVariable Long hospitalId, @PathVariable Long especialidadId) {
+        return service.deshabilitarEspecialidad(jwt.getSubject(), hospitalId, especialidadId);
     }
 
     @PostMapping("/{hospitalId}/configuracion/sectores/{sectorId}/salas")

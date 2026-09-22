@@ -22,11 +22,55 @@ pretriage.cambio-contrasenia.ventana-horas=${PRETRIAGE_CAMBIO_VENTANA_HORAS:1}
 pretriage.cambio-contrasenia.email.mode=${PRETRIAGE_CAMBIO_EMAIL_MODE:${PRETRIAGE_INVITATIONS_EMAIL_MODE:local}}
 pretriage.cambio-contrasenia.email.from=${PRETRIAGE_CAMBIO_EMAIL_FROM:${PRETRIAGE_INVITATIONS_EMAIL_FROM:no-reply@pretriage.local}}
 spring.config.import=optional:file:.env[.properties]
-spring.jpa.hibernate.ddl-auto=${JPA_DDL_AUTO:update}
+spring.jpa.hibernate.ddl-auto=${JPA_DDL_AUTO:create-drop}
 ```
 
-Local data is preserved across backend restarts by default. Set
-`JPA_DDL_AUTO=create` explicitly only when a clean schema is intended.
+Set `JPA_DDL_AUTO=update` in the ignored local `.env` before starting a development
+instance whose data must persist. The current fallback is `create-drop`: it
+drops the schema at shutdown and recreates it at startup.
+
+Spring DevTools watches `target/classes`. Maven compilation (including `test`
+and `package`) can restart a running backend and erase its data when that
+instance uses `create-drop`. Before compiling, verify the running instance uses
+a persistent schema mode, or stop it after backing up its data. Editing `.env`
+alone does not protect the shutdown of a process that already loaded
+`create-drop`. Tests that need a datasource must use an isolated database.
+
+## Invitation email through Brevo
+
+The SMTP adapter is already included in the backend. Configure the ignored `.env`
+in the backend working directory, then restart the process to load it:
+
+```properties
+PRETRIAGE_INVITATIONS_EMAIL_MODE=smtp
+PRETRIAGE_INVITATIONS_EMAIL_FROM=no-reply@pretriage.com.ar
+PRETRIAGE_FRONTEND_BASE_URL=http://localhost:3000
+SMTP_HOST=smtp-relay.brevo.com
+SMTP_PORT=587
+SMTP_USERNAME=<SMTP login from Brevo>
+SMTP_PASSWORD=<SMTP key from Brevo, not an API key>
+SMTP_AUTH=true
+SMTP_STARTTLS=true
+spring.mail.properties.mail.smtp.starttls.required=true
+spring.mail.properties.mail.smtp.connectiontimeout=10000
+spring.mail.properties.mail.smtp.timeout=10000
+spring.mail.properties.mail.smtp.writetimeout=10000
+PRETRIAGE_CAMBIO_EMAIL_MODE=local
+```
+
+Use the frontend's public HTTPS URL when recipients open links outside the local
+development machine. Sender/domain verification is managed in Brevo. Authentication
+alone does not verify sender authorization or inbox delivery. SMTP mode does not
+return an invitation secret to the administrative frontend; failed sends remain
+pending and can be resent from the invitation list.
+
+Password recovery otherwise inherits the invitation email mode. The explicit
+`PRETRIAGE_CAMBIO_EMAIL_MODE=local` keeps its existing behavior until separately
+enabled. Never commit the SMTP key or enable mail protocol debugging with real
+credentials. A connection check may authenticate with STARTTLS and quit without
+issuing `MAIL`, `RCPT` or `DATA`; sending a real test invitation is a separate step.
+
+Provider reference: [Brevo transactional SMTP](https://help.brevo.com/hc/en-us/articles/7924908994450-Send-transactional-emails-using-Brevo-SMTP).
 
 ## Compile
 
@@ -38,6 +82,7 @@ Local data is preserved across backend restarts by default. Set
 
 ```powershell
 .\mvnw.cmd "-Dtest=AtencionHospitalServiceTest,EstimacionAtencionServiceTest" test
+.\mvnw.cmd "-Dtest=HospitalConfigurationServiceTest,HospitalConfigurationControllerTest" test
 ```
 
 ## Full Tests

@@ -65,9 +65,14 @@ El backend queda disponible en:
 - OpenAPI: `http://localhost:8080/v3/api-docs`
 - Swagger UI: `http://localhost:8080/swagger-ui/index.html`
 
-La configuración usa `JPA_DDL_AUTO=update` por defecto para conservar los datos
-locales entre reinicios. Para reconstruir deliberadamente el esquema puede
-definirse otro valor antes de iniciar la aplicación.
+Para conservar los datos locales, definí `JPA_DDL_AUTO=update` en `.env` antes
+del primer arranque. El valor por defecto actual de `application.properties` es
+`create-drop`, que elimina el esquema al cerrar y lo recrea al iniciar.
+Spring DevTools también puede reiniciar el backend al compilar `target/classes`
+(por ejemplo, al ejecutar Maven tests), por lo que esa compilación puede borrar
+la base de una instancia que sigue usando `create-drop`. Cambiar `.env` no
+protege el cierre de una instancia ya iniciada con ese modo: resguardá los datos
+antes de detenerla. Ver [desarrollo local](docs/07-local-development.md).
 
 ## Almacenamiento S3 opcional
 
