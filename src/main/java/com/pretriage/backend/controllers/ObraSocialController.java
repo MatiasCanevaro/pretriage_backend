@@ -3,6 +3,7 @@ package com.pretriage.backend.controllers;
 import com.pretriage.backend.controllers.dtos.CredencialRequest;
 import com.pretriage.backend.controllers.dtos.CredencialResponse;
 import com.pretriage.backend.controllers.dtos.ObraSocialDTO;
+import com.pretriage.backend.controllers.dtos.ObraSocialResponse;
 import com.pretriage.backend.model.hospitales.ObraSocial;
 import com.pretriage.backend.services.CredencialService;
 import jakarta.validation.Valid;
@@ -21,6 +22,13 @@ import java.util.Map;
 public class ObraSocialController {
 
     private final CredencialService credencialService;
+
+    @GetMapping("/obrasocial")
+    public ResponseEntity<List<ObraSocialResponse>> obtenerObrasSociales() {
+        return ResponseEntity.ok(
+                credencialService.obtenerObrasSociales()
+        );
+    }
 
     @GetMapping("/obrasocial/credenciales")
     public ResponseEntity<List<CredencialResponse>> obtenerCredencialesPaciente(

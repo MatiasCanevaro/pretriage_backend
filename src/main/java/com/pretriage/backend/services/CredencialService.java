@@ -3,6 +3,7 @@ package com.pretriage.backend.services;
 import com.pretriage.backend.controllers.dtos.CredencialRequest;
 import com.pretriage.backend.controllers.dtos.CredencialResponse;
 import com.pretriage.backend.controllers.dtos.ObraSocialDTO;
+import com.pretriage.backend.controllers.dtos.ObraSocialResponse;
 import com.pretriage.backend.exceptions.ObraSocialNoExisteException;
 import com.pretriage.backend.exceptions.ObraSocialYaExisteException;
 import com.pretriage.backend.mappers.MapperCredencial;
@@ -245,5 +246,14 @@ public class CredencialService {
             throw new AccessDeniedException(
                     "No tiene permisos para cargar la credencial");
         }
+    }
+
+    public List<ObraSocialResponse> obtenerObrasSociales() {
+        return repoObraSociales.findByVirgenteTrue()
+            .stream()
+            .map(obraSocial -> new ObraSocialResponse(
+                    obraSocial.getNombre()
+            ))
+            .toList();
     }
 }
