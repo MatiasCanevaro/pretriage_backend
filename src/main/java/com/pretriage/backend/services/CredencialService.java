@@ -6,6 +6,7 @@ import com.pretriage.backend.controllers.dtos.ObraSocialDTO;
 import com.pretriage.backend.controllers.dtos.ObraSocialResponse;
 import com.pretriage.backend.exceptions.ObraSocialNoExisteException;
 import com.pretriage.backend.exceptions.ObraSocialYaExisteException;
+import com.pretriage.backend.exceptions.CredencialValidaYaExisteException;
 import com.pretriage.backend.mappers.MapperCredencial;
 import com.pretriage.backend.model.hospitales.Credencial;
 import com.pretriage.backend.model.hospitales.ObraSocial;
@@ -130,6 +131,12 @@ public class CredencialService {
 
         validacionCredencialObraSocialService
                 .validarCredencialObraSocial(request, paciente, validador);
+
+        Optional<Credencial> opCredencial = this.repoCredenciales.findByNumeroAfiliadoAndObraSocialNombre(request.getNumeroAfiliado(), request.getNombreObraSocial().toUpperCase());
+        
+        if(opCredencial.isPresent()){
+            throw new CredencialValidaYaExisteException();
+        }
     }
 
     @Transactional

@@ -6,6 +6,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface RepoCredenciales extends JpaRepository<Credencial, Long> {
@@ -15,5 +16,7 @@ public interface RepoCredenciales extends JpaRepository<Credencial, Long> {
             LocalDate fecha);
 
     List<Credencial> findByPacienteId(Long pacienteId);
+
+    Optional<Credencial> findByNumeroAfiliadoAndObraSocialNombre(String numeroAfiliado, String nombre);
 
 }
