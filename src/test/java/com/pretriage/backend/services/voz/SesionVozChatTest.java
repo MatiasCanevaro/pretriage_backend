@@ -1,39 +1,45 @@
 package com.pretriage.backend.services.voz;
 
-import com.pretriage.backend.controllers.dtos.ChatDTO;
 import com.pretriage.backend.controllers.dtos.ChatTurnResponse;
 import com.pretriage.backend.controllers.dtos.MensajeDTO;
+import com.pretriage.backend.controllers.dtos.ResumenEntrevistaVoz;
 import com.pretriage.backend.controllers.dtos.TiempoEstimadoAtencionResponse;
-import com.pretriage.backend.exceptions.ChatFinalizadoException;
+import com.pretriage.backend.controllers.dtos.TurnoVoz;
+import com.pretriage.backend.model.chat.AutorMensaje;
 import com.pretriage.backend.services.ChatService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BooleanSupplier;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 class SesionVozChatTest {
-    private static final String MENSAJE_INICIAL = "Cual es el principal motivo de tu consulta hoy?";
+    private static final String SALUDO = "Hola. Voy a hacerte algunas preguntas breves. Cual es el principal motivo de tu consulta hoy?";
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private ChatService chatService;
     private GeminiLiveCliente geminiLiveCliente;
     private ConexionFalsa conexion;
     private CanalFalso canal;
-    private SesionVozChat sesion;
 
     @BeforeEach
     void setUp() {
@@ -42,41 +48,56 @@ class SesionVozChatTest {
         conexion = new ConexionFalsa();
         canal = new CanalFalso();
         when(geminiLiveCliente.conectar(any())).thenReturn(CompletableFuture.completedFuture(conexion));
-        GeminiLiveProperties properties = new GeminiLiveProperties(
-                "clave", "models/gemini-3.8-live", "wss://gemini.test", "Kore", "es-US", Duration.ofSeconds(1));
-        sesion = new SesionVozChat("7", "auth0|paciente", MENSAJE_INICIAL, chatService,
-                geminiLiveCliente, properties, objectMapper, canal);
     }
 
     @Test
-    void iniciarEnviaSetupConModeloFuncionYTranscripciones() {
+    void setupDeclaraLaEntrevistaYLaFuncionDeCierreConElResumen() {
+        SesionVozChat sesion = sesion(historialNuevo());
         sesion.iniciar();
 
         JsonNode setup = json(conexion.enviados.getFirst()).path("setup");
         assertEquals("models/gemini-3.8-live", setup.path("model").asText());
         assertEquals("AUDIO", setup.path("generationConfig").path("responseModalities").get(0).asText());
-        assertEquals("Kore", setup.path("generationConfig").path("speechConfig")
-                .path("voiceConfig").path("prebuiltVoiceConfig").path("voiceName").asText());
-        assertEquals(SesionVozChat.FUNCION_REGISTRAR, setup.path("tools").get(0)
-                .path("functionDeclarations").get(0).path("name").asText());
+        String instruccion = setup.path("systemInstruction").path("parts").get(0).path("text").asText();
+        assertTrue(instruccion.contains("signos de alarma"));
+        assertTrue(instruccion.contains("finalizar_entrevista"));
+        JsonNode funcion = setup.path("tools").get(0).path("functionDeclarations").get(0);
+        assertEquals(SesionVozChat.FUNCION_FINALIZAR, funcion.path("name").asText());
+        assertTrue(funcion.path("parameters").path("properties").has("signosAlarma"));
+        assertTrue(funcion.path("parameters").path("properties").has("intensidadDolor"));
+        assertFalse(funcion.path("parameters").path("properties").has("nivelPrioridad"));
         assertTrue(setup.has("inputAudioTranscription"));
         assertTrue(setup.has("outputAudioTranscription"));
     }
 
     @Test
-    void alCompletarSetupLeeLaUltimaPreguntaDelBotYAvisaAlCliente() {
+    void chatNuevoArrancaConElSaludoDelBot() {
+        SesionVozChat sesion = sesion(historialNuevo());
         sesion.iniciar();
 
         sesion.alRecibir("{\"setupComplete\":{}}");
 
-        JsonNode saludo = json(conexion.enviados.get(1)).path("clientContent");
-        assertTrue(saludo.path("turns").get(0).path("parts").get(0).path("text").asText().contains(MENSAJE_INICIAL));
-        assertTrue(saludo.path("turnComplete").asBoolean());
+        assertTrue(textoCliente(conexion.enviados.get(1)).contains(SALUDO));
         assertEquals("listo", json(canal.eventos.getFirst()).path("tipo").asText());
     }
 
     @Test
+    void chatEmpezadoPorTextoRetomaConLaConversacionPrevia() {
+        List<MensajeDTO> historial = new ArrayList<>(historialNuevo());
+        historial.add(new MensajeDTO("Me duele la panza", "PACIENTE", LocalDateTime.now()));
+        SesionVozChat sesion = sesion(historial);
+        sesion.iniciar();
+
+        sesion.alRecibir("{\"setupComplete\":{}}");
+
+        String inicio = textoCliente(conexion.enviados.get(1));
+        assertTrue(inicio.contains("PACIENTE: Me duele la panza"));
+        assertTrue(inicio.contains("sin repetir"));
+    }
+
+    @Test
     void reenviaAudioDelClienteSoloDespuesDelSetup() {
+        SesionVozChat sesion = sesion(historialNuevo());
         sesion.iniciar();
         byte[] audio = {1, 2, 3, 4};
 
@@ -93,6 +114,7 @@ class SesionVozChatTest {
 
     @Test
     void reenviaAudioYTranscripcionesDeGeminiAlCliente() {
+        SesionVozChat sesion = sesion(historialNuevo());
         sesion.iniciar();
         String audio = Base64.getEncoder().encodeToString("pcm".getBytes(StandardCharsets.UTF_8));
 
@@ -110,69 +132,114 @@ class SesionVozChatTest {
     }
 
     @Test
-    void llamadaDeFuncionPasaPorElBotExistenteYDevuelveSuRespuesta() {
-        when(chatService.enviarMensaje("7", "auth0|paciente", "me duele la cabeza desde ayer"))
-                .thenReturn(turno("Del 0 al 10, cuanto te duele?", null));
-        when(chatService.obtenerChat("7", "auth0|paciente")).thenReturn(chat(false));
+    void alFinalizarCierraGeminiYRecienEntoncesPideLaPreclasificacionAOllama() {
+        TiempoEstimadoAtencionResponse atencion = new TiempoEstimadoAtencionResponse();
+        atencion.setConsultaId(10L);
+        when(chatService.finalizarEntrevistaVoz(eq("7"), eq("auth0|paciente"), anyList(), any()))
+                .thenReturn(new ChatTurnResponse(new MensajeDTO("Gracias. Registre tus sintomas.", "BOT",
+                        LocalDateTime.now()), atencion, "OLLAMA"));
+        SesionVozChat sesion = sesion(historialNuevo());
         sesion.iniciar();
+        sesion.alRecibir("{\"setupComplete\":{}}");
 
-        sesion.alRecibir(llamada("llamada-1", "me duele la cabeza desde ayer"));
+        salida(sesion, SALUDO);
+        turnoCompleto(sesion);
+        entrada(sesion, "Me duele la cabeza ");
+        entrada(sesion, "desde ayer.");
+        salida(sesion, "Del 0 al 10, cuanto te duele?");
+        turnoCompleto(sesion);
+        entrada(sesion, "Un 6, no tengo alergias.");
+        sesion.alRecibir(llamadaFinalizar("llamada-1", List.of()));
 
-        esperar(() -> conexion.enviados.stream().anyMatch(m -> m.contains("toolResponse")));
         JsonNode respuesta = json(conexion.enviados.getLast()).path("toolResponse").path("functionResponses").get(0);
         assertEquals("llamada-1", respuesta.path("id").asText());
-        assertEquals("Del 0 al 10, cuanto te duele?", respuesta.path("response").path("respuesta").asText());
-        assertFalse(respuesta.path("response").path("finalizado").asBoolean());
-        JsonNode turnoBot = json(canal.eventos.getLast());
-        assertEquals("turno_bot", turnoBot.path("tipo").asText());
-        assertEquals("OLLAMA", turnoBot.path("origenRespuesta").asText());
+        assertEquals(SesionVozChat.MENSAJE_DESPEDIDA, respuesta.path("response").path("mensaje").asText());
+        assertTrue(canal.eventos.stream().anyMatch(e -> e.contains("entrevista_finalizada")));
+        verify(chatService, never()).finalizarEntrevistaVoz(anyString(), anyString(), anyList(), any());
+
+        entrada(sesion, " y tomo ibuprofeno");
+        salida(sesion, SesionVozChat.MENSAJE_DESPEDIDA);
+        turnoCompleto(sesion);
+
+        esperar(() -> canal.cerrado);
+        assertTrue(conexion.cerrada);
+        ArgumentCaptor<List<TurnoVoz>> turnos = ArgumentCaptor.captor();
+        ArgumentCaptor<ResumenEntrevistaVoz> resumen = ArgumentCaptor.captor();
+        verify(chatService).finalizarEntrevistaVoz(eq("7"), eq("auth0|paciente"), turnos.capture(), resumen.capture());
+        assertEquals(List.of(
+                new TurnoVoz(AutorMensaje.PACIENTE, "Me duele la cabeza desde ayer."),
+                new TurnoVoz(AutorMensaje.BOT, "Del 0 al 10, cuanto te duele?"),
+                new TurnoVoz(AutorMensaje.PACIENTE, "Un 6, no tengo alergias."),
+                new TurnoVoz(AutorMensaje.PACIENTE, "y tomo ibuprofeno")), turnos.getValue());
+        assertEquals("dolor de cabeza", resumen.getValue().motivoConsulta());
+        assertEquals(6, resumen.getValue().intensidadDolor());
+
+        JsonNode triage = canal.eventos.stream().map(this::json)
+                .filter(e -> "triage_finalizado".equals(e.path("tipo").asText())).findFirst().orElseThrow();
+        assertEquals(10L, triage.path("atencionEstimada").path("consultaId").asLong());
+        assertEquals("OLLAMA", triage.path("origenRespuesta").asText());
+        assertEquals("fin", json(canal.eventos.getLast()).path("tipo").asText());
+        verify(chatService, never()).registrarTurnosVoz(anyString(), anyString(), anyList());
     }
 
     @Test
-    void alFinalizarElTriageCierraLaSesionDespuesDeLeerElCierre() {
-        TiempoEstimadoAtencionResponse atencion = new TiempoEstimadoAtencionResponse();
-        atencion.setConsultaId(10L);
-        when(chatService.enviarMensaje(anyString(), anyString(), anyString()))
-                .thenReturn(turno("Gracias. Registre tus sintomas.", atencion));
-        when(chatService.obtenerChat("7", "auth0|paciente")).thenReturn(chat(true));
+    void noPermiteFinalizarSinRespuestasDelPaciente() {
+        SesionVozChat sesion = sesion(historialNuevo());
         sesion.iniciar();
 
-        sesion.alRecibir(llamada("llamada-1", "no tengo alergias ni tomo medicacion"));
-        esperar(() -> conexion.enviados.stream().anyMatch(m -> m.contains("toolResponse")));
-        JsonNode turnoBot = json(canal.eventos.getLast());
-        assertTrue(turnoBot.path("finalizado").asBoolean());
-        assertEquals(10L, turnoBot.path("atencionEstimada").path("consultaId").asLong());
+        sesion.alRecibir(llamadaFinalizar("llamada-1", List.of()));
 
-        sesion.alRecibir("{\"serverContent\":{\"turnComplete\":true}}");
+        JsonNode respuesta = json(conexion.enviados.getLast()).path("toolResponse").path("functionResponses").get(0);
+        assertTrue(respuesta.path("response").has("error"));
+        assertTrue(canal.eventos.stream().noneMatch(e -> e.contains("entrevista_finalizada")));
+    }
 
-        assertEquals("fin", json(canal.eventos.getLast()).path("tipo").asText());
+    @Test
+    void siElPacienteCortaAntesDeTerminarGuardaLaTranscripcionSinClasificar() {
+        SesionVozChat sesion = sesion(historialNuevo());
+        sesion.iniciar();
+        entrada(sesion, "Tengo fiebre");
+        salida(sesion, "Desde cuando?");
+
+        sesion.recibirControlCliente("{\"tipo\":\"cerrar\"}");
+
+        verify(chatService, timeout(2_000)).registrarTurnosVoz("7", "auth0|paciente", List.of(
+                new TurnoVoz(AutorMensaje.PACIENTE, "Tengo fiebre"),
+                new TurnoVoz(AutorMensaje.BOT, "Desde cuando?")));
+        verify(chatService, never()).finalizarEntrevistaVoz(anyString(), anyString(), anyList(), any());
         assertTrue(conexion.cerrada);
         assertTrue(canal.cerrado);
     }
 
     @Test
-    void textoVacioDevuelveErrorSinRegistrarMensaje() {
+    void siFallaLaPreclasificacionAvisaYConservaLaTranscripcion() {
+        when(chatService.finalizarEntrevistaVoz(anyString(), anyString(), anyList(), any()))
+                .thenThrow(new IllegalStateException("sin cola"));
+        SesionVozChat sesion = sesion(historialNuevo());
         sesion.iniciar();
+        entrada(sesion, "Me duele la cabeza");
+        sesion.alRecibir(llamadaFinalizar("llamada-1", List.of()));
 
-        sesion.alRecibir(llamada("llamada-1", "  "));
+        sesion.alCerrar(1000, "fin");
 
-        esperar(() -> conexion.enviados.stream().anyMatch(m -> m.contains("toolResponse")));
-        assertTrue(json(conexion.enviados.getLast()).path("toolResponse").path("functionResponses")
-                .get(0).path("response").has("error"));
-        verify(chatService, never()).enviarMensaje(anyString(), anyString(), anyString());
+        esperar(() -> canal.cerrado);
+        assertTrue(canal.eventos.stream().anyMatch(e -> e.contains("\"error\"")));
+        verify(chatService).registrarTurnosVoz("7", "auth0|paciente",
+                List.of(new TurnoVoz(AutorMensaje.PACIENTE, "Me duele la cabeza")));
     }
 
     @Test
-    void chatYaFinalizadoCierraSinPedirMasDatos() {
-        when(chatService.enviarMensaje(anyString(), anyString(), anyString()))
-                .thenThrow(new ChatFinalizadoException());
+    void alLlegarAlLimiteDeRespuestasPideCerrarLaEntrevista() {
+        List<MensajeDTO> historial = new ArrayList<>(historialNuevo());
+        IntStream.range(0, ChatService.MAX_MENSAJES_PACIENTE - 1).forEach(i ->
+                historial.add(new MensajeDTO("respuesta " + i, "PACIENTE", LocalDateTime.now())));
+        SesionVozChat sesion = sesion(historial);
         sesion.iniciar();
 
-        sesion.alRecibir(llamada("llamada-1", "hola"));
+        entrada(sesion, "Ultima respuesta");
+        turnoCompleto(sesion);
 
-        esperar(() -> conexion.enviados.stream().anyMatch(m -> m.contains("toolResponse")));
-        assertTrue(json(conexion.enviados.getLast()).path("toolResponse").path("functionResponses")
-                .get(0).path("response").path("finalizado").asBoolean());
+        assertTrue(textoCliente(conexion.enviados.getLast()).contains("limite de respuestas"));
     }
 
     @Test
@@ -180,26 +247,63 @@ class SesionVozChatTest {
         when(geminiLiveCliente.conectar(any()))
                 .thenReturn(CompletableFuture.failedFuture(new IllegalStateException("sin red")));
 
-        sesion.iniciar();
+        sesion(historialNuevo()).iniciar();
 
         assertEquals("error", json(canal.eventos.getFirst()).path("tipo").asText());
         assertTrue(canal.cerrado);
     }
 
-    private String llamada(String id, String texto) {
-        return objectMapper.createObjectNode().set("toolCall", objectMapper.createObjectNode()
-                .set("functionCalls", objectMapper.createArrayNode().add(objectMapper.createObjectNode()
-                        .put("id", id)
-                        .put("name", SesionVozChat.FUNCION_REGISTRAR)
-                        .set("args", objectMapper.createObjectNode().put("texto", texto))))).toString();
+    private SesionVozChat sesion(List<MensajeDTO> historial) {
+        GeminiLiveProperties properties = new GeminiLiveProperties(
+                "clave", "models/gemini-3.8-live", "wss://gemini.test", "Kore", "es-US", Duration.ofSeconds(1));
+        return new SesionVozChat("7", "auth0|paciente", historial, chatService,
+                geminiLiveCliente, properties, objectMapper, canal);
     }
 
-    private ChatTurnResponse turno(String contenido, TiempoEstimadoAtencionResponse atencion) {
-        return new ChatTurnResponse(new MensajeDTO(contenido, "BOT", LocalDateTime.now()), atencion, "OLLAMA");
+    private List<MensajeDTO> historialNuevo() {
+        return List.of(new MensajeDTO(SALUDO, "BOT", LocalDateTime.now()));
     }
 
-    private ChatDTO chat(boolean finalizado) {
-        return new ChatDTO(7L, List.of(), LocalDateTime.now(), finalizado);
+    private void entrada(SesionVozChat sesion, String texto) {
+        sesion.alRecibir(serverContent("inputTranscription", texto));
+    }
+
+    private void salida(SesionVozChat sesion, String texto) {
+        sesion.alRecibir(serverContent("outputTranscription", texto));
+    }
+
+    private void turnoCompleto(SesionVozChat sesion) {
+        sesion.alRecibir("{\"serverContent\":{\"turnComplete\":true}}");
+    }
+
+    private String serverContent(String campo, String texto) {
+        ObjectNode mensaje = objectMapper.createObjectNode();
+        mensaje.putObject("serverContent").putObject(campo).put("text", texto);
+        return mensaje.toString();
+    }
+
+    private String llamadaFinalizar(String id, List<String> signosAlarma) {
+        ObjectNode mensaje = objectMapper.createObjectNode();
+        ObjectNode llamada = mensaje.putObject("toolCall").putArray("functionCalls").addObject();
+        llamada.put("id", id);
+        llamada.put("name", SesionVozChat.FUNCION_FINALIZAR);
+        ObjectNode args = llamada.putObject("args");
+        args.put("motivoConsulta", "dolor de cabeza");
+        args.putArray("sintomas").add("dolor de cabeza");
+        args.put("inicio", "desde ayer");
+        args.put("evolucion", "no informado");
+        args.put("intensidadDolor", 6);
+        signosAlarma.forEach(args.putArray("signosAlarma")::add);
+        args.putArray("antecedentesRelevantes");
+        args.putArray("medicamentos");
+        args.putArray("alergias");
+        args.put("posibilidadEmbarazo", "no informado");
+        args.put("observaciones", "Niega alergias");
+        return mensaje.toString();
+    }
+
+    private String textoCliente(String mensaje) {
+        return json(mensaje).path("clientContent").path("turns").get(0).path("parts").get(0).path("text").asText();
     }
 
     private JsonNode json(String texto) {

@@ -1,5 +1,6 @@
 package com.pretriage.backend.controllers;
 
+import com.pretriage.backend.controllers.dtos.MensajeDTO;
 import com.pretriage.backend.services.ChatService;
 import com.pretriage.backend.services.voz.CanalVozCliente;
 import com.pretriage.backend.services.voz.GeminiLiveCliente;
@@ -18,6 +19,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -31,7 +33,7 @@ public class ChatVozWebSocketHandler extends AbstractWebSocketHandler {
 
     static final String ATRIBUTO_ID_CHAT = "idChat";
     static final String ATRIBUTO_ID_PACIENTE = "idPaciente";
-    static final String ATRIBUTO_MENSAJE_INICIAL = "mensajeInicial";
+    static final String ATRIBUTO_HISTORIAL = "historial";
 
     private static final int LIMITE_ENVIO_MS = 10_000;
     private static final int LIMITE_BUFFER_BYTES = 2 * 1024 * 1024;
@@ -59,7 +61,7 @@ public class ChatVozWebSocketHandler extends AbstractWebSocketHandler {
         SesionVozChat sesionVoz = new SesionVozChat(
                 (String) session.getAttributes().get(ATRIBUTO_ID_CHAT),
                 (String) session.getAttributes().get(ATRIBUTO_ID_PACIENTE),
-                (String) session.getAttributes().get(ATRIBUTO_MENSAJE_INICIAL),
+                historial(session),
                 chatService,
                 geminiLiveCliente,
                 properties,
@@ -67,6 +69,12 @@ public class ChatVozWebSocketHandler extends AbstractWebSocketHandler {
                 new CanalWebSocket(segura));
         sesiones.put(session.getId(), sesionVoz);
         sesionVoz.iniciar();
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<MensajeDTO> historial(WebSocketSession session) {
+        Object historial = session.getAttributes().get(ATRIBUTO_HISTORIAL);
+        return historial instanceof List<?> mensajes ? (List<MensajeDTO>) mensajes : List.of();
     }
 
     @Override

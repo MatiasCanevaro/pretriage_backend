@@ -40,17 +40,18 @@ class ChatVozHandshakeInterceptorTest {
     }
 
     @Test
-    void aceptaChatPropioAbiertoYGuardaLaUltimaPreguntaDelBot() {
-        when(chatService.obtenerChat("7", "auth0|paciente")).thenReturn(new ChatDTO(7L, List.of(
+    void aceptaChatPropioAbiertoYGuardaSuHistorial() {
+        List<MensajeDTO> mensajes = List.of(
                 new MensajeDTO("Hola, cual es el motivo?", "BOT", LocalDateTime.now()),
-                new MensajeDTO("Me duele la cabeza", "PACIENTE", LocalDateTime.now()),
-                new MensajeDTO("Desde cuando?", "BOT", LocalDateTime.now())), LocalDateTime.now(), false));
+                new MensajeDTO("Me duele la cabeza", "PACIENTE", LocalDateTime.now()));
+        when(chatService.obtenerChat("7", "auth0|paciente"))
+                .thenReturn(new ChatDTO(7L, mensajes, LocalDateTime.now(), false));
 
         assertTrue(handshake(requestAutenticado("/api/chat/7/voz")));
 
         assertEquals("7", atributos.get(ChatVozWebSocketHandler.ATRIBUTO_ID_CHAT));
         assertEquals("auth0|paciente", atributos.get(ChatVozWebSocketHandler.ATRIBUTO_ID_PACIENTE));
-        assertEquals("Desde cuando?", atributos.get(ChatVozWebSocketHandler.ATRIBUTO_MENSAJE_INICIAL));
+        assertEquals(mensajes, atributos.get(ChatVozWebSocketHandler.ATRIBUTO_HISTORIAL));
     }
 
     @Test

@@ -348,36 +348,39 @@ GET /api/chat/{id}
 GET /api/chat/{id}/voz?access_token={jwt}   (WebSocket upgrade)
 ```
 
-Interactive voice channel for an existing open chat. The JWT may be sent as
-`Authorization: Bearer` or, because browsers cannot set headers on a WebSocket
-handshake, as the `access_token` query parameter (accepted only on this path).
-Handshake errors: `401` unauthenticated, `404` chat missing or owned by another
-patient, `409` chat already finalized, `503` Gemini Live not configured
-(`GEMINI_API_KEY` empty).
+Speech-to-speech interview for an existing open chat: Gemini Live asks the
+questions; when it has enough data the session ends and Ollama preclassifies the
+collected summary (see `docs/05-ai-triage.md#voice-chat-gemini-live`).
+The JWT may be sent as `Authorization: Bearer` or, because browsers cannot set
+headers on a WebSocket handshake, as the `access_token` query parameter
+(accepted only on this path). Handshake errors: `401` unauthenticated, `404`
+chat missing or owned by another patient, `409` chat already finalized, `503`
+Gemini Live not configured (`GEMINI_API_KEY` empty).
 
 Client -> server:
 
 - Binary frames: raw PCM 16-bit mono little-endian at 16 kHz (max 256 KB per frame).
 - Text `{"tipo":"fin_audio"}`: microphone paused (sends `audioStreamEnd`).
-- Text `{"tipo":"cerrar"}`: ends the voice session.
+- Text `{"tipo":"cerrar"}`: ends the session; the transcription so far is saved
+  without finalizing the chat.
 
 Server -> client:
 
 - Binary frames: PCM 16-bit mono little-endian at 24 kHz spoken by Gemini.
-- `{"tipo":"listo"}`: Gemini is ready; start streaming audio. The voice reads the
-  chat's last bot message first.
+- `{"tipo":"listo"}`: Gemini is ready; start streaming audio.
 - `{"tipo":"transcripcion_paciente","texto":...}` /
   `{"tipo":"transcripcion_bot","texto":...}`: incremental transcription chunks.
-- `{"tipo":"turno_bot","respuesta":MensajeDTO,"atencionEstimada":...,"origenRespuesta":...,"finalizado":bool}`:
-  the persisted turn, same content as `ChatTurnResponse` from
-  `POST /api/chat/{id}/mensajes`.
-- `{"tipo":"interrumpido"}`: patient spoke over the bot; drop queued playback.
+- `{"tipo":"interrumpido"}`: patient spoke over Gemini; drop queued playback.
 - `{"tipo":"turno_completo"}`, `{"tipo":"sesion_por_expirar"}`,
   `{"tipo":"error","mensaje":...}`.
-- `{"tipo":"fin"}`: triage finalized (after the closing was spoken) or Gemini
-  closed the session; the server then closes the WebSocket.
+- `{"tipo":"entrevista_finalizada","resumen":ResumenEntrevistaVoz}`: Gemini closed
+  the interview; microphone audio is ignored from now on.
+- `{"tipo":"triage_finalizado","respuesta":MensajeDTO,"atencionEstimada":...,"origenRespuesta":...}`:
+  Ollama (or local fallback) preclassification, same meaning as the final
+  `ChatTurnResponse` of `POST /api/chat/{id}/mensajes`.
+- `{"tipo":"fin"}`: session over; the server then closes the WebSocket.
 
-Voice and text turns share the same `Chat`; a patient can switch between them.
+Voice and text turns share the same `Chat`.
 
 ## Patient Queue State
 

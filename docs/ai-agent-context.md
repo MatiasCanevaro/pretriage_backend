@@ -51,9 +51,12 @@ The system manages the first medical attention workflow:
 
 - Voice: `SesionVozChat`, `GeminiLiveCliente`, `GeminiLiveProperties`
   (`services/voz`), `ChatVozWebSocketHandler`, `ChatVozHandshakeInterceptor`,
-  `WebSocketConfig`. Gemini Live only transcribes/speaks; every voice turn goes
-  through `ChatService.enviarMensaje` via the `registrar_respuesta_paciente`
-  function call. Do not move triage decisions into the Gemini prompt.
+  `WebSocketConfig`; `ChatService.finalizarEntrevistaVoz` /
+  `registrarTurnosVoz`. Gemini Live conducts the voice interview with a prompt
+  mirroring `SYSTEM_PROMPT` and closes it via `finalizar_entrevista`
+  (`ResumenEntrevistaVoz`); priority is never assigned by Gemini: Ollama
+  classifies the summary + transcription after the Gemini session ends, with the
+  same validation and fallback as the text chat.
 
 Chat responses expose `origenRespuesta` (`OLLAMA` / `FALLBACK_LOCAL`); final
 `Chat.resultadoTriageJson` also stores `origenClasificacion`. Repeated questions

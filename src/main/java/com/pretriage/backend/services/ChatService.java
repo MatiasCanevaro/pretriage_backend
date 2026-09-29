@@ -31,7 +31,7 @@ import java.util.regex.Pattern;
 @Service
 public class ChatService {
     private static final String MENSAJE_INICIAL = "Hola. Voy a hacerte algunas preguntas breves para registrar tus sintomas. No reemplazo una evaluacion medica. Cual es el principal motivo de tu consulta hoy?";
-    private static final int MAX_MENSAJES_PACIENTE = 12;
+    public static final int MAX_MENSAJES_PACIENTE = 12;
 
     private static final String FINAL_SYSTEM_PROMPT = """
             Sos un asistente de pre-triage. La entrevista termino. Clasifica exclusivamente los datos
@@ -52,6 +52,12 @@ public class ChatService {
             segun el caso, sin indicar tratamientos. finalizado debe ser true.
             mensaje es un cierre breve para el paciente: "Gracias. Registre tus sintomas y la
             preclasificacion." Si hay una alarma, indica tambien que busque atencion urgente.
+            """;
+
+    private static final String FINAL_SYSTEM_PROMPT_VOZ = FINAL_SYSTEM_PROMPT + """
+            La entrevista fue por voz. Recibis el resumen que armo el entrevistador y la transcripcion
+            automatica de lo que dijo el paciente. Usa el resumen como guia, pero si contradice la
+            transcripcion prevalece la transcripcion. La transcripcion puede tener errores menores.
             """;
 
     private static final String SYSTEM_PROMPT = """
@@ -181,6 +187,65 @@ public class ChatService {
             origenRespuesta = "FALLBACK_LOCAL";
         }
 
+        return registrarRespuestaBot(chat, idPaciente, respuestaIa, origenRespuesta);
+    }
+
+    /**
+     * Guarda los turnos transcriptos de una sesion de voz que termino sin completar la
+     * entrevista, para que el paciente pueda continuar por texto o por voz.
+     */
+    @Transactional
+    public void registrarTurnosVoz(String idChat, String idPaciente, List<TurnoVoz> turnos) {
+        Chat chat = buscarChatPropio(idChat, idPaciente);
+        if (chat.isFinalizado()) {
+            throw new ChatFinalizadoException();
+        }
+        agregarTurnosVoz(chat, turnos);
+        repoChat.save(chat);
+    }
+
+    /**
+     * Cierra una entrevista conducida por Gemini Live: guarda la transcripcion y pide a
+     * Ollama la preclasificacion a partir del resumen recolectado.
+     */
+    @Transactional
+    public ChatTurnResponse finalizarEntrevistaVoz(String idChat,
+                                                  String idPaciente,
+                                                  List<TurnoVoz> turnos,
+                                                  ResumenEntrevistaVoz resumen) {
+        Chat chat = buscarChatPropio(idChat, idPaciente);
+        if (chat.isFinalizado()) {
+            throw new ChatFinalizadoException();
+        }
+        agregarTurnosVoz(chat, turnos);
+
+        boolean hayAlarma = contieneAlarmaCritica(textoPaciente(chat))
+                || !listaSegura(resumen.signosAlarma()).isEmpty();
+        TriageAiResponse respuestaIa;
+        String origenRespuesta = "OLLAMA";
+        try {
+            respuestaIa = triageIaClient.consultar(FINAL_SYSTEM_PROMPT_VOZ,
+                    construirDatosVozParaClasificacion(chat, resumen), true);
+        } catch (Exception exception) {
+            respuestaIa = null;
+        }
+        boolean clasificacionValida = respuestaIa != null
+                && respuestaIa.finalizado()
+                && respuestaIa.mensaje() != null && !respuestaIa.mensaje().isBlank()
+                && esResultadoFinalValido(respuestaIa.resultado())
+                && (!hayAlarma || (respuestaIa.resultado().requiereAtencionInmediata()
+                && respuestaIa.resultado().nivelPrioridad() >= 4));
+        if (!clasificacionValida) {
+            respuestaIa = construirCierreFallbackVoz(chat, resumen);
+            origenRespuesta = "FALLBACK_LOCAL";
+        }
+        return registrarRespuestaBot(chat, idPaciente, respuestaIa, origenRespuesta);
+    }
+
+    private ChatTurnResponse registrarRespuestaBot(Chat chat,
+                                                   String idPaciente,
+                                                   TriageAiResponse respuestaIa,
+                                                   String origenRespuesta) {
         TriageResultDTO resultadoConPrioridad = respuestaIa.finalizado()
                 ? normalizarResultadoFinal(respuestaIa.resultado())
                 : null;
@@ -235,6 +300,88 @@ public class ChatService {
             }
         }
         return datos.toString();
+    }
+
+    private void agregarTurnosVoz(Chat chat, List<TurnoVoz> turnos) {
+        for (TurnoVoz turno : turnos) {
+            if (turno.contenido() == null || turno.contenido().isBlank()) {
+                continue;
+            }
+            boolean esPaciente = turno.autor() == AutorMensaje.PACIENTE;
+            chat.agregarMensaje(new Mensaje(turno.contenido().trim(), turno.autor(),
+                    esPaciente ? chat.getPaciente() : null));
+        }
+    }
+
+    private String construirDatosVozParaClasificacion(Chat chat, ResumenEntrevistaVoz resumen) {
+        String salto = System.lineSeparator();
+        return "Resumen del entrevistador:" + salto
+                + "- motivoConsulta: " + textoODefecto(resumen.motivoConsulta(), "no informado") + salto
+                + "- sintomas: " + listaOInformada(resumen.sintomas()) + salto
+                + "- inicio: " + textoODefecto(resumen.inicio(), "no informado") + salto
+                + "- evolucion: " + textoODefecto(resumen.evolucion(), "no informado") + salto
+                + "- intensidadDolor: " + (resumen.intensidadDolor() == null
+                        ? "no informado" : resumen.intensidadDolor()) + salto
+                + "- signosAlarma: " + listaOInformada(resumen.signosAlarma()) + salto
+                + "- antecedentesRelevantes: " + listaOInformada(resumen.antecedentesRelevantes()) + salto
+                + "- medicamentos: " + listaOInformada(resumen.medicamentos()) + salto
+                + "- alergias: " + listaOInformada(resumen.alergias()) + salto
+                + "- posibilidadEmbarazo: " + textoODefecto(resumen.posibilidadEmbarazo(), "no informado") + salto
+                + "- observaciones: " + textoODefecto(resumen.observaciones(), "no informado") + salto
+                + salto
+                + construirDatosParaClasificacion(chat);
+    }
+
+    private String listaOInformada(List<String> lista) {
+        List<String> valores = listaSegura(lista);
+        return valores.isEmpty() ? "ninguno informado" : String.join("; ", valores);
+    }
+
+    private List<String> listaSegura(List<String> lista) {
+        return lista == null ? List.of() : lista.stream()
+                .filter(valor -> valor != null && !valor.isBlank())
+                .map(String::trim)
+                .toList();
+    }
+
+    private String textoODefecto(String texto, String defecto) {
+        return texto == null || texto.isBlank() ? defecto : texto.trim();
+    }
+
+    /** Si Ollama falla, clasifica con reglas locales usando tambien los datos del resumen de voz. */
+    private TriageAiResponse construirCierreFallbackVoz(Chat chat, ResumenEntrevistaVoz resumen) {
+        TriageResultDTO basico = construirResumenBasico(chat);
+        Set<String> signosAlarma = new LinkedHashSet<>(basico.signosAlarma());
+        signosAlarma.addAll(listaSegura(resumen.signosAlarma()));
+        Integer intensidadDolor = resumen.intensidadDolor() != null
+                && resumen.intensidadDolor() >= 0 && resumen.intensidadDolor() <= 10
+                ? resumen.intensidadDolor()
+                : basico.intensidadDolor();
+        List<String> sintomas = listaSegura(resumen.sintomas());
+        boolean requiereAtencionInmediata = !signosAlarma.isEmpty();
+        String recomendacionSeguridad = requiereAtencionInmediata
+                ? "Busque atencion urgente de inmediato."
+                : "Si aparece dificultad para respirar, dolor de pecho, desmayo, confusion o empeoramiento, busque atencion urgente.";
+
+        TriageResultDTO resultado = new TriageResultDTO(
+                textoODefecto(resumen.motivoConsulta(), basico.motivoConsulta()),
+                sintomas.isEmpty() ? basico.sintomas() : sintomas,
+                textoODefecto(resumen.inicio(), basico.inicio()),
+                textoODefecto(resumen.evolucion(), basico.evolucion()),
+                intensidadDolor,
+                List.copyOf(signosAlarma),
+                listaSegura(resumen.antecedentesRelevantes()),
+                listaSegura(resumen.medicamentos()),
+                listaSegura(resumen.alergias()),
+                textoODefecto(resumen.posibilidadEmbarazo(), "no informado"),
+                textoODefecto(resumen.observaciones(), basico.observaciones()),
+                calcularNivelPrioridad(List.copyOf(signosAlarma), intensidadDolor, textoPaciente(chat)),
+                requiereAtencionInmediata,
+                recomendacionSeguridad);
+        String mensaje = requiereAtencionInmediata
+                ? recomendacionSeguridad
+                : "Gracias. Ya registre tus respuestas.";
+        return new TriageAiResponse(true, mensaje, resultado);
     }
 
     private String construirConversacion(Chat chat) {

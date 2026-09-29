@@ -1,9 +1,7 @@
 package com.pretriage.backend.controllers;
 
 import com.pretriage.backend.controllers.dtos.ChatDTO;
-import com.pretriage.backend.controllers.dtos.MensajeDTO;
 import com.pretriage.backend.exceptions.ChatNoEncontradoException;
-import com.pretriage.backend.model.chat.AutorMensaje;
 import com.pretriage.backend.services.ChatService;
 import com.pretriage.backend.services.voz.GeminiLiveProperties;
 import org.springframework.http.HttpStatus;
@@ -69,7 +67,7 @@ public class ChatVozHandshakeInterceptor implements HandshakeInterceptor {
 
         attributes.put(ChatVozWebSocketHandler.ATRIBUTO_ID_CHAT, idChat);
         attributes.put(ChatVozWebSocketHandler.ATRIBUTO_ID_PACIENTE, idPaciente);
-        attributes.put(ChatVozWebSocketHandler.ATRIBUTO_MENSAJE_INICIAL, ultimoMensajeBot(chat));
+        attributes.put(ChatVozWebSocketHandler.ATRIBUTO_HISTORIAL, chat.mensajes());
         return true;
     }
 
@@ -78,14 +76,5 @@ public class ChatVozHandshakeInterceptor implements HandshakeInterceptor {
                                ServerHttpResponse response,
                                WebSocketHandler wsHandler,
                                Exception exception) {
-    }
-
-    /** Al retomar un chat en curso, la voz repite la ultima pregunta pendiente. */
-    private String ultimoMensajeBot(ChatDTO chat) {
-        return chat.mensajes().stream()
-                .filter(mensaje -> AutorMensaje.BOT.name().equals(mensaje.autor()))
-                .reduce((primero, segundo) -> segundo)
-                .map(MensajeDTO::contenido)
-                .orElse("Hola. Cual es el principal motivo de tu consulta hoy?");
     }
 }

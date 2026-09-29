@@ -1,6 +1,8 @@
 package com.pretriage.backend.services;
 
 import com.pretriage.backend.controllers.dtos.ChatDTO;
+import com.pretriage.backend.controllers.dtos.ResumenEntrevistaVoz;
+import com.pretriage.backend.controllers.dtos.TurnoVoz;
 import com.pretriage.backend.controllers.dtos.TriageAiResponse;
 import com.pretriage.backend.controllers.dtos.TriageResultDTO;
 import com.pretriage.backend.controllers.dtos.TiempoEstimadoAtencionResponse;
@@ -20,6 +22,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
@@ -368,6 +371,104 @@ class ChatServiceTest {
         return new TriageResultDTO("Sintoma referido", List.of("sintoma referido"), "hoy", "sin cambios", null,
                 List.of(), List.of(), List.of(), List.of(), "no informado", "no informado", prioridad,
                 inmediata, "Busque atencion presencial.");
+    }
+
+    @Test
+    void entrevistaDeVozGuardaTranscripcionYConservaClasificacionDeOllama() {
+        Paciente paciente = new Paciente();
+        Chat chat = chatDeVoz(paciente);
+        TriageResultDTO resultadoIa = new TriageResultDTO("dolor de cabeza", List.of("dolor de cabeza", "fiebre"),
+                "desde ayer", "se mantiene", 6, List.of(), List.of(), List.of(), List.of(), "no",
+                "Niega dificultad respiratoria", 3, false, "Si empeora, consulte a una guardia.");
+        when(triageIaClient.consultar(anyString(), anyString(), eq(true)))
+                .thenReturn(new TriageAiResponse(true, "Gracias. Registre tus sintomas y la preclasificacion.", resultadoIa));
+        when(atencionHospitalService.finalizarTriageEIngresarACola(eq("auth0|paciente"), any(NivelDeGravedad.class), anyString()))
+                .thenReturn(new TiempoEstimadoAtencionResponse());
+
+        var resultado = chatService.finalizarEntrevistaVoz("1", "auth0|paciente", turnosDeVoz(), resumen(List.of()));
+
+        assertTrue(chat.isFinalizado());
+        assertEquals("OLLAMA", resultado.origenRespuesta());
+        assertEquals(List.of("BOT", "PACIENTE", "BOT", "PACIENTE", "BOT"),
+                chat.getMensajes().stream().map(mensaje -> mensaje.getAutor().name()).toList());
+        assertTrue(chat.getResultadoTriageJson().contains("\"origenClasificacion\":\"OLLAMA\""));
+        verify(triageIaClient).consultar(anyString(), argThat(datos -> datos.contains("Resumen del entrevistador")
+                && datos.contains("motivoConsulta: dolor de cabeza con fiebre")
+                && datos.contains("Me duele la cabeza y tengo fiebre desde ayer")), eq(true));
+        verify(atencionHospitalService).finalizarTriageEIngresarACola(eq("auth0|paciente"), eq(NivelDeGravedad.URGENTE), anyString());
+    }
+
+    @Test
+    void entrevistaDeVozSinOllamaUsaElResumenYRespetaAlarmasDelEntrevistador() {
+        Paciente paciente = new Paciente();
+        Chat chat = chatDeVoz(paciente);
+        when(triageIaClient.consultar(anyString(), anyString(), anyBoolean()))
+                .thenThrow(new RuntimeException("ollama down"));
+        when(atencionHospitalService.finalizarTriageEIngresarACola(eq("auth0|paciente"), any(NivelDeGravedad.class), anyString()))
+                .thenReturn(new TiempoEstimadoAtencionResponse());
+
+        var resultado = chatService.finalizarEntrevistaVoz("1", "auth0|paciente", turnosDeVoz(),
+                resumen(List.of("rigidez de nuca")));
+
+        assertEquals("FALLBACK_LOCAL", resultado.origenRespuesta());
+        assertTrue(chat.getResultadoTriageJson().contains("rigidez de nuca"));
+        assertTrue(chat.getResultadoTriageJson().contains("\"motivoConsulta\":\"dolor de cabeza con fiebre\""));
+        verify(atencionHospitalService).finalizarTriageEIngresarACola(
+                eq("auth0|paciente"), eq(NivelDeGravedad.RIESGO_VITAL_INMEDIATO), anyString());
+    }
+
+    @Test
+    void entrevistaDeVozRechazaClasificacionSinUrgenciaSiHayAlarma() {
+        Paciente paciente = new Paciente();
+        chatDeVoz(paciente);
+        TriageResultDTO resultadoIa = new TriageResultDTO("dolor de cabeza", List.of("dolor de cabeza"),
+                "desde ayer", "se mantiene", 6, List.of(), List.of(), List.of(), List.of(), "no",
+                "sin datos", 2, false, "Consulte si empeora.");
+        when(triageIaClient.consultar(anyString(), anyString(), eq(true)))
+                .thenReturn(new TriageAiResponse(true, "Gracias.", resultadoIa));
+
+        var resultado = chatService.finalizarEntrevistaVoz("1", "auth0|paciente", turnosDeVoz(),
+                resumen(List.of("confusion")));
+
+        assertEquals("FALLBACK_LOCAL", resultado.origenRespuesta());
+        verify(atencionHospitalService).finalizarTriageEIngresarACola(
+                eq("auth0|paciente"), eq(NivelDeGravedad.RIESGO_VITAL_INMEDIATO), anyString());
+    }
+
+    @Test
+    void registrarTurnosVozGuardaSinFinalizar() {
+        Paciente paciente = new Paciente();
+        Chat chat = chatDeVoz(paciente);
+
+        chatService.registrarTurnosVoz("1", "auth0|paciente", turnosDeVoz());
+
+        assertFalse(chat.isFinalizado());
+        assertEquals(4, chat.getMensajes().size());
+        verify(repoChat).save(chat);
+        verifyNoInteractions(triageIaClient, atencionHospitalService);
+    }
+
+    private Chat chatDeVoz(Paciente paciente) {
+        Chat chat = new Chat(paciente);
+        chat.setId(1L);
+        chat.agregarMensaje(new Mensaje("Hola. Cual es el principal motivo de tu consulta hoy?", AutorMensaje.BOT, null));
+        when(repoChat.findByIdAndPacienteUsuarioAuthId(1L, "auth0|paciente")).thenReturn(Optional.of(chat));
+        when(repoChat.save(any(Chat.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        return chat;
+    }
+
+    private List<TurnoVoz> turnosDeVoz() {
+        return List.of(
+                new TurnoVoz(AutorMensaje.PACIENTE, "Me duele la cabeza y tengo fiebre desde ayer"),
+                new TurnoVoz(AutorMensaje.BOT, "Del 0 al 10, cuanto te duele?"),
+                new TurnoVoz(AutorMensaje.PACIENTE, "Un 6. No tengo dificultad para respirar ni alergias."),
+                new TurnoVoz(AutorMensaje.BOT, " "));
+    }
+
+    private ResumenEntrevistaVoz resumen(List<String> signosAlarma) {
+        return new ResumenEntrevistaVoz("dolor de cabeza con fiebre", List.of("dolor de cabeza", "fiebre"),
+                "desde ayer", "se mantiene", 6, signosAlarma, List.of(), List.of(), List.of(), "no",
+                "Niega dificultad respiratoria y alergias");
     }
 }
 

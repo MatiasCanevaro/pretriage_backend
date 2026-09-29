@@ -63,24 +63,40 @@ not prove that Ollama supplied the classification. These fields are additive;
 
 ## Voice Chat (Gemini Live)
 
-`WS /api/chat/{id}/voz` adds an interactive voice channel to the same chat
-(model `gemini-3.8-live`, configurable). Gemini Live is only the voice layer:
+`WS /api/chat/{id}/voz` offers a speech-to-speech interview for the same chat
+(model `gemini-3.8-live`, configurable). Gemini Live talks directly with the
+patient; Ollama still produces the preclassification:
 
 1. The backend (`SesionVozChat`) proxies client audio to Gemini Live over
    `BidiGenerateContent`, so the API key never reaches the browser.
-2. Gemini's system instruction forbids it from asking its own questions. When the
-   patient finishes speaking it calls the function `registrar_respuesta_paciente`
-   with the literal transcription.
-3. The backend passes that text to `ChatService.enviarMensaje`; the existing bot
-   (Ollama + validation + local fallback) produces the next question or the final
-   classification, persists both messages, and enters the queue exactly as in
-   the text chat.
-4. The function response returns that text and Gemini reads it aloud verbatim.
-   After the closing message of a finalized triage is spoken, the session ends.
+2. Gemini's system instruction mirrors the text chat `SYSTEM_PROMPT`: the same
+   question sequence (motive, onset/evolution, pain 0-10, associated symptoms,
+   alarm signs, history/medication/allergies/pregnancy), 3-6 questions normally,
+   immediate close on alarm signs, no diagnosis and no priority.
+   If the chat already has text answers, Gemini receives that conversation and
+   continues without repeating questions.
+3. The backend accumulates Gemini's input/output transcriptions as patient/bot
+   turns. When the patient reaches `ChatService.MAX_MENSAJES_PACIENTE` answers,
+   Gemini is told to close.
+4. When Gemini has enough data it calls `finalizar_entrevista` with a structured
+   summary (`ResumenEntrevistaVoz`: the `TriageResultDTO` clinical fields without
+   priority). A call before any patient answer is rejected with an error.
+5. Gemini says goodbye; after that turn (or when Gemini closes, max 30 s) the
+   Gemini session ends. Only then `ChatService.finalizarEntrevistaVoz` stores the
+   transcription as `Mensaje`s and sends the summary plus the patient
+   transcription to Ollama (`FINAL_SYSTEM_PROMPT` + voice clause: on conflict the
+   transcription prevails).
+6. The Ollama result goes through the same validation, priority mapping,
+   `Chat.resultadoTriageJson` and queue update as the text chat. If Ollama fails,
+   returns invalid output, or omits immediate attention while the transcription
+   or the summary contain alarm signs, a local fallback built from the summary
+   (alarms, pain, history) and the transcription is used (`FALLBACK_LOCAL`).
 
-The stored patient message is Gemini's transcription of the speech, so
-recognition errors reach the triage as text; the patient sees the transcription
-and the persisted turn through `transcripcion_paciente` and `turno_bot` events.
+If the voice session ends before `finalizar_entrevista` (patient hangs up,
+Gemini disconnects) or the preclassification fails, the transcription is saved
+with `ChatService.registrarTurnosVoz` without finalizing, so the patient can
+continue by text or voice. The stored patient text is Gemini's transcription,
+so recognition errors reach the classification.
 Protocol details: `docs/06-api-reference.md#voice-chat-gemini-live`.
 
 ## Structured Result
