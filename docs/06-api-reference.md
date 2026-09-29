@@ -342,6 +342,43 @@ the structured `recomendacionSeguridad` so the urgent advice is visible in chat.
 GET /api/chat/{id}
 ```
 
+### Voice Chat (Gemini Live)
+
+```http
+GET /api/chat/{id}/voz?access_token={jwt}   (WebSocket upgrade)
+```
+
+Interactive voice channel for an existing open chat. The JWT may be sent as
+`Authorization: Bearer` or, because browsers cannot set headers on a WebSocket
+handshake, as the `access_token` query parameter (accepted only on this path).
+Handshake errors: `401` unauthenticated, `404` chat missing or owned by another
+patient, `409` chat already finalized, `503` Gemini Live not configured
+(`GEMINI_API_KEY` empty).
+
+Client -> server:
+
+- Binary frames: raw PCM 16-bit mono little-endian at 16 kHz (max 256 KB per frame).
+- Text `{"tipo":"fin_audio"}`: microphone paused (sends `audioStreamEnd`).
+- Text `{"tipo":"cerrar"}`: ends the voice session.
+
+Server -> client:
+
+- Binary frames: PCM 16-bit mono little-endian at 24 kHz spoken by Gemini.
+- `{"tipo":"listo"}`: Gemini is ready; start streaming audio. The voice reads the
+  chat's last bot message first.
+- `{"tipo":"transcripcion_paciente","texto":...}` /
+  `{"tipo":"transcripcion_bot","texto":...}`: incremental transcription chunks.
+- `{"tipo":"turno_bot","respuesta":MensajeDTO,"atencionEstimada":...,"origenRespuesta":...,"finalizado":bool}`:
+  the persisted turn, same content as `ChatTurnResponse` from
+  `POST /api/chat/{id}/mensajes`.
+- `{"tipo":"interrumpido"}`: patient spoke over the bot; drop queued playback.
+- `{"tipo":"turno_completo"}`, `{"tipo":"sesion_por_expirar"}`,
+  `{"tipo":"error","mensaje":...}`.
+- `{"tipo":"fin"}`: triage finalized (after the closing was spoken) or Gemini
+  closed the session; the server then closes the WebSocket.
+
+Voice and text turns share the same `Chat`; a patient can switch between them.
+
 ## Patient Queue State
 
 All endpoints in this section are under `PacienteEsperaController` (`EsperaPacienteService`) and operate on the active `EntradaCola` of the authenticated patient. Every response is `EstadoConsultaPacienteDTO` (`consultaId`, `estadoConsulta`, `estadoEntradaCola`, `tipoPausa`, `fechaHoraLimiteRespuesta`, `sectorId`, `nombreSector` from `ConsultaMedica.sector`, `tiempoEstimadoAtencion` which is non-null only when `estadoEntradaCola == EN_COLA`).

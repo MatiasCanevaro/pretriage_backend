@@ -61,6 +61,28 @@ conditions and the 12-message patient limit allow an earlier or bounded close.
 not prove that Ollama supplied the classification. These fields are additive;
 `respuesta` and `atencionEstimada` retain their existing meanings.
 
+## Voice Chat (Gemini Live)
+
+`WS /api/chat/{id}/voz` adds an interactive voice channel to the same chat
+(model `gemini-3.8-live`, configurable). Gemini Live is only the voice layer:
+
+1. The backend (`SesionVozChat`) proxies client audio to Gemini Live over
+   `BidiGenerateContent`, so the API key never reaches the browser.
+2. Gemini's system instruction forbids it from asking its own questions. When the
+   patient finishes speaking it calls the function `registrar_respuesta_paciente`
+   with the literal transcription.
+3. The backend passes that text to `ChatService.enviarMensaje`; the existing bot
+   (Ollama + validation + local fallback) produces the next question or the final
+   classification, persists both messages, and enters the queue exactly as in
+   the text chat.
+4. The function response returns that text and Gemini reads it aloud verbatim.
+   After the closing message of a finalized triage is spoken, the session ends.
+
+The stored patient message is Gemini's transcription of the speech, so
+recognition errors reach the triage as text; the patient sees the transcription
+and the persisted turn through `transcripcion_paciente` and `turno_bot` events.
+Protocol details: `docs/06-api-reference.md#voice-chat-gemini-live`.
+
 ## Structured Result
 
 The result contains fields such as:

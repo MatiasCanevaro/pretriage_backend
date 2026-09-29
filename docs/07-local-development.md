@@ -23,7 +23,17 @@ pretriage.cambio-contrasenia.email.mode=${PRETRIAGE_CAMBIO_EMAIL_MODE:${PRETRIAG
 pretriage.cambio-contrasenia.email.from=${PRETRIAGE_CAMBIO_EMAIL_FROM:${PRETRIAGE_INVITATIONS_EMAIL_FROM:no-reply@pretriage.local}}
 spring.config.import=optional:file:.env[.properties]
 spring.jpa.hibernate.ddl-auto=${JPA_DDL_AUTO:create-drop}
+pretriage.voz.gemini.api-key=${GEMINI_API_KEY:}
+pretriage.voz.gemini.modelo=${GEMINI_LIVE_MODEL:models/gemini-3.8-live}
+pretriage.voz.gemini.voz=${GEMINI_LIVE_VOICE:Kore}
+pretriage.voz.gemini.idioma=${GEMINI_LIVE_LANGUAGE:es-US}
+pretriage.voz.origenes-permitidos=${PRETRIAGE_VOZ_ORIGENES:*}
 ```
+
+The voice chat (`/api/chat/{id}/voz`) is optional: without `GEMINI_API_KEY` its
+handshake returns `503` and the text chat is unaffected. Set the key in `.env`
+to enable it, and restrict `PRETRIAGE_VOZ_ORIGENES` (comma-separated origin
+patterns) outside local development.
 
 Set `JPA_DDL_AUTO=update` in the ignored local `.env` before starting a development
 instance whose data must persist. The current fallback is `create-drop`: it
