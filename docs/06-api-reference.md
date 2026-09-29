@@ -327,7 +327,14 @@ Body:
 }
 ```
 
-When triage finalizes, response includes `atencionEstimada`.
+Returns `ChatTurnResponse` with `respuesta`, `atencionEstimada` and the additive
+field `origenRespuesta` (`OLLAMA` or `FALLBACK_LOCAL`). When triage finalizes,
+`atencionEstimada` is populated and the existing queue entry's priority is
+updated. The final stored `Chat.resultadoTriageJson` includes
+`origenClasificacion` with the source of that classification. An HTTP success
+can therefore represent either a model response or a local fallback.
+For a final result requiring immediate attention, `respuesta.contenido` includes
+the structured `recomendacionSeguridad` so the urgent advice is visible in chat.
 
 ### Get Chat
 

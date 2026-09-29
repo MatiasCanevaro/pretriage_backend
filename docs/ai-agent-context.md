@@ -42,10 +42,20 @@ The system manages the first medical attention workflow:
 ### AI Chat
 
 - `ChatService`
+- `TriageIaClient` (provider-native chat schema, nullable unreported pain and
+  unfinished priority, explicit output validation)
 - `ChatBotController`
 - `Chat`
 - `Mensaje`
 - `TriageResultDTO`
+
+Chat responses expose `origenRespuesta` (`OLLAMA` / `FALLBACK_LOCAL`); final
+`Chat.resultadoTriageJson` also stores `origenClasificacion`. Repeated questions
+must prompt for missing information instead of closing the interview. Preserve
+valid final AI classifications instead of overwriting them with local rules.
+Immediate-attention final messages must include the result's safety recommendation.
+The real chat E2E must verify final origin, structured content and queue priority;
+an `EN_COLA` state alone does not establish successful AI classification.
 
 ### Hospital And Specialty
 
@@ -151,7 +161,7 @@ For queue or estimation changes:
 For chat behavior changes, run real E2E:
 
 ```powershell
-python scripts\e2e_chat.py --messages-file scripts\chat_case_example.txt --debug-log scripts\debug_case.json
+python scripts\e2e_chat.py --backend-url http://localhost:18080 --db-name pretriage_chat_e2e --messages-file scripts\chat_case_example.txt --debug-log target\debug_case.json
 ```
 
 For full confidence:

@@ -42,10 +42,24 @@ result and deterministic rules. The same guard applies to the provider fallback.
 2. Backend creates `Chat` associated with patient.
 3. Patient sends messages.
 4. Backend sends conversation context to AI.
-5. Bot asks follow-up questions until enough information is available.
-6. On finalization, backend stores structured result in `Chat.resultadoTriageJson`.
+5. Bot asks follow-up questions until enough information is available. A repeated
+   question does not finalize the interview; the backend asks for missing data.
+6. On finalization, backend stores the structured result and classification origin
+   in `Chat.resultadoTriageJson`.
 7. Result priority maps to `NivelDeGravedad`.
-8. Consultation enters queue.
+8. The existing queue entry's priority is updated. Hospital selection already
+   entered the consultation into its hospital/specialty/sector queue.
+
+The chat preserves a valid final model classification. It does not replace that
+result with a locally generated summary just because the conversation contains
+enough information. Missing information triggers follow-up questions; alarm
+conditions and the 12-message patient limit allow an earlier or bounded close.
+
+`ChatTurnResponse.origenRespuesta` identifies the source of each response:
+`OLLAMA` or `FALLBACK_LOCAL`. The final JSON additionally contains
+`origenClasificacion` with the same values. A successful HTTP response alone does
+not prove that Ollama supplied the classification. These fields are additive;
+`respuesta` and `atencionEstimada` retain their existing meanings.
 
 ## Structured Result
 
@@ -66,12 +80,31 @@ The result contains fields such as:
 - `requiereAtencionInmediata`
 - `recomendacionSeguridad`
 
-## Priority Normalization
+## Chat Output Validation
 
-If AI returns invalid or missing priority:
+`TriageIaClient` supplies the response schema to Ollama and validates the returned
+JSON before the chat uses it. Unreported pain intensity may be `null`; priority
+may be `null` while the interview remains open. A final result must have a valid
+priority from 1 to 5 and meaningful clinical content. Invalid provider output is
+handled as a provider failure and uses the explicitly identified local fallback.
+When the conversation is ready to close, reaches its limit or contains a local
+alarm, the native schema requires `finalizado=true` and a non-null integer
+priority. The model receives the patient's reported messages together for that
+classification, and is instructed to close rather than ask another question.
+The final instruction explicitly derives `motivoConsulta` from reported symptoms
+instead of allowing `"no informado"` for a described complaint, preserves the
+reported onset, and separates current alarm symptoms from medical history.
+Validation failures log fixed `field` and `reason` identifiers without logging
+the patient's text or raw model response.
 
-- Immediate attention maps to priority 5.
-- Otherwise default priority is 3.
+When a valid final result requires immediate attention, the chat response also
+includes its `recomendacionSeguridad`, even if the model's `mensaje` omits it.
+
+The chat makes one provider call per turn and validates its response locally;
+it does not use the schema advisor's automatic correction loop. Invalid output
+or a transport failure enters local fallback without another model call.
+
+## Priority Mapping
 
 Priority then maps to medical severity:
 
@@ -88,7 +121,7 @@ Priority then maps to medical severity:
 Use the real E2E script instead of mocked AI tests when tuning behavior:
 
 ```powershell
-python scripts\e2e_chat.py --messages-file scripts\chat_case_example.txt --debug-log scripts\debug_case.json
+python scripts\e2e_chat.py --backend-url http://localhost:18080 --db-name pretriage_chat_e2e --messages-file scripts\chat_case_example.txt --debug-log target\debug_case.json
 ```
 
 The debug log includes:
@@ -98,3 +131,25 @@ The debug log includes:
 - Stored structured triage JSON.
 - Assigned severity and queue priority.
 - Queue state.
+
+## Verification of the Ollama Chat Fix
+
+The 2026-09-29 verification used `llama3.2:3b` and an isolated PostgreSQL database:
+
+- Full Java suite: 256 tests passed; Python E2E helper suite: 11 tests passed.
+- The four-message example completed with final origin `OLLAMA`, preserved
+  `inicio="desde ayer"` and `intensidadDolor=5`, and stored priority 2 consistently
+  in the result, consultation severity and queue. Intermediate questions can
+  still come from the explicitly identified local fallback.
+- The initial synthetic chest-pain/breathing-difficulty alarm used local fallback
+  because Ollama supplied `motivoConsulta="no informado"` despite reported symptoms.
+  After correcting the final instruction, the real API case completed in one
+  turn with origin `OLLAMA`, priority 5, alarm signs and immediate attention,
+  preserving the reported onset of ten minutes. Its visible chat message also
+  includes the urgent safety recommendation. No `--allow-fallback` was used.
+
+These checks verify integration and persistence, not clinical accuracy. The
+model may still return invalid or incomplete content, so the fallback remains
+necessary and visible. Use explicit case expectations when evaluating clinical
+classification; the E2E does not assume the old local priority is the correct
+model classification.

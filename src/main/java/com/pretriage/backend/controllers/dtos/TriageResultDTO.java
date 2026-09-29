@@ -1,7 +1,9 @@
 package com.pretriage.backend.controllers.dtos;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.List;
 
+@JsonIgnoreProperties("origenClasificacion")
 public record TriageResultDTO(
         String motivoConsulta,
         List<String> sintomas,

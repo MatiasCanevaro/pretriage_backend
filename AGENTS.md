@@ -44,7 +44,7 @@ Use grep/rg only for configs, scripts, literals, or when graph results are insuf
 - Compile: `./mvnw.cmd test -DskipTests`
 - Focused estimation tests: `./mvnw.cmd "-Dtest=AtencionHospitalServiceTest,EstimacionAtencionServiceTest,AsignacionSectorServiceTest,IngresoColaServiceTest" test`
 - Full suite needs Docker Desktop access: `./mvnw.cmd test`
-- Real chat E2E: `python scripts/e2e_chat.py --messages-file scripts/chat_case_example.txt`
+- Real chat E2E: `python scripts/e2e_chat.py --backend-url http://localhost:18080 --db-name pretriage_chat_e2e --messages-file scripts/chat_case_example.txt`
 
 ## Documentation Maintenance
 - Documentation is part of the definition of done.

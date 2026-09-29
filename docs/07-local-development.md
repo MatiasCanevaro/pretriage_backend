@@ -95,8 +95,13 @@ Full tests need Docker Desktop access. In restricted environments, this can fail
 
 ## Real Chat E2E
 
+Create a disposable database and start the backend against it before running
+the script; see [isolated setup](08-e2e-chat-debugging.md#isolated-setup).
+The backend and script must use the same database. The seed removes the test
+patient's previous chats and cancels their active consultations.
+
 ```powershell
-python scripts\e2e_chat.py --messages-file scripts\chat_case_example.txt
+python scripts\e2e_chat.py --backend-url http://localhost:18080 --db-name pretriage_chat_e2e --messages-file scripts\chat_case_example.txt
 ```
 
 The script reads credentials from `.env`:
@@ -104,7 +109,10 @@ The script reads credentials from `.env`:
 - `AUTH0_TEST_USERNAME`
 - `AUTH0_TEST_PASSWORD`
 
-It seeds minimal DB data through Docker, performs real login, uses real backend endpoints, calls Ollama, and validates queue state.
+It seeds patient/hospital/specialty/sector/room data through Docker, performs
+real login, calls backend endpoints and Ollama, and validates the persisted
+classification, its origin, priority and both queue states. It rejects early
+closure and final local fallback by default.
 
 ## Common Local Issues
 
@@ -137,7 +145,7 @@ http://localhost:8080
 Override with:
 
 ```powershell
-python scripts\e2e_chat.py --backend-url http://localhost:8081
+python scripts\e2e_chat.py --db-name pretriage_chat_e2e --backend-url http://localhost:8081
 ```
 
 ## Reception HTTP E2E
