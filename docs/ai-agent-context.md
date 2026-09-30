@@ -56,7 +56,12 @@ The system manages the first medical attention workflow:
   mirroring `SYSTEM_PROMPT` and closes it via `finalizar_entrevista`
   (`ResumenEntrevistaVoz`); priority is never assigned by Gemini: Ollama
   classifies the summary + transcription after the Gemini session ends, with the
-  same validation and fallback as the text chat.
+  validated output contract and an explicit local fallback.
+  `ValidadorCierreEntrevistaVoz` gates closure in both the session and the service
+  using saved plus pending patient turns. Never trust an empty summary or use it
+  to invent sufficient interview evidence. Literal facts precede conflicting
+  summary fields in voice fallback. Classify only after normal Gemini transport
+  closure; incomplete closure preserves the transcript for continuation.
 
 Chat responses expose `origenRespuesta` (`OLLAMA` / `FALLBACK_LOCAL`); final
 `Chat.resultadoTriageJson` also stores `origenClasificacion`. Repeated questions

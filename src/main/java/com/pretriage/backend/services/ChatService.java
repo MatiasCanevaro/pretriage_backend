@@ -17,6 +17,7 @@ import com.pretriage.backend.model.consultas.NivelDeGravedad;
 import com.pretriage.backend.model.personas.Paciente;
 import com.pretriage.backend.repositories.RepoChat;
 import com.pretriage.backend.repositories.RepoPacientes;
+import com.pretriage.backend.services.voz.ValidadorCierreEntrevistaVoz;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -217,10 +218,18 @@ public class ChatService {
         if (chat.isFinalizado()) {
             throw new ChatFinalizadoException();
         }
-        agregarTurnosVoz(chat, turnos);
+        List<TurnoVoz> entrevistaCompleta = new ArrayList<>(chat.getMensajes().stream()
+                .map(mensaje -> new TurnoVoz(mensaje.getAutor(), mensaje.getContenido()))
+                .toList());
+        if (turnos != null) {
+            entrevistaCompleta.addAll(turnos);
+        }
+        ValidadorCierreEntrevistaVoz.validar(entrevistaCompleta, resumen)
+                .ifPresent(error -> { throw new IllegalArgumentException(error); });
+        agregarTurnosVoz(chat, turnos == null ? List.of() : turnos);
 
-        boolean hayAlarma = contieneAlarmaCritica(textoPaciente(chat))
-                || !listaSegura(resumen.signosAlarma()).isEmpty();
+        boolean hayAlarma = contieneAlarmaLiteralVoz(chat)
+                || !ValidadorCierreEntrevistaVoz.signosAlarmaSignificativos(resumen).isEmpty();
         TriageAiResponse respuestaIa;
         String origenRespuesta = "OLLAMA";
         try {
@@ -348,40 +357,111 @@ public class ChatService {
         return texto == null || texto.isBlank() ? defecto : texto.trim();
     }
 
-    /** Si Ollama falla, clasifica con reglas locales usando tambien los datos del resumen de voz. */
+    /** Los datos literales tienen precedencia; el resumen solo completa datos no extraibles. */
     private TriageAiResponse construirCierreFallbackVoz(Chat chat, ResumenEntrevistaVoz resumen) {
         TriageResultDTO basico = construirResumenBasico(chat);
+        String texto = textoPaciente(chat);
         Set<String> signosAlarma = new LinkedHashSet<>(basico.signosAlarma());
-        signosAlarma.addAll(listaSegura(resumen.signosAlarma()));
-        Integer intensidadDolor = resumen.intensidadDolor() != null
-                && resumen.intensidadDolor() >= 0 && resumen.intensidadDolor() <= 10
-                ? resumen.intensidadDolor()
-                : basico.intensidadDolor();
-        List<String> sintomas = listaSegura(resumen.sintomas());
+        if (signosAlarma.isEmpty() && contieneAlarmaLiteralVoz(chat)) {
+            signosAlarma.add("signo de alarma critico referido por el paciente");
+        }
+        signosAlarma.addAll(ValidadorCierreEntrevistaVoz.signosAlarmaSignificativos(resumen));
+        Integer intensidadLiteral = ValidadorCierreEntrevistaVoz.ultimaIntensidadLiteral(turnosLiteralesVoz(chat));
+        Integer intensidadDolor = intensidadLiteral != null ? intensidadLiteral : resumen.intensidadDolor();
+        Set<String> sintomas = new LinkedHashSet<>(valoresInformadosVoz(basico.sintomas()).stream()
+                .filter(sintoma -> Pattern.compile("\\b" + Pattern.quote(normalizarTexto(sintoma)) + "\\b")
+                        .matcher(texto).find()).toList());
+        sintomas.addAll(valoresInformadosVoz(resumen.sintomas()).stream()
+                .filter(sintoma -> !fraseNegadaExplicitamenteVoz(texto, sintoma)).toList());
         boolean requiereAtencionInmediata = !signosAlarma.isEmpty();
         String recomendacionSeguridad = requiereAtencionInmediata
                 ? "Busque atencion urgente de inmediato."
                 : "Si aparece dificultad para respirar, dolor de pecho, desmayo, confusion o empeoramiento, busque atencion urgente.";
 
         TriageResultDTO resultado = new TriageResultDTO(
-                textoODefecto(resumen.motivoConsulta(), basico.motivoConsulta()),
-                sintomas.isEmpty() ? basico.sintomas() : sintomas,
-                textoODefecto(resumen.inicio(), basico.inicio()),
-                textoODefecto(resumen.evolucion(), basico.evolucion()),
+                preferirDatoLiteralVoz(basico.motivoConsulta(), resumen.motivoConsulta()),
+                sintomas.isEmpty() ? List.of("no informado") : List.copyOf(sintomas),
+                preferirDatoLiteralVoz(basico.inicio(), resumen.inicio()),
+                preferirDatoLiteralVoz(basico.evolucion(), resumen.evolucion()),
                 intensidadDolor,
                 List.copyOf(signosAlarma),
-                listaSegura(resumen.antecedentesRelevantes()),
-                listaSegura(resumen.medicamentos()),
-                listaSegura(resumen.alergias()),
-                textoODefecto(resumen.posibilidadEmbarazo(), "no informado"),
-                textoODefecto(resumen.observaciones(), basico.observaciones()),
-                calcularNivelPrioridad(List.copyOf(signosAlarma), intensidadDolor, textoPaciente(chat)),
+                listaSinNegacionLiteralVoz(texto, resumen.antecedentesRelevantes(), "enfermedades", "antecedentes"),
+                listaSinNegacionLiteralVoz(texto, resumen.medicamentos(), "medicacion", "medicamentos"),
+                listaSinNegacionLiteralVoz(texto, resumen.alergias(), "alergias"),
+                fraseNegadaExplicitamenteVoz(texto, "embarazada")
+                        || fraseNegadaExplicitamenteVoz(texto, "posibilidad de embarazo")
+                        ? "Niega posibilidad de embarazo"
+                        : preferirDatoLiteralVoz(basico.posibilidadEmbarazo(), resumen.posibilidadEmbarazo()),
+                "Transcripcion del paciente: " + chat.getMensajes().stream()
+                        .filter(mensaje -> mensaje.getAutor() == AutorMensaje.PACIENTE)
+                        .map(Mensaje::getContenido).reduce("", (anterior, actual) -> anterior + " " + actual).trim(),
+                calcularNivelPrioridad(List.copyOf(signosAlarma), intensidadDolor,
+                        normalizarTexto(String.join(" ", sintomas))),
                 requiereAtencionInmediata,
                 recomendacionSeguridad);
         String mensaje = requiereAtencionInmediata
                 ? recomendacionSeguridad
                 : "Gracias. Ya registre tus respuestas.";
         return new TriageAiResponse(true, mensaje, resultado);
+    }
+
+    private boolean esDatoInformadoVoz(String valor) {
+        if (valor == null || valor.isBlank()) {
+            return false;
+        }
+        return !Set.of("no informado", "no informada", "ninguno informado", "ninguna informada",
+                "desconocido", "desconocida", "sin datos").contains(normalizarTexto(valor.trim()));
+    }
+
+    private boolean contieneAlarmaLiteralVoz(Chat chat) {
+        return ValidadorCierreEntrevistaVoz.contieneAlarmaLiteral(turnosLiteralesVoz(chat));
+    }
+
+    private List<TurnoVoz> turnosLiteralesVoz(Chat chat) {
+        return chat.getMensajes().stream()
+                .map(mensaje -> new TurnoVoz(mensaje.getAutor(), mensaje.getContenido())).toList();
+    }
+
+    private List<String> valoresInformadosVoz(List<String> valores) {
+        return listaSegura(valores).stream().filter(this::esDatoInformadoVoz).toList();
+    }
+
+    private String preferirDatoLiteralVoz(String literal, String resumen) {
+        return esDatoInformadoVoz(literal) ? literal.trim()
+                : esDatoInformadoVoz(resumen) ? resumen.trim() : "no informado";
+    }
+
+    private List<String> listaSinNegacionLiteralVoz(String texto, List<String> valores, String... categorias) {
+        int ultimaNegacionCategoria = -1;
+        for (String categoria : categorias) {
+            if (fraseNegadaExplicitamenteVoz(texto, categoria)) {
+                ultimaNegacionCategoria = Math.max(ultimaNegacionCategoria, ultimaMencionVoz(texto, categoria));
+            }
+        }
+        int negacionCategoria = ultimaNegacionCategoria;
+        return valoresInformadosVoz(valores).stream()
+                .filter(valor -> negacionCategoria < 0 || ultimaMencionVoz(texto, valor) > negacionCategoria)
+                .filter(valor -> !fraseNegadaExplicitamenteVoz(texto, valor)).toList();
+    }
+
+    /** Negaciones explicitas en la misma clausula; no intenta inferir sinonimos clinicos. */
+    private boolean fraseNegadaExplicitamenteVoz(String texto, String frase) {
+        int ultimaMencion = ultimaMencionVoz(texto, frase);
+        if (ultimaMencion < 0) {
+            return false;
+        }
+        String[] clausulasPrevias = texto.substring(0, ultimaMencion).split("[.!?;\\n]|\\bpero\\b", -1);
+        return Pattern.compile("\\b(?:no|sin|niega|niego)\\b")
+                .matcher(clausulasPrevias[clausulasPrevias.length - 1]).find();
+    }
+
+    private int ultimaMencionVoz(String texto, String frase) {
+        Matcher matcher = Pattern.compile("\\b" + Pattern.quote(normalizarTexto(frase)) + "\\b").matcher(texto);
+        int posicion = -1;
+        while (matcher.find()) {
+            posicion = matcher.start();
+        }
+        return posicion;
     }
 
     private String construirConversacion(Chat chat) {

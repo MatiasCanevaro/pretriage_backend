@@ -36,6 +36,6 @@ public class RegisterRequest {
     @NotBlank(message = "Es obligatorio ingresar la contraseña")
     private String password;
 
-    @NotBlank(message = "Es obligatorio ingresar el rol del usuario")
+    @NotNull(message = "Es obligatorio ingresar el rol del usuario")
     private RolSistema rol;
 }

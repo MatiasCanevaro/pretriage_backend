@@ -79,10 +79,18 @@ patient; Ollama still produces the preclassification:
    turns. When the patient reaches `ChatService.MAX_MENSAJES_PACIENTE` answers,
    Gemini is told to close.
 4. When Gemini has enough data it calls `finalizar_entrevista` with a structured
-   summary (`ResumenEntrevistaVoz`: the `TriageResultDTO` clinical fields without
-   priority). A call before any patient answer is rejected with an error.
-5. Gemini says goodbye; after that turn (or when Gemini closes, max 30 s) the
-   Gemini session ends. Only then `ChatService.finalizarEntrevistaVoz` stores the
+   summary (`ResumenEntrevistaVoz`). `ValidadorCierreEntrevistaVoz` checks required
+   text/list fields, pain range and patient evidence in saved and pending turns.
+   Normal closure requires at least three patient responses with symptoms,
+   onset, severity/evolution, alarm exploration and background context.
+   Meaningful alarms or twelve patient responses allow incomplete-data closure,
+   but never bypass valid structure or the need for a patient response.
+   Rejected calls return a corrective tool error and keep the interview open.
+   `ChatService` repeats this validation before changing the chat or calling Ollama.
+5. The backend stops sending microphone audio and signals `audioStreamEnd`.
+   After Gemini's goodbye turn it drains late input transcriptions, requests
+   transport closure and waits for normal close confirmation. Only then
+   `ChatService.finalizarEntrevistaVoz` stores the
    transcription as `Mensaje`s and sends the summary plus the patient
    transcription to Ollama (`FINAL_SYSTEM_PROMPT` + voice clause: on conflict the
    transcription prevails).
@@ -91,13 +99,26 @@ patient; Ollama still produces the preclassification:
    returns invalid output, or omits immediate attention while the transcription
    or the summary contain alarm signs, a local fallback built from the summary
    (alarms, pain, history) and the transcription is used (`FALLBACK_LOCAL`).
+   Explicit patient facts take precedence over the summary in fallback: the last
+   reported numeric pain score (including zero), extracted onset/evolution,
+   known symptoms and explicit negations are retained. The summary can supplement
+   facts not extracted locally. Meaningful summary alarms remain conservative
+   safety input; absent/negated alarm labels are filtered by the shared validator.
+
+There is no provider event proving that every input transcription has arrived.
+The normal close boundary preserves all frames received before its acknowledgement;
+the bounded drain reduces the chance of cutting off delayed transcriptions.
+An abnormal close or a close timeout attempts to save the received transcript
+without classifying and emits an error.
 
 If the voice session ends before `finalizar_entrevista` (patient hangs up,
-Gemini disconnects) or the preclassification fails, the transcription is saved
-with `ChatService.registrarTurnosVoz` without finalizing, so the patient can
+Gemini disconnects) or the preclassification fails, the backend attempts to save
+the transcription with `ChatService.registrarTurnosVoz` without finalizing, so the patient can
 continue by text or voice. The stored patient text is Gemini's transcription,
 so recognition errors reach the classification.
 Protocol details: `docs/06-api-reference.md#voice-chat-gemini-live`.
+For the full mobile/backend/Gemini interaction, sequence diagram and client
+responsibilities, see [Chat de voz: interacción completa](14-chat-voz-gemini-live.md).
 
 ## Structured Result
 

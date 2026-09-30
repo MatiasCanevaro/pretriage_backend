@@ -21,7 +21,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-@SpringBootTest
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @TestPropertySource(properties = { // se sobreescriben los valores del "application.properties" solo para ejecutar
                                    // este test
                 "auth0.client-id.machine-to-machine=AUTH0_M2M_CLIENT_ID",

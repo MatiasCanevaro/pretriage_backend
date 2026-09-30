@@ -28,7 +28,7 @@ import static org.mockito.Mockito.when;
 * Test de integracion donde mockeo las respuestas de la api de google usando wireMockServer
 * */
 
-@SpringBootTest
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @TestPropertySource(properties = { //se sobreescriben los valores del "application.properties" solo para ejecutar este test
         "google.api.key=test-api-key",
         "google.places.base-url=http://localhost:8089/v1/places",

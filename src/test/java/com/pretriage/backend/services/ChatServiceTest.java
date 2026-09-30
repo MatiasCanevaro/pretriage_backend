@@ -389,7 +389,7 @@ class ChatServiceTest {
 
         assertTrue(chat.isFinalizado());
         assertEquals("OLLAMA", resultado.origenRespuesta());
-        assertEquals(List.of("BOT", "PACIENTE", "BOT", "PACIENTE", "BOT"),
+        assertEquals(List.of("BOT", "PACIENTE", "BOT", "PACIENTE", "BOT", "PACIENTE", "BOT"),
                 chat.getMensajes().stream().map(mensaje -> mensaje.getAutor().name()).toList());
         assertTrue(chat.getResultadoTriageJson().contains("\"origenClasificacion\":\"OLLAMA\""));
         verify(triageIaClient).consultar(anyString(), argThat(datos -> datos.contains("Resumen del entrevistador")
@@ -412,7 +412,7 @@ class ChatServiceTest {
 
         assertEquals("FALLBACK_LOCAL", resultado.origenRespuesta());
         assertTrue(chat.getResultadoTriageJson().contains("rigidez de nuca"));
-        assertTrue(chat.getResultadoTriageJson().contains("\"motivoConsulta\":\"dolor de cabeza con fiebre\""));
+        assertTrue(chat.getResultadoTriageJson().contains("\"motivoConsulta\":\"Me duele la cabeza y tengo fiebre desde ayer\""));
         verify(atencionHospitalService).finalizarTriageEIngresarACola(
                 eq("auth0|paciente"), eq(NivelDeGravedad.RIESGO_VITAL_INMEDIATO), anyString());
     }
@@ -443,9 +443,235 @@ class ChatServiceTest {
         chatService.registrarTurnosVoz("1", "auth0|paciente", turnosDeVoz());
 
         assertFalse(chat.isFinalizado());
-        assertEquals(4, chat.getMensajes().size());
+        assertEquals(6, chat.getMensajes().size());
         verify(repoChat).save(chat);
         verifyNoInteractions(triageIaClient, atencionHospitalService);
+    }
+
+    @Test
+    void fallbackVozPriorizaDolorEInicioLiteralesSobreResumenContradictorio() {
+        Chat chat = chatDeVoz(new Paciente());
+        when(triageIaClient.consultar(anyString(), anyString(), eq(true))).thenThrow(new RuntimeException("offline"));
+        ResumenEntrevistaVoz resumen = new ResumenEntrevistaVoz("dolor leve", List.of("dolor de cabeza"),
+                "hoy", "mejorando", 2, List.of(), List.of(), List.of(), List.of(), "no informado", "dolor leve");
+
+        var respuesta = chatService.finalizarEntrevistaVoz("1", "auth0|paciente",
+                entrevistaCompletaVoz("Tengo dolor de cabeza y fiebre desde ayer. Dolor 8/10. Empeoro."), resumen);
+
+        TriageResultDTO resultado = new ObjectMapper().readValue(chat.getResultadoTriageJson(), TriageResultDTO.class);
+        assertEquals("FALLBACK_LOCAL", respuesta.origenRespuesta());
+        assertEquals(8, resultado.intensidadDolor());
+        assertEquals("desde ayer", resultado.inicio());
+        assertEquals("empeorando", resultado.evolucion());
+        assertEquals(4, resultado.nivelPrioridad());
+        assertTrue(resultado.sintomas().contains("fiebre"));
+        assertTrue(resultado.motivoConsulta().contains("8/10"));
+        assertTrue(resultado.observaciones().contains("Dolor 8/10"));
+        verify(atencionHospitalService).finalizarTriageEIngresarACola(
+                eq("auth0|paciente"), eq(NivelDeGravedad.MUY_URGENTE), anyString());
+    }
+
+    @Test
+    void fallbackVozConservaCeroExplicitoYNoSustituyeDatosPorNoInformado() {
+        Chat chat = chatDeVoz(new Paciente());
+        ResumenEntrevistaVoz resumen = new ResumenEntrevistaVoz("tos", List.of("no informado"),
+                "no informado", "no informado", 8, List.of(), List.of(), List.of(), List.of(), "no informado", "no informado");
+
+        chatService.finalizarEntrevistaVoz("1", "auth0|paciente",
+                entrevistaCompletaVoz("Tengo tos desde ayer, sigue igual. Dolor 0/10."), resumen);
+
+        TriageResultDTO resultado = new ObjectMapper().readValue(chat.getResultadoTriageJson(), TriageResultDTO.class);
+        assertEquals(0, resultado.intensidadDolor());
+        assertEquals("desde ayer", resultado.inicio());
+        assertEquals("sin cambios", resultado.evolucion());
+        assertEquals(List.of("tos"), resultado.sintomas());
+        assertEquals(2, resultado.nivelPrioridad());
+    }
+
+    @Test
+    void fallbackVozUsaUltimaIntensidadExplicitaDeUnaCorreccion() {
+        Chat chat = chatDeVoz(new Paciente());
+        chat.agregarMensaje(new Mensaje("Tenia dolor 2/10 desde ayer.", AutorMensaje.PACIENTE, chat.getPaciente()));
+        chatService.finalizarEntrevistaVoz("1", "auth0|paciente",
+                entrevistaCompletaVoz("Tengo dolor de cabeza. Ahora es 8/10."), resumen(List.of()));
+
+        TriageResultDTO resultado = new ObjectMapper().readValue(chat.getResultadoTriageJson(), TriageResultDTO.class);
+        assertEquals(8, resultado.intensidadDolor());
+        assertEquals(4, resultado.nivelPrioridad());
+    }
+
+    @Test
+    void fallbackVozConservaDolorSobreDiezAnteResumenContradictorio() {
+        Chat chat = chatDeVoz(new Paciente());
+        ResumenEntrevistaVoz resumen = new ResumenEntrevistaVoz("dolor leve", List.of("dolor de cabeza"),
+                "desde ayer", "igual", 2, List.of(), List.of(), List.of(), List.of(), "no informado", "dolor leve");
+        when(triageIaClient.consultar(anyString(), anyString(), eq(true))).thenThrow(new RuntimeException("offline"));
+
+        var respuesta = chatService.finalizarEntrevistaVoz("1", "auth0|paciente",
+                entrevistaCompletaVoz("Tengo dolor de cabeza desde ayer, dolor 8 sobre 10"), resumen);
+
+        TriageResultDTO resultado = new ObjectMapper().readValue(chat.getResultadoTriageJson(), TriageResultDTO.class);
+        assertEquals("FALLBACK_LOCAL", respuesta.origenRespuesta());
+        assertEquals(8, resultado.intensidadDolor());
+        assertEquals(4, resultado.nivelPrioridad());
+    }
+
+    @Test
+    void fallbackVozConservaRespuestaNumericaALaPreguntaDeDolor() {
+        Chat chat = chatDeVoz(new Paciente());
+        ResumenEntrevistaVoz resumen = new ResumenEntrevistaVoz("dolor leve", List.of("dolor de cabeza"),
+                "desde ayer", "igual", 2, List.of(), List.of(), List.of(), List.of(), "no informado", "dolor leve");
+        var turnos = List.of(new TurnoVoz(AutorMensaje.PACIENTE, "Tengo dolor de cabeza desde ayer"),
+                new TurnoVoz(AutorMensaje.BOT, "Del 0 al 10, cuanto te duele?"),
+                new TurnoVoz(AutorMensaje.PACIENTE, "8"),
+                new TurnoVoz(AutorMensaje.PACIENTE, "No tengo dificultad para respirar ni dolor de pecho"),
+                new TurnoVoz(AutorMensaje.PACIENTE, "No tengo antecedentes ni alergias y no tomo medicamentos"));
+        when(triageIaClient.consultar(anyString(), anyString(), eq(true))).thenThrow(new RuntimeException("offline"));
+
+        var respuesta = chatService.finalizarEntrevistaVoz("1", "auth0|paciente", turnos, resumen);
+
+        TriageResultDTO resultado = new ObjectMapper().readValue(chat.getResultadoTriageJson(), TriageResultDTO.class);
+        assertEquals("FALLBACK_LOCAL", respuesta.origenRespuesta());
+        assertEquals(8, resultado.intensidadDolor());
+        assertEquals(4, resultado.nivelPrioridad());
+    }
+
+    @Test
+    void cierreVozPorDisneaUOpresionNoAceptaClasificacionSinUrgencia() {
+        for (String sintoma : List.of("disnea", "opresion toracica")) {
+            Chat chat = chatDeVoz(new Paciente());
+            TriageResultDTO noUrgente = new TriageResultDTO(sintoma, List.of(sintoma), "hoy", "igual", null,
+                    List.of(), List.of(), List.of(), List.of(), "no informado", "no informado", 2, false,
+                    "Evaluacion presencial");
+            when(triageIaClient.consultar(anyString(), anyString(), eq(true)))
+                    .thenReturn(new TriageAiResponse(true, "Gracias", noUrgente));
+
+            var respuesta = chatService.finalizarEntrevistaVoz("1", "auth0|paciente",
+                    List.of(new TurnoVoz(AutorMensaje.PACIENTE, "Tengo " + sintoma)), resumen(List.of()));
+
+            TriageResultDTO resultado = new ObjectMapper().readValue(chat.getResultadoTriageJson(), TriageResultDTO.class);
+            assertEquals("FALLBACK_LOCAL", respuesta.origenRespuesta(), sintoma);
+            assertEquals(5, resultado.nivelPrioridad(), sintoma);
+            assertTrue(resultado.requiereAtencionInmediata(), sintoma);
+            assertFalse(resultado.signosAlarma().isEmpty(), sintoma);
+        }
+    }
+
+    @Test
+    void fallbackVozCompletaCamposNoExtraiblesSinPerderSintomasLiterales() {
+        Chat chat = chatDeVoz(new Paciente());
+        ResumenEntrevistaVoz resumen = new ResumenEntrevistaVoz("cefalea", List.of("cefalea", "fotofobia"),
+                "al amanecer", "se mantiene", 4, List.of(), List.of(), List.of(), List.of(), "no informado", "sin datos");
+        List<TurnoVoz> turnos = List.of(
+                new TurnoVoz(AutorMensaje.PACIENTE, "Tengo dolor de cabeza y fotofobia, comenzo al amanecer."),
+                new TurnoVoz(AutorMensaje.BOT, "Cuanto te duele del 0 al 10 y como evoluciona?"),
+                new TurnoVoz(AutorMensaje.PACIENTE, "Cuatro, se mantiene. No tengo dificultad para respirar ni dolor de pecho."),
+                new TurnoVoz(AutorMensaje.PACIENTE, "No tengo enfermedades previas, alergias ni medicacion habitual."));
+
+        chatService.finalizarEntrevistaVoz("1", "auth0|paciente", turnos, resumen);
+
+        TriageResultDTO resultado = new ObjectMapper().readValue(chat.getResultadoTriageJson(), TriageResultDTO.class);
+        assertEquals(4, resultado.intensidadDolor());
+        assertEquals("al amanecer", resultado.inicio());
+        assertTrue(resultado.sintomas().containsAll(List.of("dolor de cabeza", "fotofobia")));
+    }
+
+    @Test
+    void fallbackVozRespetaNegacionesExplicitasDeSintomasYContexto() {
+        Chat chat = chatDeVoz(new Paciente());
+        ResumenEntrevistaVoz resumen = new ResumenEntrevistaVoz("tos y fiebre", List.of("tos", "fiebre"),
+                "ayer", "igual", 2, List.of(), List.of("asma"), List.of("ibuprofeno"),
+                List.of("penicilina"), "si", "fiebre y embarazo");
+        var turnos = new java.util.ArrayList<>(entrevistaCompletaVoz("Tengo tos desde ayer. No tengo fiebre. Dolor 0/10."));
+        turnos.add(new TurnoVoz(AutorMensaje.PACIENTE, "No estoy embarazada."));
+
+        chatService.finalizarEntrevistaVoz("1", "auth0|paciente", turnos, resumen);
+
+        TriageResultDTO resultado = new ObjectMapper().readValue(chat.getResultadoTriageJson(), TriageResultDTO.class);
+        assertFalse(resultado.sintomas().contains("fiebre"));
+        assertTrue(resultado.antecedentesRelevantes().isEmpty());
+        assertTrue(resultado.medicamentos().isEmpty());
+        assertTrue(resultado.alergias().isEmpty());
+        assertEquals("Niega posibilidad de embarazo", resultado.posibilidadEmbarazo());
+        assertTrue(resultado.observaciones().contains("No tengo fiebre"));
+    }
+
+    @Test
+    void fallbackVozNoPierdeAlarmaLiteralTrasUnaNegacionNoRelacionada() {
+        Chat chat = chatDeVoz(new Paciente());
+        chatService.finalizarEntrevistaVoz("1", "auth0|paciente", List.of(new TurnoVoz(AutorMensaje.PACIENTE,
+                "No tengo alergias. Tengo dificultad para respirar.")), resumen(List.of()));
+
+        TriageResultDTO resultado = new ObjectMapper().readValue(chat.getResultadoTriageJson(), TriageResultDTO.class);
+        assertEquals(5, resultado.nivelPrioridad());
+        assertTrue(resultado.requiereAtencionInmediata());
+        assertFalse(resultado.signosAlarma().isEmpty());
+    }
+
+    @Test
+    void fallbackVozNoTransformaEtiquetasDeAlarmaNegadasEnUrgencia() {
+        Chat chat = chatDeVoz(new Paciente());
+        ResumenEntrevistaVoz resumen = new ResumenEntrevistaVoz("tos", List.of("tos"), "ayer", "igual", 0,
+                List.of("ninguno", "sin signos de alarma", "signos negados"),
+                List.of(), List.of(), List.of(), "no informado", "sin alarmas");
+
+        chatService.finalizarEntrevistaVoz("1", "auth0|paciente",
+                entrevistaCompletaVoz("Tengo tos desde ayer, sigue igual. Dolor 0/10."), resumen);
+
+        TriageResultDTO resultado = new ObjectMapper().readValue(chat.getResultadoTriageJson(), TriageResultDTO.class);
+        assertEquals(2, resultado.nivelPrioridad());
+        assertFalse(resultado.requiereAtencionInmediata());
+        assertTrue(resultado.signosAlarma().isEmpty());
+    }
+
+    @Test
+    void fallbackVozConservaCorreccionLiteralPosteriorDeUnaAlergiaNegada() {
+        Chat chat = chatDeVoz(new Paciente());
+        ResumenEntrevistaVoz resumen = new ResumenEntrevistaVoz("tos", List.of("tos"), "ayer", "igual", 0,
+                List.of(), List.of(), List.of(), List.of("penicilina"), "no informado", "alergia corregida");
+        var turnos = new java.util.ArrayList<>(entrevistaCompletaVoz("Tengo tos desde ayer, igual. Dolor 0/10."));
+        turnos.add(new TurnoVoz(AutorMensaje.PACIENTE, "Me corrijo: soy alergica a penicilina."));
+
+        chatService.finalizarEntrevistaVoz("1", "auth0|paciente", turnos, resumen);
+
+        TriageResultDTO resultado = new ObjectMapper().readValue(chat.getResultadoTriageJson(), TriageResultDTO.class);
+        assertEquals(List.of("penicilina"), resultado.alergias());
+    }
+
+    @Test
+    void cierreVozInvalidoNoMutaHistorialNiConsultaProveedorNiEncola() {
+        Chat chat = chatDeVoz(new Paciente());
+        ResumenEntrevistaVoz vacio = new ResumenEntrevistaVoz(null, null, null, null, null,
+                null, null, null, null, null, null);
+
+        assertThrows(IllegalArgumentException.class, () -> chatService.finalizarEntrevistaVoz("1", "auth0|paciente",
+                List.of(new TurnoVoz(AutorMensaje.PACIENTE, "Me duele la cabeza")), vacio));
+
+        assertEquals(1, chat.getMensajes().size());
+        assertFalse(chat.isFinalizado());
+        assertNull(chat.getResultadoTriageJson());
+        verifyNoInteractions(triageIaClient, atencionHospitalService);
+        verify(repoChat, never()).save(any());
+    }
+
+    @Test
+    void cierreVozValidaHistorialPersistidoJuntoConLosTurnosPendientes() {
+        Chat chat = chatDeVoz(new Paciente());
+        var turnos = entrevistaCompletaVoz("Tengo dolor de cabeza desde ayer, dolor 8/10.");
+        turnos.subList(0, 2).forEach(turno -> chat.agregarMensaje(
+                new Mensaje(turno.contenido(), turno.autor(), chat.getPaciente())));
+
+        chatService.finalizarEntrevistaVoz("1", "auth0|paciente", turnos.subList(2, 3), resumen(List.of()));
+
+        assertTrue(chat.isFinalizado());
+        verify(triageIaClient).consultar(anyString(), anyString(), eq(true));
+    }
+
+    private List<TurnoVoz> entrevistaCompletaVoz(String primerTurno) {
+        return List.of(
+                new TurnoVoz(AutorMensaje.PACIENTE, primerTurno),
+                new TurnoVoz(AutorMensaje.PACIENTE, "No tengo dificultad para respirar ni dolor de pecho."),
+                new TurnoVoz(AutorMensaje.PACIENTE, "No tengo enfermedades previas ni alergias y no tomo medicamentos."));
     }
 
     private Chat chatDeVoz(Paciente paciente) {
@@ -461,7 +687,9 @@ class ChatServiceTest {
         return List.of(
                 new TurnoVoz(AutorMensaje.PACIENTE, "Me duele la cabeza y tengo fiebre desde ayer"),
                 new TurnoVoz(AutorMensaje.BOT, "Del 0 al 10, cuanto te duele?"),
-                new TurnoVoz(AutorMensaje.PACIENTE, "Un 6. No tengo dificultad para respirar ni alergias."),
+                new TurnoVoz(AutorMensaje.PACIENTE, "Un 6 de 10. No tengo dificultad para respirar ni alergias."),
+                new TurnoVoz(AutorMensaje.BOT, "Tenes antecedentes, tomas medicamentos o podria haber embarazo?"),
+                new TurnoVoz(AutorMensaje.PACIENTE, "No tengo enfermedades previas, no tomo medicamentos y no hay posibilidad de embarazo."),
                 new TurnoVoz(AutorMensaje.BOT, " "));
     }
 

@@ -3,6 +3,8 @@ package com.pretriage.backend.controllers;
 import com.pretriage.backend.config.SpringSecurityConfig;
 import com.pretriage.backend.controllers.dtos.LoginResponseDTO;
 import com.pretriage.backend.exceptions.RefreshTokenInvalidoException;
+import com.pretriage.backend.model.personas.Paciente;
+import com.pretriage.backend.model.personas.RolSistema;
 import com.pretriage.backend.repositories.RepoMedico;
 import com.pretriage.backend.repositories.RepoPacientes;
 import com.pretriage.backend.repositories.RepoRecepcionistas;
@@ -16,7 +18,8 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -42,6 +45,49 @@ class AuthControllerTest {
 
     @MockitoBean
     private RepoPacientes repoPacientes;
+
+    private String registro(String campoRol) {
+        return """
+                {"nombre":"Paciente","apellido":"Prueba","numeroDocumento":"30111222",
+                 "tipoDocumento":"DNI","tipoUsuario":"Paciente","email":"patient@example.com",
+                 "password":"TestPassword123!"%s}
+                """.formatted(campoRol);
+    }
+
+    @Test
+    void registrarPacienteConRolUser_retorna200YGuardaPaciente() throws Exception {
+        when(authService.registrarUsuarioYObtenerAuth0Id("patient@example.com", "TestPassword123!"))
+                .thenReturn("auth0|paciente-prueba");
+
+        mockMvc.perform(post("/api/register").contentType(MediaType.APPLICATION_JSON)
+                        .content(registro(",\"rol\":\"USER\"")))
+                .andExpect(status().isOk());
+
+        verify(authService).registrarUsuarioYObtenerAuth0Id("patient@example.com", "TestPassword123!");
+        verify(repoPacientes).save(argThat((Paciente paciente) ->
+                paciente.getUsuarioAuth().getRol() == RolSistema.USER
+                        && "auth0|paciente-prueba".equals(paciente.getUsuarioAuth().getId())));
+        verifyNoInteractions(repoMedico, repoRecepcionistas);
+    }
+
+    @Test
+    void registrarSinRolOConRolNull_retorna400SinCrearCuenta() throws Exception {
+        for (String campoRol : new String[]{"", ",\"rol\":null"}) {
+            mockMvc.perform(post("/api/register").contentType(MediaType.APPLICATION_JSON)
+                            .content(registro(campoRol)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.rol").value("Es obligatorio ingresar el rol del usuario"));
+        }
+        verifyNoInteractions(authService, repoPacientes, repoMedico, repoRecepcionistas);
+    }
+
+    @Test
+    void registrarConRolAdmin_retorna403SinCrearCuenta() throws Exception {
+        mockMvc.perform(post("/api/register").contentType(MediaType.APPLICATION_JSON)
+                        .content(registro(",\"rol\":\"ADMIN\"")))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(authService, repoPacientes, repoMedico, repoRecepcionistas);
+    }
 
     @Test
     void renovar_retorna200ConTokenRotado() throws Exception {

@@ -124,6 +124,22 @@ real login, calls backend endpoints and Ollama, and validates the persisted
 classification, its origin, priority and both queue states. It rejects early
 closure and final local fallback by default.
 
+## Voice Chat Regression Tests
+
+Run the voice session, shared close validator, service fallback and authentication regressions:
+
+```powershell
+.\mvnw.cmd "-Dtest=SesionVozChatTest,SesionVozIntegracionTest,ValidadorCierreEntrevistaVozTest,ChatVozHandshakeInterceptorTest,ChatServiceTest,TriageIaClientTest" test
+```
+
+These tests simulate Gemini and Ollama. They do not verify microphone capture, audio playback
+or provider availability. See [the voice integration flow](14-chat-voz-gemini-live.md).
+
+Full application context tests use `SpringBootTest.WebEnvironment.RANDOM_PORT`:
+the voice configuration requires a real servlet WebSocket `ServerContainer`, which
+the default mock servlet context does not provide. `BackendApplicationTests`
+also checks the configured binary/text buffer limits and idle timeout.
+
 ## Common Local Issues
 
 ### Docker Permission Denied

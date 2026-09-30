@@ -13,6 +13,11 @@ POST /api/register
 Public self-registration. Only patient accounts are allowed; staff or admin
 roles are rejected with `403`.
 
+`rol` is a required `RolSistema` enum, validated with `@NotNull`. If it is
+omitted or `null`, the endpoint returns `400` with
+`{"rol":"Es obligatorio ingresar el rol del usuario"}` before creating any
+Auth0 account or local patient. A patient registration must send `"rol":"USER"`.
+
 Body:
 
 ```json
@@ -361,8 +366,10 @@ Client -> server:
 
 - Binary frames: raw PCM 16-bit mono little-endian at 16 kHz (max 256 KB per frame).
 - Text `{"tipo":"fin_audio"}`: microphone paused (sends `audioStreamEnd`).
-- Text `{"tipo":"cerrar"}`: ends the session; the transcription so far is saved
-  without finalizing the chat.
+- Text `{"tipo":"cerrar"}`: closes the mobile channel. Before the interview is
+  accepted as complete, the backend attempts to save the transcription without finalizing the chat.
+  After acceptance, backend closure processing continues; mobile can retrieve
+  the persisted chat state by HTTP when reconnecting.
 
 Server -> client:
 
@@ -380,7 +387,16 @@ Server -> client:
   `ChatTurnResponse` of `POST /api/chat/{id}/mensajes`.
 - `{"tipo":"fin"}`: session over; the server then closes the WebSocket.
 
+Keep the backend socket open after `entrevista_finalizada`: classification is
+still pending. `triage_finalizado` is sent only after normal Gemini transport
+closure and successful classification/persistence. If that closure cannot be
+confirmed, the backend attempts to save the received transcript for continuation
+and emits `error` and `fin`; they do not imply a finalized triage. A rejected summary keeps
+the interview open and does not emit `entrevista_finalizada`.
+
 Voice and text turns share the same `Chat`.
+See [the interaction guide](14-chat-voz-gemini-live.md) for the full sequence,
+mobile responsibilities, persistence and connection recovery semantics.
 
 ## Patient Queue State
 

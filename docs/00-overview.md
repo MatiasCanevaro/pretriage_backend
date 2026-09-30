@@ -37,3 +37,6 @@ The current focus is first attention only. The system does not model referral, d
 - Spring AI with Ollama
 - Ollama model configured as `llama3.2:3b`
 - Spring WebSocket + Gemini Live (`gemini-3.8-live`) for the optional voice chat
+
+The [voice interaction guide](14-chat-voz-gemini-live.md) explains the mobile,
+backend and Gemini Live responsibilities and the complete message sequence.

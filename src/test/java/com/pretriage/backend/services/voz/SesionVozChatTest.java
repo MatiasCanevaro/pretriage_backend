@@ -22,6 +22,12 @@ import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.Delayed;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.stream.IntStream;
 
@@ -149,7 +155,7 @@ class SesionVozChatTest {
         salida(sesion, "Del 0 al 10, cuanto te duele?");
         turnoCompleto(sesion);
         entrada(sesion, "Un 6, no tengo alergias.");
-        sesion.alRecibir(llamadaFinalizar("llamada-1", List.of()));
+        sesion.alRecibir(llamadaFinalizar("llamada-1", List.of("dolor toracico")));
 
         JsonNode respuesta = json(conexion.enviados.getLast()).path("toolResponse").path("functionResponses").get(0);
         assertEquals("llamada-1", respuesta.path("id").asText());
@@ -160,6 +166,7 @@ class SesionVozChatTest {
         entrada(sesion, " y tomo ibuprofeno");
         salida(sesion, SesionVozChat.MENSAJE_DESPEDIDA);
         turnoCompleto(sesion);
+        sesion.alCerrar(1000, "fin");
 
         esperar(() -> canal.cerrado);
         assertTrue(conexion.cerrada);
@@ -187,7 +194,7 @@ class SesionVozChatTest {
         SesionVozChat sesion = sesion(historialNuevo());
         sesion.iniciar();
 
-        sesion.alRecibir(llamadaFinalizar("llamada-1", List.of()));
+        sesion.alRecibir(llamadaFinalizar("llamada-1", List.of("dolor toracico")));
 
         JsonNode respuesta = json(conexion.enviados.getLast()).path("toolResponse").path("functionResponses").get(0);
         assertTrue(respuesta.path("response").has("error"));
@@ -218,7 +225,7 @@ class SesionVozChatTest {
         SesionVozChat sesion = sesion(historialNuevo());
         sesion.iniciar();
         entrada(sesion, "Me duele la cabeza");
-        sesion.alRecibir(llamadaFinalizar("llamada-1", List.of()));
+        sesion.alRecibir(llamadaFinalizar("llamada-1", List.of("dolor toracico")));
 
         sesion.alCerrar(1000, "fin");
 
@@ -226,6 +233,120 @@ class SesionVozChatTest {
         assertTrue(canal.eventos.stream().anyMatch(e -> e.contains("\"error\"")));
         verify(chatService).registrarTurnosVoz("7", "auth0|paciente",
                 List.of(new TurnoVoz(AutorMensaje.PACIENTE, "Me duele la cabeza")));
+    }
+
+    @Test
+    void noCierraPorUnTurnCompleteSinDespedida() {
+        try (RelojManual reloj = new RelojManual()) {
+            SesionVozChat sesion = sesion(historialNuevo(), reloj, Duration.ofMillis(40), Duration.ofSeconds(1));
+            sesion.iniciar();
+            entrada(sesion, "Tengo dolor de pecho y dificultad para respirar");
+
+            sesion.alRecibir(llamadaFinalizar("llamada-1", List.of("dolor toracico")));
+            turnoCompleto(sesion);
+
+            reloj.avanzar(100);
+            assertFalse(conexion.cerrada);
+
+            salida(sesion, SesionVozChat.MENSAJE_DESPEDIDA);
+            turnoCompleto(sesion);
+            reloj.avanzar(40);
+            assertTrue(conexion.cerrada);
+            verifyNoInteractions(chatService);
+            sesion.alCerrar(1006, "sin confirmacion");
+            esperar(() -> canal.cerrado);
+        }
+    }
+
+    @Test
+    void siNoConfirmaElTransporteConservaLaTranscripcionSinClasificar() {
+        try (RelojManual reloj = new RelojManual()) {
+            SesionVozChat sesion = sesion(historialNuevo(), reloj, Duration.ofMillis(20), Duration.ofMillis(50));
+            sesion.iniciar();
+            entrada(sesion, "Tengo dolor de pecho y dificultad para respirar");
+            sesion.alRecibir(llamadaFinalizar("llamada-1", List.of("dolor toracico")));
+            salida(sesion, SesionVozChat.MENSAJE_DESPEDIDA);
+            turnoCompleto(sesion);
+            reloj.avanzar(20);
+            assertTrue(conexion.cerrada);
+            verifyNoInteractions(chatService);
+            reloj.avanzar(30);
+            esperar(() -> canal.cerrado);
+            sesion.alCerrar(1000, "confirmacion fuera de plazo");
+            verify(chatService, never()).finalizarEntrevistaVoz(anyString(), anyString(), anyList(), any());
+            verify(chatService).registrarTurnosVoz(eq("7"), eq("auth0|paciente"), anyList());
+            assertTrue(canal.eventos.stream().anyMatch(e -> e.contains("\"error\"")));
+        }
+    }
+
+    @Test
+    void fragmentosTardiosReinicianDrenajeYSeIncluyenHastaConfirmarCierre() {
+        when(chatService.finalizarEntrevistaVoz(anyString(), anyString(), anyList(), any()))
+                .thenReturn(new ChatTurnResponse(new MensajeDTO("Cierre", "BOT", LocalDateTime.now()),
+                        new TiempoEstimadoAtencionResponse(), "OLLAMA"));
+        try (RelojManual reloj = new RelojManual()) {
+            SesionVozChat sesion = sesion(historialNuevo(), reloj, Duration.ofMillis(100), Duration.ofSeconds(1));
+            sesion.iniciar();
+            entrada(sesion, "Tengo dolor de pecho");
+            sesion.alRecibir(llamadaFinalizar("fin", List.of("dolor toracico")));
+            salida(sesion, SesionVozChat.MENSAJE_DESPEDIDA);
+            turnoCompleto(sesion);
+            reloj.avanzar(90);
+            entrada(sesion, "El dolor ahora es 8/10.");
+            reloj.avanzar(90);
+            assertFalse(conexion.cerrada);
+            reloj.avanzar(10);
+            assertTrue(conexion.cerrada);
+            verifyNoInteractions(chatService);
+            entrada(sesion, " Desde ayer.");
+            sesion.alCerrar(1000, "fin");
+            esperar(() -> canal.cerrado);
+            sesion.alCerrar(1000, "duplicado");
+            ArgumentCaptor<List<TurnoVoz>> turnos = ArgumentCaptor.captor();
+            verify(chatService).finalizarEntrevistaVoz(eq("7"), eq("auth0|paciente"), turnos.capture(), any());
+            assertEquals("El dolor ahora es 8/10. Desde ayer.", turnos.getValue().getLast().contenido());
+            verify(chatService, never()).registrarTurnosVoz(anyString(), anyString(), anyList());
+        }
+    }
+
+    @Test
+    void desconectarMobileNoDescartaTranscripcionPendienteTrasAceptarCierre() {
+        when(chatService.finalizarEntrevistaVoz(anyString(), anyString(), anyList(), any()))
+                .thenReturn(new ChatTurnResponse(new MensajeDTO("Cierre", "BOT", LocalDateTime.now()),
+                        new TiempoEstimadoAtencionResponse(), "OLLAMA"));
+        SesionVozChat sesion = sesion(historialNuevo());
+        sesion.iniciar();
+        entrada(sesion, "Tengo dolor de pecho");
+        sesion.alRecibir(llamadaFinalizar("fin", List.of("dolor toracico")));
+        sesion.cerrar();
+        int eventosPrevios = canal.eventos.size();
+        assertFalse(conexion.cerrada);
+        entrada(sesion, "Y dificultad para respirar.");
+        sesion.alCerrar(1000, "fin");
+        ArgumentCaptor<List<TurnoVoz>> turnos = ArgumentCaptor.captor();
+        verify(chatService, timeout(2_000)).finalizarEntrevistaVoz(eq("7"), eq("auth0|paciente"), turnos.capture(), any());
+        esperar(() -> conexion.cerrada);
+        assertEquals("Y dificultad para respirar.", turnos.getValue().getLast().contenido());
+        assertEquals(eventosPrevios, canal.eventos.size());
+        verify(chatService, never()).registrarTurnosVoz(anyString(), anyString(), anyList());
+    }
+
+    @Test
+    void cierreAnormalConservaTurnosUnaVezAunqueLleguenCallbacksDuplicados() {
+        SesionVozChat sesion = sesion(historialNuevo());
+        sesion.iniciar();
+        entrada(sesion, "Tengo dolor de pecho");
+        sesion.alRecibir(llamadaFinalizar("fin", List.of("dolor toracico")));
+        entrada(sesion, "Y dificultad para respirar.");
+        sesion.alCerrar(1006, "sin red");
+        sesion.alFallar(new IllegalStateException("sin red"));
+        esperar(() -> canal.cerrado);
+        sesion.alCerrar(1000, "duplicado");
+        ArgumentCaptor<List<TurnoVoz>> turnos = ArgumentCaptor.captor();
+        verify(chatService).registrarTurnosVoz(eq("7"), eq("auth0|paciente"), turnos.capture());
+        assertEquals("Y dificultad para respirar.", turnos.getValue().getLast().contenido());
+        verify(chatService, never()).finalizarEntrevistaVoz(anyString(), anyString(), anyList(), any());
+        assertEquals(1, canal.eventos.stream().filter(e -> "fin".equals(json(e).path("tipo").asText())).count());
     }
 
     @Test
@@ -258,6 +379,17 @@ class SesionVozChatTest {
                 "clave", "models/gemini-3.8-live", "wss://gemini.test", "Kore", "es-US", Duration.ofSeconds(1));
         return new SesionVozChat("7", "auth0|paciente", historial, chatService,
                 geminiLiveCliente, properties, objectMapper, canal);
+    }
+
+    private SesionVozChat sesion(List<MensajeDTO> historial,
+                                 ScheduledExecutorService reloj,
+                                 Duration ventanaDrenaje,
+                                 Duration limiteCierre) {
+        GeminiLiveProperties properties = new GeminiLiveProperties(
+                "clave", "models/gemini-3.8-live", "wss://gemini.test", "Kore", "es-US", Duration.ofSeconds(1));
+        return new SesionVozChat("7", "auth0|paciente", historial, chatService,
+                geminiLiveCliente, properties, objectMapper, canal,
+                reloj, ventanaDrenaje, limiteCierre);
     }
 
     private List<MensajeDTO> historialNuevo() {
@@ -317,6 +449,38 @@ class SesionVozChatTest {
                 fail("La condicion no se cumplio a tiempo");
             }
             Thread.onSpinWait();
+        }
+    }
+
+    /** Executes only explicitly advanced scheduled jobs; no wall-clock sleeps. */
+    private static final class RelojManual extends ScheduledThreadPoolExecutor {
+        private long ahora;
+        private final List<Tarea> pendientes = new ArrayList<>();
+
+        RelojManual() { super(1); }
+
+        @Override
+        public ScheduledFuture<?> schedule(Runnable accion, long demora, TimeUnit unidad) {
+            Tarea tarea = new Tarea(accion, ahora + unidad.toMillis(demora));
+            pendientes.add(tarea);
+            return tarea;
+        }
+
+        void avanzar(long milisegundos) {
+            ahora += milisegundos;
+            pendientes.stream().filter(t -> !t.isDone() && t.vencimiento <= ahora)
+                    .sorted((a, b) -> Long.compare(a.vencimiento, b.vencimiento))
+                    .toList().forEach(Tarea::run);
+        }
+
+        private final class Tarea extends FutureTask<Void> implements ScheduledFuture<Void> {
+            private final long vencimiento;
+            Tarea(Runnable accion, long vencimiento) {
+                super(accion, null);
+                this.vencimiento = vencimiento;
+            }
+            public long getDelay(TimeUnit unidad) { return unidad.convert(vencimiento - ahora, TimeUnit.MILLISECONDS); }
+            public int compareTo(Delayed otra) { return Long.compare(getDelay(TimeUnit.MILLISECONDS), otra.getDelay(TimeUnit.MILLISECONDS)); }
         }
     }
 
