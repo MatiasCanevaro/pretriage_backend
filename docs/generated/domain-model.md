@@ -271,7 +271,7 @@ erDiagram
     MEMBRESIA_HOSPITAL }o--|| HOSPITAL : hospital
     MEMBRESIA_HOSPITAL }o--|| USUARIO_AUTH : creadaPor
     CHAT ||--o{ MENSAJE : mensajes
-    CHAT ||--|| PACIENTE : paciente
+    CHAT }o--|| PACIENTE : paciente
     MENSAJE }o--|| PACIENTE : pacienteAutor
     ATENCION_MEDICA ||--|| CONSULTA_MEDICA : consultaMedica
     ATENCION_MEDICA }o--|| SESION_ATENCION_MEDICA : sesionAtencionMedica
@@ -282,7 +282,7 @@ erDiagram
     CONSULTA_MEDICA }o--|| SECTOR : sector
     CONSULTA_MEDICA }o--|| PACIENTE : paciente
     CONSULTA_MEDICA ||--o{ SINTOMA : sintomasBot
-    CONSULTA_MEDICA ||--o{ MENSAJE : chat
+    CONSULTA_MEDICA ||--|| CHAT : chat
     ENTRADA_COLA }o--|| GESTOR_DE_COLA : gestorDeCola
     ENTRADA_COLA ||--|| CONSULTA_MEDICA : consultaMedica
     ESTUDIO_CLINICO }o--|| PACIENTE : paciente

@@ -27,7 +27,7 @@ public class Chat {
 
     private LocalDateTime fechaHoraCreacion;
 
-    @OneToOne
+    @ManyToOne
     @JoinColumn(name = "paciente_id", referencedColumnName = "id")
     private Paciente paciente;
 

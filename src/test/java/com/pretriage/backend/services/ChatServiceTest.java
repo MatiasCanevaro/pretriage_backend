@@ -4,12 +4,18 @@ import com.pretriage.backend.controllers.dtos.ChatDTO;
 import com.pretriage.backend.controllers.dtos.TriageAiResponse;
 import com.pretriage.backend.controllers.dtos.TriageResultDTO;
 import com.pretriage.backend.controllers.dtos.TiempoEstimadoAtencionResponse;
+import com.pretriage.backend.exceptions.AtencionPendienteException;
+import com.pretriage.backend.model.consultas.ConsultaMedica;
+import com.pretriage.backend.model.consultas.EntradaCola;
+import com.pretriage.backend.model.consultas.EstadoEntradaCola;
 import com.pretriage.backend.model.consultas.NivelDeGravedad;
 import com.pretriage.backend.model.chat.AutorMensaje;
 import com.pretriage.backend.model.chat.Chat;
 import com.pretriage.backend.model.chat.Mensaje;
 import com.pretriage.backend.model.personas.Paciente;
 import com.pretriage.backend.repositories.RepoChat;
+import com.pretriage.backend.repositories.RepoConsultasMedicas;
+import com.pretriage.backend.repositories.RepoEntradasCola;
 import com.pretriage.backend.repositories.RepoPacientes;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,6 +33,8 @@ import static org.mockito.Mockito.*;
 class ChatServiceTest {
     private RepoChat repoChat;
     private RepoPacientes repoPacientes;
+    private RepoConsultasMedicas repoConsultasMedicas;
+    private RepoEntradasCola repoEntradasCola;
     private AtencionHospitalService atencionHospitalService;
     private ChatService chatService;
     private TriageIaClient triageIaClient;
@@ -35,9 +43,11 @@ class ChatServiceTest {
     void setUp() {
         repoChat = mock(RepoChat.class);
         repoPacientes = mock(RepoPacientes.class);
+        repoConsultasMedicas = mock(RepoConsultasMedicas.class);
+        repoEntradasCola = mock(RepoEntradasCola.class);
         atencionHospitalService = mock(AtencionHospitalService.class);
         triageIaClient = mock(TriageIaClient.class);
-        chatService = new ChatService(repoChat, repoPacientes, atencionHospitalService, triageIaClient, new ObjectMapper());
+        chatService = new ChatService(repoChat, repoPacientes, repoConsultasMedicas, repoEntradasCola, atencionHospitalService, triageIaClient, new ObjectMapper());
     }
 
     @Test
@@ -56,6 +66,106 @@ class ChatServiceTest {
 
 
     @Test
+    void iniciarChatSiempreCreaUnChatNuevoYCierraLosAbiertosPrevios() {
+        Paciente paciente = pacienteConId(7L);
+        Chat abiertoPrevio = new Chat(paciente);
+        abiertoPrevio.setId(1L);
+        Chat otroAbiertoPrevio = new Chat(paciente);
+        otroAbiertoPrevio.setId(2L);
+        when(repoPacientes.findByUsuarioAuthId("auth0|paciente")).thenReturn(Optional.of(paciente));
+        when(repoConsultasMedicas.findByPacienteIdAndChatIsNotNull(7L)).thenReturn(List.of());
+        when(repoChat.findAllByPacienteUsuarioAuthIdAndFinalizadoFalse("auth0|paciente"))
+                .thenReturn(List.of(abiertoPrevio, otroAbiertoPrevio));
+        when(repoChat.save(any(Chat.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ChatDTO resultado = chatService.iniciarChat("auth0|paciente");
+
+        assertFalse(resultado.finalizado());
+        assertTrue(abiertoPrevio.isFinalizado());
+        assertTrue(otroAbiertoPrevio.isFinalizado());
+        verify(repoChat).saveAll(List.of(abiertoPrevio, otroAbiertoPrevio));
+        verify(repoChat).save(argThat(chat -> chat != abiertoPrevio && chat != otroAbiertoPrevio
+                && !chat.isFinalizado() && chat.getPaciente() == paciente));
+    }
+
+    @Test
+    void iniciarChatSeBloqueaSiHayAtencionPendienteConChatVinculado() {
+        Paciente paciente = pacienteConId(7L);
+        when(repoPacientes.findByUsuarioAuthId("auth0|paciente")).thenReturn(Optional.of(paciente));
+        ConsultaMedica consulta = consultaConChatVinculado(paciente, 30L);
+        when(repoConsultasMedicas.findByPacienteIdAndChatIsNotNull(7L)).thenReturn(List.of(consulta));
+        when(repoEntradasCola.findByConsultaMedicaId(30L)).thenReturn(Optional.of(entradaEnEstado(EstadoEntradaCola.EN_COLA)));
+
+        assertThrows(AtencionPendienteException.class, () -> chatService.iniciarChat("auth0|paciente"));
+
+        verify(repoChat, never()).findAllByPacienteUsuarioAuthIdAndFinalizadoFalse(anyString());
+        verify(repoChat, never()).saveAll(any());
+        verify(repoChat, never()).save(any(Chat.class));
+    }
+
+    @Test
+    void iniciarChatPermiteSiLaEntradaVinculadaEstaFinalizada() {
+        assertIniciarChatPermitidoConEntradaEn(EstadoEntradaCola.FINALIZADA);
+    }
+
+    @Test
+    void iniciarChatPermiteSiLaEntradaVinculadaEstaCancelada() {
+        assertIniciarChatPermitidoConEntradaEn(EstadoEntradaCola.CANCELADA);
+    }
+
+    @Test
+    void iniciarChatPermiteSinChatVinculadoAunqueHayaEntradaActiva() {
+        Paciente paciente = pacienteConId(7L);
+        when(repoPacientes.findByUsuarioAuthId("auth0|paciente")).thenReturn(Optional.of(paciente));
+        when(repoConsultasMedicas.findByPacienteIdAndChatIsNotNull(7L)).thenReturn(List.of());
+        when(repoChat.findAllByPacienteUsuarioAuthIdAndFinalizadoFalse("auth0|paciente")).thenReturn(List.of());
+        when(repoChat.save(any(Chat.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ChatDTO resultado = chatService.iniciarChat("auth0|paciente");
+
+        assertFalse(resultado.finalizado());
+        verify(repoEntradasCola, never()).findByConsultaMedicaId(any());
+        verify(repoChat).save(any(Chat.class));
+    }
+
+    private void assertIniciarChatPermitidoConEntradaEn(EstadoEntradaCola estado) {
+        Paciente paciente = pacienteConId(7L);
+        when(repoPacientes.findByUsuarioAuthId("auth0|paciente")).thenReturn(Optional.of(paciente));
+        ConsultaMedica consulta = consultaConChatVinculado(paciente, 30L);
+        when(repoConsultasMedicas.findByPacienteIdAndChatIsNotNull(7L)).thenReturn(List.of(consulta));
+        when(repoEntradasCola.findByConsultaMedicaId(30L)).thenReturn(Optional.of(entradaEnEstado(estado)));
+        when(repoChat.findAllByPacienteUsuarioAuthIdAndFinalizadoFalse("auth0|paciente")).thenReturn(List.of());
+        when(repoChat.save(any(Chat.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ChatDTO resultado = chatService.iniciarChat("auth0|paciente");
+
+        assertFalse(resultado.finalizado());
+        verify(repoChat).save(any(Chat.class));
+    }
+
+    private static Paciente pacienteConId(Long id) {
+        Paciente paciente = new Paciente();
+        paciente.setId(id);
+        return paciente;
+    }
+
+    private static ConsultaMedica consultaConChatVinculado(Paciente paciente, Long idConsulta) {
+        ConsultaMedica consulta = new ConsultaMedica();
+        consulta.setId(idConsulta);
+        consulta.setPaciente(paciente);
+        Chat chatVinculado = new Chat(paciente);
+        chatVinculado.setFinalizado(true);
+        consulta.setChat(chatVinculado);
+        return consulta;
+    }
+
+    private static EntradaCola entradaEnEstado(EstadoEntradaCola estado) {
+        EntradaCola entrada = new EntradaCola();
+        entrada.setEstado(estado);
+        return entrada;
+    }
+
+    @Test
     void enviarMensajeCuandoLaIaFallaContinuaConPreguntaFallbackLocal() {
         Paciente paciente = new Paciente();
         Chat chat = new Chat(paciente);
@@ -67,7 +177,7 @@ class ChatServiceTest {
         when(repoChat.save(any(Chat.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(triageIaClient.consultar(anyString(), anyString(), anyBoolean()))
                 .thenThrow(new RuntimeException("ollama down"));
-        when(atencionHospitalService.finalizarTriageEIngresarACola(eq("auth0|paciente"), any(NivelDeGravedad.class), anyString()))
+        when(atencionHospitalService.finalizarTriageEIngresarACola(eq("auth0|paciente"), any(NivelDeGravedad.class), anyString(), any(Chat.class)))
                 .thenReturn(new TiempoEstimadoAtencionResponse());
 
         var resultado = chatService.enviarMensaje("1", "auth0|paciente", "Tengo dolor de cabeza y fiebre desde ayer.");
@@ -162,7 +272,7 @@ class ChatServiceTest {
         when(repoChat.save(any(Chat.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(triageIaClient.consultar(anyString(), anyString(), anyBoolean()))
                 .thenThrow(new RuntimeException("ollama down"));
-        when(atencionHospitalService.finalizarTriageEIngresarACola(eq("auth0|paciente"), any(NivelDeGravedad.class), anyString()))
+        when(atencionHospitalService.finalizarTriageEIngresarACola(eq("auth0|paciente"), any(NivelDeGravedad.class), anyString(), any(Chat.class)))
                 .thenReturn(new TiempoEstimadoAtencionResponse());
 
         var resultado = chatService.enviarMensaje("1", "auth0|paciente",
@@ -187,7 +297,7 @@ class ChatServiceTest {
         when(repoChat.save(any(Chat.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(triageIaClient.consultar(anyString(), anyString(), anyBoolean()))
                 .thenReturn(new TriageAiResponse(false, "¿Cuál es el síntoma más agudo o molestia que estás experimentando?", null));
-        when(atencionHospitalService.finalizarTriageEIngresarACola(eq("auth0|paciente"), any(NivelDeGravedad.class), anyString()))
+        when(atencionHospitalService.finalizarTriageEIngresarACola(eq("auth0|paciente"), any(NivelDeGravedad.class), anyString(), any(Chat.class)))
                 .thenReturn(new TiempoEstimadoAtencionResponse());
 
         var resultado = chatService.enviarMensaje("1", "auth0|paciente", "Tengo dolor de cabeza desde ayer y fiebre de 39, sin dificultad para respirar ni dolor de pecho.");
@@ -241,7 +351,7 @@ class ChatServiceTest {
         when(repoChat.save(any(Chat.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(triageIaClient.consultar(anyString(), anyString(), anyBoolean()))
                 .thenReturn(new TriageAiResponse(true, "Cierre IA detallado", resultadoIa));
-        when(atencionHospitalService.finalizarTriageEIngresarACola(eq("auth0|paciente"), any(NivelDeGravedad.class), anyString()))
+        when(atencionHospitalService.finalizarTriageEIngresarACola(eq("auth0|paciente"), any(NivelDeGravedad.class), anyString(), any(Chat.class)))
                 .thenReturn(new TiempoEstimadoAtencionResponse());
 
         var respuesta = chatService.enviarMensaje("1", "auth0|paciente", "No tengo fiebre ni dificultad para respirar. No tengo enfermedades previas, alergias ni medicacion.");
@@ -286,7 +396,7 @@ class ChatServiceTest {
         assertTrue(chat.isFinalizado());
         assertEquals("OLLAMA", turno.origenRespuesta());
         assertEquals(resultado, new ObjectMapper().readValue(chat.getResultadoTriageJson(), TriageResultDTO.class));
-        verify(atencionHospitalService).finalizarTriageEIngresarACola(eq("auth0|paciente"), eq(NivelDeGravedad.MUY_URGENTE), anyString());
+        verify(atencionHospitalService).finalizarTriageEIngresarACola(eq("auth0|paciente"), eq(NivelDeGravedad.MUY_URGENTE), anyString(), same(chat));
     }
 
     @Test
@@ -344,7 +454,7 @@ class ChatServiceTest {
                         "empeorando", null, List.of("dificultad respiratoria"), List.of(), List.of(), List.of(),
                         "no informado", "signo de alarma", 5, true,
                         "Llama a emergencias de inmediato.")));
-        when(atencionHospitalService.finalizarTriageEIngresarACola(eq("auth0|paciente"), any(NivelDeGravedad.class), anyString()))
+        when(atencionHospitalService.finalizarTriageEIngresarACola(eq("auth0|paciente"), any(NivelDeGravedad.class), anyString(), any(Chat.class)))
                 .thenReturn(new TiempoEstimadoAtencionResponse());
 
         var respuesta = chatService.enviarMensaje("1", "auth0|paciente", "No puedo respirar.");

@@ -38,4 +38,11 @@ class GlobalExceptionHandlerTest {
         assertEquals(HttpStatus.BAD_REQUEST,
                 handler.handleExceptions(new NoSePudoCrearUsuario("error")).getStatusCode());
     }
+
+    @Test
+    void devuelveBadRequestConMensajeParaAtencionPendiente() {
+        var respuesta = handler.handleExceptions(new AtencionPendienteException());
+        assertEquals(HttpStatus.BAD_REQUEST, respuesta.getStatusCode());
+        assertEquals(new AtencionPendienteException().getMessage(), respuesta.getBody().get("error"));
+    }
 }

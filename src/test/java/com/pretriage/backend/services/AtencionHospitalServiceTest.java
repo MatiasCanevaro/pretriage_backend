@@ -6,6 +6,7 @@ import com.pretriage.backend.controllers.dtos.HospitalSeleccionadoResponse;
 import com.pretriage.backend.controllers.dtos.TiempoEstimadoAtencionResponse;
 import com.pretriage.backend.exceptions.AtencionEnCursoException;
 import com.pretriage.backend.exceptions.NoSePudoEstimarElHorarioDeAtencion;
+import com.pretriage.backend.model.chat.Chat;
 import com.pretriage.backend.model.consultas.ConsultaMedica;
 import com.pretriage.backend.model.consultas.EntradaCola;
 import com.pretriage.backend.model.consultas.EstadoConsulta;
@@ -212,9 +213,51 @@ public class AtencionHospitalServiceTest {
                 assertEquals(EstadoConsulta.EN_COLA, consultaPaciente.getEstadoConsulta());
                 assertEquals(NivelDeGravedad.URGENTE, consultaPaciente.getNivelDeGravedadBot());
                 assertSame(responseEsperada, response);
+                assertNull(consultaPaciente.getChat());
                 verify(asignacionSectorService).asignarSector(consultaPaciente);
                 verify(ingresoColaService).ingresar(consultaPaciente, NivelDeGravedad.NORMAL, sector);
                 verify(ingresoColaService).ingresar(consultaPaciente, NivelDeGravedad.URGENTE);
+        }
+
+        @Test
+        void finalizarTriageConChatVinculaLaConsultaAlChatDelPretriage() {
+                String auth0Id = "auth0|123";
+                Paciente paciente = crearPaciente(10L);
+                ConsultaMedica consultaPaciente = crearConsultaPendiente(paciente);
+                consultaPaciente.setEstadoConsulta(EstadoConsulta.HOSPITAL_SELECCIONADO);
+                Chat chat = new Chat(paciente);
+                TiempoEstimadoAtencionResponse responseEsperada = new TiempoEstimadoAtencionResponse();
+
+                when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id)).thenReturn(Optional.of(paciente));
+                when(repoConsultasMedicas.findFirstByPacienteIdAndEstadoConsultaIn(eq(paciente.getId()), any()))
+                                .thenReturn(Optional.of(consultaPaciente));
+                when(ingresoColaService.ingresar(consultaPaciente, NivelDeGravedad.URGENTE)).thenReturn(responseEsperada);
+
+                TiempoEstimadoAtencionResponse response = service.finalizarTriageEIngresarACola(auth0Id,
+                                NivelDeGravedad.URGENTE, "{\"nivelPrioridad\":3}", chat);
+
+                assertSame(chat, consultaPaciente.getChat());
+                assertEquals("{\"nivelPrioridad\":3}", consultaPaciente.getResumenPretriageJson());
+                assertSame(responseEsperada, response);
+                verify(repoConsultasMedicas).save(consultaPaciente);
+        }
+
+        @Test
+        void finalizarTriageSinChatDejaLaConsultaSinVinculo() {
+                String auth0Id = "auth0|123";
+                Paciente paciente = crearPaciente(10L);
+                ConsultaMedica consultaPaciente = crearConsultaPendiente(paciente);
+                consultaPaciente.setEstadoConsulta(EstadoConsulta.HOSPITAL_SELECCIONADO);
+
+                when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0Id)).thenReturn(Optional.of(paciente));
+                when(repoConsultasMedicas.findFirstByPacienteIdAndEstadoConsultaIn(eq(paciente.getId()), any()))
+                                .thenReturn(Optional.of(consultaPaciente));
+                when(ingresoColaService.ingresar(consultaPaciente, NivelDeGravedad.NORMAL))
+                                .thenReturn(new TiempoEstimadoAtencionResponse());
+
+                service.finalizarTriageEIngresarACola(auth0Id, NivelDeGravedad.NORMAL, null);
+
+                assertNull(consultaPaciente.getChat());
         }
 
         @Test

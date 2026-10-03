@@ -57,6 +57,45 @@ Immediate-attention final messages must include the result's safety recommendati
 The real chat E2E must verify final origin, structured content and queue priority;
 an `EN_COLA` state alone does not establish successful AI classification.
 
+Chat lifecycle and consultation link:
+
+- `Chat.paciente` is `@ManyToOne`: a patient can have many chats over time.
+- `POST /api/chat` (`ChatService.iniciarChat`) always creates a new chat. First it
+  rejects with `400 AtencionPendienteException` (patient-facing message) when a
+  `ConsultaMedica` of the patient has a linked chat and its `EntradaCola`
+  (`findByConsultaMedicaId`) is not `FINALIZADA`/`CANCELADA`; then it closes the
+  patient's previous open chats (`RepoChat.findAllByPacienteUsuarioAuthIdAndFinalizadoFalse`),
+  keeping at most one open chat. The validation runs before closing, so a rejection
+  has no side effects.
+- `ConsultaMedica.chat` (`@OneToOne`, FK `consulta_medica.id_chat`, unique) is set
+  only when the bot finalizes the triage:
+  `AtencionHospitalService.finalizarTriageEIngresarACola(auth0Id, nivel, resumenJson, chat)`
+  (2/3-arg overloads keep `chat = null`). "Pretriage realizado" = `ConsultaMedica.chat IS NOT NULL`;
+  reception admissions and aborted/cancelled chats are "no realizado".
+
+### Hospital Metrics
+
+- `MetricasHospitalController` — `GET /api/admin/hospitales/{hospitalId}/metricas?desde&hasta`
+  (`LocalDate`, inclusive). Contract and chart mapping: `docs/06-api-reference.md#hospital-metrics-hospital-admin`.
+- `MetricasHospitalService` — `StaffAccessService.exigirAdminHospital` first (`403` otherwise),
+  `desde > hasta` → `400`, range `[desde 00:00, hasta+1 00:00)`.
+- Queries: `RepoEntradasCola.findFechasHoraIngresoByHospitalEnRango`,
+  `RepoAtencionesMedicas.findAtencionesDelEmbudo` (`AtencionEmbudoProjection`),
+  `RepoConsultasMedicas.contarIngresadosPorNivelBot/Medico` (`ConteoPorNivelProjection`, `null` nivel = `SIN_REVISION`)
+  and `contarIngresadosCon/SinPretriage`.
+- DTOs: `MetricasHospitalResponse`, `DistribucionNivelItem`, `SerieDiariaItem` (`controllers/dtos/metricas`).
+
+Contract rules: everything is anchored on `EntradaCola.fechaHoraIngreso` of the hospital in range;
+`pacientesAtendidos` = those with `AtencionMedica.FINALIZADA`; wait = `fechaHoraInicio - fechaHoraIngreso`
+averaged in Java (no dialect-specific JPQL date math); percentages and waits rounded to 1 decimal
+and `null` when the denominator is 0; `distribucionGravedadBot` always has the 5 `NivelDeGravedad`
+values in declaration order and `distribucionGravedadMedico` the same 5 + `SIN_REVISION` last;
+`serieDiaria` has one zero-filled item per day `desde..hasta`. Invariants:
+`pacientesNoAtendidos = ingresaronACola - pacientesAtendidos`,
+`pretriageRealizado + pretriageNoRealizado = ingresaronACola`, each distribution sums to
+`ingresaronACola`, `sum(serieDiaria.ingresados) = ingresaronACola`,
+`sum(serieDiaria.atendidos) = pacientesAtendidos`.
+
 ### Hospital And Specialty
 
 - `AtencionHospitalService` (incl. `buscarHospitalesCercanos` with `ordenarPor` and availability filter)
@@ -157,6 +196,14 @@ For queue or estimation changes:
 ```powershell
 .\mvnw.cmd "-Dtest=AtencionHospitalServiceTest,EstimacionAtencionServiceTest" test
 ```
+
+For chat lifecycle or hospital metrics changes:
+
+```powershell
+.\mvnw.cmd "-Dtest=ChatServiceTest,AtencionHospitalServiceTest,GlobalExceptionHandlerTest,MetricasHospitalServiceTest,MetricasHospitalControllerTest" test
+```
+
+`RepoMetricasHospitalTest` (date-range queries) needs Docker Desktop like the rest of the repository tests.
 
 For chat behavior changes, run real E2E:
 

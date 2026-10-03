@@ -18,7 +18,7 @@ public class GlobalExceptionHandler {
             ObraSocialSinValidadorException.class, PacienteNoExisteException.class,
             NoSePudoCrearUsuario.class, NoSePudoEstimarElHorarioDeAtencion.class, ChatFinalizadoException.class,
             NoSePudoObtenerHospital.class, ObraSocialYaExisteException.class, ObraSocialNoExisteException.class,
-            RecepcionistaNoExisteException.class,
+            RecepcionistaNoExisteException.class, AtencionPendienteException.class,
             NoSuchElementException.class, IllegalStateException.class, IllegalArgumentException.class,
             TokenCambioContraseniaInvalidoException.class, NoSePudoCambiarContraseniaException.class })
     public ResponseEntity<Map<String, String>> handleExceptions(

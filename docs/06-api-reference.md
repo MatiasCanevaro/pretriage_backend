@@ -313,6 +313,13 @@ Returns dynamic estimate based on `EntradaCola` (`EN_COLA` only, ordered by `pri
 POST /api/chat
 ```
 
+Always creates a **new** chat (`ChatService.iniciarChat`); a patient can have many chats over time (`Chat.paciente` is `@ManyToOne`). Before creating it:
+
+1. **Pending-attention check**: if the patient has a `ConsultaMedica` with a linked chat (`ConsultaMedica.chat IS NOT NULL`) whose `EntradaCola` (`RepoEntradasCola.findByConsultaMedicaId`) is in a state other than `FINALIZADA`/`CANCELADA`, the request fails with `400 { "error": "Ya tenés una atención pendiente. Esperá a que finalice o cancelala antes de iniciar un nuevo pretriage." }` (`AtencionPendienteException`). Nothing is created and previous chats are not modified. Reception admissions (no chat) and chats still in progress do not block.
+2. **Close previous open chats**: every chat of the patient with `finalizado=false` (`RepoChat.findAllByPacienteUsuarioAuthIdAndFinalizadoFalse`) is marked `finalizado=true`, so at most one chat stays open. A client still holding the id of a closed chat gets `400 ChatFinalizadoException` on `POST /api/chat/{id}/mensajes` and must start a new chat.
+
+Success `200 ChatDTO` with the bot greeting as first message.
+
 ### Send Message
 
 ```http
@@ -330,7 +337,9 @@ Body:
 Returns `ChatTurnResponse` with `respuesta`, `atencionEstimada` and the additive
 field `origenRespuesta` (`OLLAMA` or `FALLBACK_LOCAL`). When triage finalizes,
 `atencionEstimada` is populated and the existing queue entry's priority is
-updated. The final stored `Chat.resultadoTriageJson` includes
+updated. When the bot finalizes, the patient's `ConsultaMedica` is linked to this chat
+(`ConsultaMedica.chat`, FK `consulta_medica.id_chat`); that link is what the hospital metrics
+count as "pretriage realizado". The final stored `Chat.resultadoTriageJson` includes
 `origenClasificacion` with the source of that classification. An HTTP success
 can therefore represent either a model response or a local fallback.
 For a final result requiring immediate attention, `respuesta.contenido` includes
@@ -942,3 +951,83 @@ Blocking rules (both checked, `409` if violated):
 * If any `Sala` of the sector has `SesionAtencionMedica` with `estado IN (ACTIVA, PAUSADA)` (`RepoSesionesAtencionMedica.existsBySalaIdInAndEstadoIn`) -> `409 { "error": "No se puede eliminar un sector con sesiones de atención activas o pausadas" }`.
 
 If sector has empty salas (no patients/sessions), `DELETE` desvincula salas (`sala.setSector(null)`) and deletes sector. `404` if sector not in hospital. Audits `SECTOR_ELIMINADO`.
+
+## Hospital Metrics (Hospital Admin)
+
+### Get Hospital Metrics
+
+```http
+GET /api/admin/hospitales/{hospitalId}/metricas?desde=2026-09-01&hasta=2026-09-30
+```
+
+`MetricasHospitalController` → `MetricasHospitalService`. Requires an active `ADMIN_HOSPITAL` membership for `{hospitalId}` (`StaffAccessService.exigirAdminHospital`, checked first) → otherwise `403`. Unauthenticated → `401`.
+
+Query params (both required, ISO `yyyy-MM-dd`, inclusive): `desde`, `hasta`. They are converted to `[desde 00:00, hasta+1 00:00)`. `desde > hasta` → `400` (`IllegalArgumentException`); missing or malformed dates → `400`.
+
+**Funnel semantics**: every metric is anchored on `EntradaCola.fechaHoraIngreso` of the hospital's queues inside the range. `pacientesAtendidos` are, among those entries, the ones whose `AtencionMedica` is `FINALIZADA` (even if it finished after `hasta`). Patients who entered near the end of the period and were not yet attended count as `pacientesNoAtendidos`. Wait time = `AtencionMedica.fechaHoraInicio - EntradaCola.fechaHoraIngreso`, averaged only over attended patients. "Pretriage realizado" = `ConsultaMedica.chat IS NOT NULL` (chatbot finished and queued the patient); reception admissions and aborted chats count as not done. Consultations created before this feature have no linked chat and count as not done. To compare periods, call the endpoint twice with different ranges.
+
+Canonical `200` response:
+
+```json
+{
+  "hospitalId": 1,
+  "desde": "2026-09-01",
+  "hasta": "2026-09-02",
+  "ingresaronACola": 60,
+  "pacientesAtendidos": 42,
+  "pacientesNoAtendidos": 18,
+  "esperaPromedioMinutos": 37.5,
+  "porcentajeAtendidos": 70.0,
+  "distribucionGravedadBot": [
+    { "nivel": "RIESGO_VITAL_INMEDIATO", "cantidad": 3,  "porcentaje": 5.0 },
+    { "nivel": "MUY_URGENTE",            "cantidad": 7,  "porcentaje": 11.7 },
+    { "nivel": "URGENTE",                "cantidad": 20, "porcentaje": 33.3 },
+    { "nivel": "NORMAL",                 "cantidad": 22, "porcentaje": 36.7 },
+    { "nivel": "NO_URGENTE",             "cantidad": 8,  "porcentaje": 13.3 }
+  ],
+  "distribucionGravedadMedico": [
+    { "nivel": "RIESGO_VITAL_INMEDIATO", "cantidad": 2,  "porcentaje": 3.3 },
+    { "nivel": "MUY_URGENTE",            "cantidad": 4,  "porcentaje": 6.7 },
+    { "nivel": "URGENTE",                "cantidad": 15, "porcentaje": 25.0 },
+    { "nivel": "NORMAL",                 "cantidad": 17, "porcentaje": 28.3 },
+    { "nivel": "NO_URGENTE",             "cantidad": 12, "porcentaje": 20.0 },
+    { "nivel": "SIN_REVISION",           "cantidad": 10, "porcentaje": 16.7 }
+  ],
+  "pretriageRealizado": 45,
+  "pretriageNoRealizado": 15,
+  "porcentajePretriageRealizado": 75.0,
+  "serieDiaria": [
+    { "fecha": "2026-09-01", "ingresados": 60, "atendidos": 42, "esperaPromedioMinutos": 37.5 },
+    { "fecha": "2026-09-02", "ingresados": 0,  "atendidos": 0,  "esperaPromedioMinutos": null }
+  ]
+}
+```
+
+| Field | Type | Null? | Notes |
+|---|---|---|---|
+| `hospitalId` | number | no | Echo of the path. |
+| `desde`, `hasta` | string `yyyy-MM-dd` | no | Echo of the request. |
+| `ingresaronACola` | integer ≥ 0 | no | `EntradaCola` of the hospital with `fechaHoraIngreso` in range. |
+| `pacientesAtendidos` | integer ≥ 0 | no | Of those, with `AtencionMedica.estado = FINALIZADA`. |
+| `pacientesNoAtendidos` | integer ≥ 0 | no | `ingresaronACola - pacientesAtendidos`. |
+| `esperaPromedioMinutos` | number (1 decimal) | yes | `null` when `pacientesAtendidos = 0`. |
+| `porcentajeAtendidos` | number 0–100 (1 decimal) | yes | `null` when `ingresaronACola = 0`. |
+| `distribucionGravedadBot` | array of `{nivel, cantidad, porcentaje}` | no | Always the 5 `NivelDeGravedad` values in declaration order, from `ConsultaMedica.nivelDeGravedadBot`. |
+| `distribucionGravedadMedico` | array of `{nivel, cantidad, porcentaje}` | no | Same 5 levels from `nivelDeGravedadMedico` + `SIN_REVISION` last (no doctor review yet). |
+| `…[].porcentaje` | number 0–100 (1 decimal) | yes | `null` when `ingresaronACola = 0`. |
+| `pretriageRealizado` / `pretriageNoRealizado` | integer ≥ 0 | no | `ConsultaMedica.chat` not null / null. |
+| `porcentajePretriageRealizado` | number 0–100 (1 decimal) | yes | `null` when `ingresaronACola = 0`. |
+| `serieDiaria` | array of `{fecha, ingresados, atendidos, esperaPromedioMinutos}` | no | One item per calendar day `desde..hasta` ascending, zero-filled; grouped by the day of `fechaHoraIngreso`; `esperaPromedioMinutos` is `null` on days without attended patients. |
+
+Invariants (closed by construction): `pacientesNoAtendidos = ingresaronACola - pacientesAtendidos`; `pretriageRealizado + pretriageNoRealizado = ingresaronACola`; sum of `cantidad` of each distribution `= ingresaronACola`; `sum(serieDiaria.ingresados) = ingresaronACola`; `sum(serieDiaria.atendidos) = pacientesAtendidos`.
+
+Suggested metric → chart mapping:
+
+| Metric | Chart |
+|---|---|
+| `ingresaronACola`, `pacientesAtendidos`, `esperaPromedioMinutos`, `porcentajeAtendidos` | KPI tiles |
+| `ingresaronACola` → `pacientesAtendidos` / `pacientesNoAtendidos` | Funnel or stacked bar |
+| `distribucionGravedadBot` vs `distribucionGravedadMedico` | Grouped bars (one group per `nivel`) |
+| `pretriageRealizado` / `pretriageNoRealizado` | Donut |
+| `serieDiaria.ingresados` + `serieDiaria.atendidos` | Line/area over `fecha` |
+| `serieDiaria.esperaPromedioMinutos` | Line over `fecha` (gaps on `null`) |

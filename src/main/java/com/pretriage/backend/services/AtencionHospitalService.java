@@ -8,6 +8,7 @@ import com.pretriage.backend.controllers.dtos.SalaDTO;
 import com.pretriage.backend.controllers.dtos.TiempoEstimadoArriboHospitalResponse;
 import com.pretriage.backend.controllers.dtos.TiempoEstimadoAtencionResponse;
 import com.pretriage.backend.exceptions.AtencionEnCursoException;
+import com.pretriage.backend.model.chat.Chat;
 import com.pretriage.backend.model.consultas.ConsultaMedica;
 import com.pretriage.backend.model.consultas.EstadoConsulta;
 import com.pretriage.backend.model.consultas.NivelDeGravedad;
@@ -267,9 +268,23 @@ public class AtencionHospitalService {
     @Transactional
     public TiempoEstimadoAtencionResponse finalizarTriageEIngresarACola(
             String auth0Id, NivelDeGravedad nivelDeGravedadBot, String resumenPretriageJson) {
+        return finalizarTriageEIngresarACola(auth0Id, nivelDeGravedadBot, resumenPretriageJson, null);
+    }
+
+    /**
+     * Finaliza el pretriage del chatbot: guarda el resumen, vincula la consulta con el chat que la
+     * generó (si se informa) e ingresa al paciente a la cola con la gravedad estimada por el bot.
+     * Un {@code chat} null deja la consulta sin vínculo (cuenta como pretriage no realizado).
+     */
+    @Transactional
+    public TiempoEstimadoAtencionResponse finalizarTriageEIngresarACola(
+            String auth0Id, NivelDeGravedad nivelDeGravedadBot, String resumenPretriageJson, Chat chat) {
         Paciente paciente = this.obtenerPaciente(auth0Id);
         ConsultaMedica consultaMedica = obtenerConsultaConHospitalSeleccionado(paciente);
         consultaMedica.setResumenPretriageJson(resumenPretriageJson);
+        if (chat != null) {
+            consultaMedica.setChat(chat);
+        }
         repoConsultasMedicas.save(consultaMedica);
         return ingresoColaService.ingresar(consultaMedica, nivelDeGravedadBot);
     }

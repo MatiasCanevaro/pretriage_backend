@@ -4,6 +4,7 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 import com.pretriage.backend.controllers.dtos.*;
+import com.pretriage.backend.exceptions.AtencionPendienteException;
 import com.pretriage.backend.exceptions.ChatFinalizadoException;
 import com.pretriage.backend.exceptions.ChatNoEncontradoException;
 import com.pretriage.backend.exceptions.PacienteNoExisteException;
@@ -13,17 +14,24 @@ import com.pretriage.backend.mappers.MapperMensaje;
 import com.pretriage.backend.model.chat.AutorMensaje;
 import com.pretriage.backend.model.chat.Chat;
 import com.pretriage.backend.model.chat.Mensaje;
+import com.pretriage.backend.model.consultas.ConsultaMedica;
+import com.pretriage.backend.model.consultas.EntradaCola;
+import com.pretriage.backend.model.consultas.EstadoEntradaCola;
 import com.pretriage.backend.model.consultas.NivelDeGravedad;
 import com.pretriage.backend.model.personas.Paciente;
 import com.pretriage.backend.repositories.RepoChat;
+import com.pretriage.backend.repositories.RepoConsultasMedicas;
+import com.pretriage.backend.repositories.RepoEntradasCola;
 import com.pretriage.backend.repositories.RepoPacientes;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -97,33 +105,71 @@ public class ChatService {
 
     private static final Pattern INTENSIDAD_PATRON = Pattern.compile("(\\b\\d{1,2})\\s*/\\s*10|(\\b\\d{1,2})\\s+de\\s+10");
 
+    private static final Set<EstadoEntradaCola> ESTADOS_ENTRADA_TERMINALES =
+            EnumSet.of(EstadoEntradaCola.FINALIZADA, EstadoEntradaCola.CANCELADA);
+
     private final RepoChat repoChat;
     private final RepoPacientes repoPacientes;
+    private final RepoConsultasMedicas repoConsultasMedicas;
+    private final RepoEntradasCola repoEntradasCola;
     private final AtencionHospitalService atencionHospitalService;
     private final TriageIaClient triageIaClient;
     private final ObjectMapper objectMapper;
 
     public ChatService(RepoChat repoChat,
                        RepoPacientes repoPacientes,
+                       RepoConsultasMedicas repoConsultasMedicas,
+                       RepoEntradasCola repoEntradasCola,
                        AtencionHospitalService atencionHospitalService,
                        TriageIaClient triageIaClient,
                        ObjectMapper objectMapper) {
         this.repoChat = repoChat;
         this.repoPacientes = repoPacientes;
+        this.repoConsultasMedicas = repoConsultasMedicas;
+        this.repoEntradasCola = repoEntradasCola;
         this.atencionHospitalService = atencionHospitalService;
         this.triageIaClient = triageIaClient;
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * Siempre crea un chat nuevo. Antes valida que el paciente no tenga una atención pendiente
+     * (consulta con chat vinculado cuya entrada de cola no es terminal) y luego cierra los chats
+     * abiertos previos, de modo que quede a lo sumo un chat abierto por paciente.
+     */
     @Transactional
     public ChatDTO iniciarChat(String idPaciente) {
         Paciente paciente = repoPacientes.findByUsuarioAuthId(idPaciente)
                 .orElseThrow(PacienteNoExisteException::new);
 
+        validarSinAtencionPendiente(paciente);
+        cerrarChatsAbiertos(idPaciente);
+
         Chat chat = new Chat(paciente);
         chat.agregarMensaje(new Mensaje(MENSAJE_INICIAL, AutorMensaje.BOT, null));
         repoChat.save(chat);
         return MapperChat.toDTO(chat);
+    }
+
+    private void validarSinAtencionPendiente(Paciente paciente) {
+        List<ConsultaMedica> consultasConChat = repoConsultasMedicas.findByPacienteIdAndChatIsNotNull(paciente.getId());
+        boolean hayAtencionPendiente = consultasConChat.stream()
+                .map(consulta -> repoEntradasCola.findByConsultaMedicaId(consulta.getId()))
+                .flatMap(Optional::stream)
+                .map(EntradaCola::getEstado)
+                .anyMatch(estado -> !ESTADOS_ENTRADA_TERMINALES.contains(estado));
+        if (hayAtencionPendiente) {
+            throw new AtencionPendienteException();
+        }
+    }
+
+    private void cerrarChatsAbiertos(String idPaciente) {
+        List<Chat> chatsAbiertos = repoChat.findAllByPacienteUsuarioAuthIdAndFinalizadoFalse(idPaciente);
+        if (chatsAbiertos.isEmpty()) {
+            return;
+        }
+        chatsAbiertos.forEach(chatAbierto -> chatAbierto.setFinalizado(true));
+        repoChat.saveAll(chatsAbiertos);
     }
 
     @Transactional(readOnly = true)
@@ -203,7 +249,8 @@ public class ChatService {
             atencionEstimada = atencionHospitalService.finalizarTriageEIngresarACola(
                     idPaciente,
                     nivelDeGravedadDesdePrioridad(resultadoConPrioridad.nivelPrioridad()),
-                    resultadoJson);
+                    resultadoJson,
+                    chat);
         }
 
         repoChat.save(chat);

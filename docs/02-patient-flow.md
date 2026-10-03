@@ -21,9 +21,9 @@ flowchart TD
 4. Backend creates or updates the active `ConsultaMedica` with the selected hospital and specialty.
 5. Backend assigns a sector to the consultation (`AsignacionSectorService`: active sector of the hospital+specialty with the fewest `EN_COLA` entries and at least one active room). If no sector is available the selection fails.
 6. The consultation enters the sector queue immediately: `EN_COLA` state and an `EntradaCola` with default priority are created, tied to the `GestorDeCola` of `hospital+especialidad+sector`.
-7. Patient starts chat (optional).
+7. Patient starts chat (optional). `POST /api/chat` always creates a new chat and closes the patient's previous open chats (see "Starting A Chat" below).
 8. Bot asks clinical questions.
-9. When triage finishes, `Chat.resultadoTriageJson` is stored.
+9. When triage finishes, `Chat.resultadoTriageJson` is stored and the `ConsultaMedica` is linked to that chat (`ConsultaMedica.chat`). Only this link marks the consultation as "pretriage realizado" for hospital metrics; selecting a hospital without the chatbot, reception admissions and chats closed without finishing leave `ConsultaMedica.chat = null`.
 10. `nivelDeGravedadBot` is mapped from AI priority.
 11. The existing `EntradaCola` priority is updated with the pretriage result.
 12. Estimated attention time is returned dynamically.
@@ -34,6 +34,14 @@ hospital data. The same assigned sector (`sectorId`/`nombreSector`) is also
 returned by `GET /api/paciente/consulta/estado` and in every estimated-time
 response (`TiempoEstimadoAtencionResponse`), so the patient always knows which
 sector to wait in.
+
+## Starting A Chat
+
+A patient can have several chats over time (`Chat.paciente` is `@ManyToOne`). `ChatService.iniciarChat`:
+
+1. **Blocks on pending attention**: if any `ConsultaMedica` of the patient has a linked chat and its `EntradaCola` is not `FINALIZADA`/`CANCELADA` (e.g. `EN_COLA`, `LLAMADO`, `EN_ESPERA`, `ATRASADO`, `EN_ATENCION`), responds `400` with a patient-facing message (`AtencionPendienteException`) and changes nothing. The check is anchored on the chat↔consultation link, not on any active `EntradaCola`: the entry is created when the hospital is selected (step 6), before the chat starts, so the normal flow is never blocked.
+2. Marks every previous open chat (`finalizado=false`) as `finalizado=true`, keeping at most one open chat per patient (the invariant `EsperaPacienteService.finalizarChatAbierto` relies on).
+3. Creates the new chat with the bot greeting.
 
 ## Waiting And Absence Rules
 
@@ -113,4 +121,4 @@ Patients can manage their medical study files (radiology scans, lab reports, etc
 
 ### Doctor Access
 
-During attention, doctors can view patient studies through the medical history endpoints documented in the API reference.
+During attention, doctors can view patient studies through the medical history endpoints documented in the API reference.
