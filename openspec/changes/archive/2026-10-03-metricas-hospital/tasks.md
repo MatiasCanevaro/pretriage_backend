@@ -26,6 +26,6 @@
 
 - [x] 4.1 Actualizar `docs/ai-agent-context.md` con el vínculo consulta↔chat, la regla de "pretriage realizado", el comportamiento de `iniciarChat` (siempre chat nuevo, cierra previos, 400 por atención pendiente) y el nuevo endpoint con su contrato de respuesta (campos, invariantes de cierre y serie diaria); verificar que las rutas de endpoints documentados coinciden con la implementación
 - [x] 4.2 Documentar en `docs/06-api-reference.md` el comportamiento de `POST /api/chat` (siempre chat nuevo, cierre de chats abiertos previos y 400 por atención pendiente) y en `docs/02-patient-flow.md` la regla de bloqueo; verificar que las rutas y códigos documentados coinciden con la implementación
-- [ ] 4.3 Ejecutar `./mvnw.cmd test -DskipTests` y verificar compilación limpia
-- [ ] 4.4 Ejecutar `./mvnw.cmd "-Dtest=ChatServiceTest,AtencionHospitalServiceTest,GlobalExceptionHandlerTest,MetricasHospitalServiceTest" test` y verificar suite en verde
-- [ ] 4.5 Ejecutar la suite completa `./mvnw.cmd test` (requiere Docker Desktop) y verificar sin regresiones
+- [x] 4.3 Ejecutar `./mvnw.cmd test -DskipTests` y verificar compilación limpia
+- [x] 4.4 Ejecutar `./mvnw.cmd "-Dtest=ChatServiceTest,AtencionHospitalServiceTest,GlobalExceptionHandlerTest,MetricasHospitalServiceTest" test` y verificar suite en verde
+- [x] 4.5 Ejecutar la suite completa `./mvnw.cmd test` (requiere Docker Desktop) y verificar sin regresiones
