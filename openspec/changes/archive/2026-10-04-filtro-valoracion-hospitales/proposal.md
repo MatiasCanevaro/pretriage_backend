@@ -19,7 +19,7 @@ No hay cambios de contrato en la forma de la respuesta, ni cambios JPA, ni migra
 
 ### New Capabilities
 
-- `hospital-selection`: selección de hospitales por el paciente: listado cercano filtrado por especialidad, criterios de orden (`distancia`, `tiempo-atencion`, `valoracion`) y datos expositos por hospital para elegir institución.
+- `filtro-valoracion-hospitales`: selección de hospitales por el paciente: listado cercano filtrado por especialidad, criterios de orden (`distancia`, `tiempo-atencion`, `valoracion`) y datos expositos por hospital para elegir institución.
 
 ### Modified Capabilities
 

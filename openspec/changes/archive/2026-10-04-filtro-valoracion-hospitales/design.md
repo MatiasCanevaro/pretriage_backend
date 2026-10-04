@@ -4,7 +4,7 @@
 
 `GET /api/hospitales/cercanos` (`HospitalController:34`) orquesta `AtencionHospitalService.buscarHospitalesCercanos:84`: busca lugares cercanos vía `GooglePlacesService.buscarHospitales` (Nearby Search, radio 5 km, máximo 20), filtra por especialidad contra la DB, enriquece con tiempos/colas y ordena según `ordenarPor`. La valoración de Google no se solicita hoy: `NEARBY_FIELD_MASK` (`GooglePlacesService.java:62`) solo pide `places.id,displayName,formattedAddress,location,types`, y ni `GooglePlaceDTO` ni `HospitalCercanoDTO` tienen campos de valoración.
 
-El orden combinado está hardcodeado para el par `distancia|tiempo-atencion` (`AtencionHospitalService.java:144-168`): suma la posición de Google (distancia) con la posición según `comparatorPorTiempoAtencion()`. Ver proposal.md para la motivación y specs/hospital-selection/spec.md para los requisitos.
+El orden combinado está hardcodeado para el par `distancia|tiempo-atencion` (`AtencionHospitalService.java:144-168`): suma la posición de Google (distancia) con la posición según `comparatorPorTiempoAtencion()`. Ver proposal.md para la motivación y specs/filtro-valoracion-hospitales/spec.md para los requisitos.
 
 ## Goals / Non-Goals
 
