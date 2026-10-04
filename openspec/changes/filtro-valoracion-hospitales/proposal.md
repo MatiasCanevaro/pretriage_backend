@@ -29,6 +29,6 @@ No hay cambios de contrato en la forma de la respuesta, ni cambios JPA, ni migra
 
 - **Código**: `GooglePlacesService` (field mask + mapeo), `GooglePlaceDTO`, `HospitalCercanoDTO`, `AtencionHospitalService` (`ORDENES_VALIDOS`, comparador de valoración, generalización del orden combinado).
 - **API**: valores aceptados de `ordenarPor` y campos del DTO en `GET /api/hospitales/cercanos`; la forma de la respuesta (lista) no cambia.
-- **Dependencias externas**: Google Places API (New) Nearby Search — `places.rating`/`places.userRatingCount` en el mismo tier Pro que `displayName` ya usa; verificar la tabla de precios al implementar.
+- **Dependencias externas**: Google Places API (New) Nearby Search — `places.rating`/`places.userRatingCount` suben el field mask al tier Enterprise (verificado 2026-10: más caro que el tier Pro de `displayName`; ver Javadoc de `GooglePlacesService.NEARBY_FIELD_MASK`); se informa al usuario antes de mergear.
 - **Tests**: `AtencionHospitalServiceTest` (orden y combinados), `GooglePlacesServiceTest` (fixtures WireMock con rating y ausencia de campos).
 - **Docs**: `docs/06-api-reference.md`, `docs/12-hospital-selection-and-arrival.md`, `docs/04-queue-and-estimation.md`, `docs/ai-agent-context.md`. Sin regeneración de `docs/generated/domain-model.*` (no hay cambios en entidades JPA).

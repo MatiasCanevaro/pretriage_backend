@@ -13,5 +13,7 @@ public class GooglePlaceDTO {
     private String formattedAddress;
     private LatLng location;
     private List<String> types;
+    private Double rating;
+    private Integer userRatingCount;
 
 }

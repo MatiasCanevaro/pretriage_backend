@@ -31,4 +31,8 @@ public class HospitalCercanoDTO {
 
     private LocalDateTime fechaHoraAtencionEstimada;
 
+    private Double valoracionPromedio;
+
+    private Integer cantidadValoraciones;
+
 }

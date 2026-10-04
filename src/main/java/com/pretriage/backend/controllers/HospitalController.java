@@ -23,13 +23,13 @@ public class HospitalController {
 
         /*
          * ordenarPor define el criterio de orden del resultado (valores validos en
-         * ORDENES_VALIDOS):
+         * ORDENES_VALIDOS, case-sensitive, combinados con |):
          * - "distancia" (default) conserva el orden de proximidad de Google Places
          * - "tiempo-atencion" ordena por menor tiempo estimado de espera en cola
-         * - "distancia|tiempo-atencion" ordena de forma combinada por suma de rankings
-         * (distancia + tiempo)
-         * - "tiempo-atencion|distancia" equivalente al anterior (el orden no importa,
-         * se usa &)
+         * - "valoracion" ordena por mayor valoracion de Google Places (null = 0,
+         * van al final); desempata por cantidad de valoraciones y luego por nombre
+         * - "distancia|tiempo-atencion" (o cualquier combinacion, ej.
+         * "distancia|tiempo-atencion|valoracion") ordena por suma de rankings
          */
         @GetMapping("/api/hospitales/cercanos")
         public ResponseEntity<List<HospitalCercanoDTO>> obtenerHospitalesCercanos(

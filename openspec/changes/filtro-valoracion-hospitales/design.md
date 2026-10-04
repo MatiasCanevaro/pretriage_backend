@@ -39,7 +39,7 @@ El endpoint sigue devolviendo `List<HospitalCercanoDTO>`; los campos nuevos son 
 
 ## Risks / Trade-offs
 
-- [Costo SKU de Google Places por los campos nuevos] → `places.rating`/`places.userRatingCount` deben verificarse en la tabla de precios de Nearby Search al implementar; `displayName` ya sube el mask al tier Pro, se espera el mismo tier. Si el costo fuera inaceptable, la mitigación es degradar a no pedirlos y suspender el criterio (no hay fallback alternativo barato).
+- [Costo SKU de Google Places por los campos nuevos] → verificado al implementar (2026-10): `places.rating`/`places.userRatingCount` suben el mask de Nearby Search del tier Pro al tier **Enterprise** (se factura el SKU más alto del mask; Enterprise incluye 1.000 requests gratis/mes). Resultado documentado en el Javadoc de `GooglePlacesService.NEARBY_FIELD_MASK`. Como abre un SKU más caro que el tier Pro, se informa al usuario antes de mergear para que confirme que el costo es aceptable; si no lo fuera, la mitigación es degradar a no pedirlos y suspender el criterio (no hay fallback alternativo barato).
 - [Orden combinado generalizado toca lógica existente de `distancia|tiempo-atencion`] → cubrir con los tests existentes de orden combinado (`AtencionHospitalServiceTest:681`, `:725`) que deben seguir pasando sin cambios, más nuevos tests para las combinaciones con `valoracion`.
 - [Valoraciones volátiles (cambian entre requests)] → aceptado: es el mismo carácter de distancia/tiempos ya en vivo; no hay requisito de consistencia entre llamadas.
 - [Hospitales pequeños sin reseñas quedan sistemáticamente al final] → comportamiento pedido por la historia (tratar como 0); el frontend muestra "sin valoraciones" y el paciente decide.
@@ -50,4 +50,4 @@ Despliegue sin migraciones ni cambios de contrato: los campos nuevos son aditivo
 
 ## Open Questions
 
-- Verificar al implementar que `places.rating` y `places.userRatingCount` no abren un SKU de Google Places más caro que el tier Pro actual (D2). Si abren uno nuevo, informar al usuario antes de merger — no cambia specs ni diseño, solo puede afectar la decisión de seguir adelante.
+- ~~Verificar al implementar que `places.rating` y `places.userRatingCount` no abren un SKU de Google Places más caro que el tier Pro actual (D2).~~ **Resuelto (2026-10):** sí abren uno nuevo (tier Enterprise, más caro que Pro); el resultado está documentado en el Javadoc de `GooglePlacesService.NEARBY_FIELD_MASK` y se informa al usuario antes de mergear — no cambia specs ni diseño, solo puede afectar la decisión de seguir adelante.

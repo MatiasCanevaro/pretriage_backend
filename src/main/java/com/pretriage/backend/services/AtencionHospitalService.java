@@ -31,6 +31,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -57,9 +58,14 @@ public class AtencionHospitalService {
             EstadoConsulta.ATRASADO,
             EstadoConsulta.EN_ATENCION);
 
+    private static final String ORDEN_DISTANCIA = "distancia";
+    private static final String ORDEN_TIEMPO_ATENCION = "tiempo-atencion";
+    private static final String ORDEN_VALORACION = "valoracion";
+
     private static final List<String> ORDENES_VALIDOS = List.of(
-            "distancia",
-            "tiempo-atencion");
+            ORDEN_DISTANCIA,
+            ORDEN_TIEMPO_ATENCION,
+            ORDEN_VALORACION);
 
     private static final List<EstadoConsulta> ESTADOS_CONSULTA_CON_HOSPITAL = List.of(
             EstadoConsulta.HOSPITAL_SELECCIONADO,
@@ -139,33 +145,11 @@ public class AtencionHospitalService {
                 .filter(HospitalCercanoDTO::isDisponible)
                 .toList();
 
-        boolean porTiempo = criterios.contains(ORDENES_VALIDOS.get(1)); // tiempo-atencion
-        boolean porDistancia = criterios.contains(ORDENES_VALIDOS.get(0)); // distancia
+        boolean porTiempo = criterios.contains(ORDEN_TIEMPO_ATENCION);
+        boolean porValoracion = criterios.contains(ORDEN_VALORACION);
 
-        if (porTiempo && porDistancia) {
-            Map<String, Integer> posicionGoogle = IntStream.range(0, hospitalesCercanos.size())
-                    .boxed()
-                    .collect(Collectors.toMap(
-                            i -> hospitalesCercanos.get(i).getPlaceId(),
-                            i -> i,
-                            (a, b) -> a));
-            List<HospitalCercanoDTO> ordenPorTiempo = resultado.stream()
-                    .sorted(comparatorPorTiempoAtencion())
-                    .toList();
-            Map<String, Integer> posicionTiempo = IntStream.range(0, ordenPorTiempo.size())
-                    .boxed()
-                    .collect(Collectors.toMap(
-                            i -> ordenPorTiempo.get(i).getPlaceId(),
-                            i -> i,
-                            (a, b) -> a));
-            return resultado.stream()
-                    .sorted(Comparator
-                            .<HospitalCercanoDTO>comparingInt(
-                                    dto -> posicionGoogle.getOrDefault(dto.getPlaceId(), Integer.MAX_VALUE)
-                                            + posicionTiempo.getOrDefault(dto.getPlaceId(), Integer.MAX_VALUE))
-                            .thenComparing(HospitalCercanoDTO::getNombre,
-                                    Comparator.nullsLast(Comparator.naturalOrder())))
-                    .toList();
+        if (criterios.size() > 1) {
+            return ordenarPorSumaDeRankings(resultado, criterios);
         }
 
         if (porTiempo) {
@@ -174,13 +158,86 @@ public class AtencionHospitalService {
                     .toList();
         }
 
+        if (porValoracion) {
+            return resultado.stream()
+                    .sorted(comparatorPorValoracion())
+                    .toList();
+        }
+
+        // distancia: conserva el orden de proximidad de Google Places
         return resultado;
+    }
+
+    /**
+     * Orden combinado: para cada criterio pedido se calcula la posicion del
+     * hospital en su orden individual y se suman; desempata por nombre (el
+     * devuelto por Google) y, con nombres iguales o ausentes, conserva el orden
+     * de Google (el sort es estable sobre una lista que viene en ese orden).
+     */
+    private List<HospitalCercanoDTO> ordenarPorSumaDeRankings(List<HospitalCercanoDTO> resultado,
+            List<String> criterios) {
+        Map<String, Integer> sumaRankings = new HashMap<>();
+        for (HospitalCercanoDTO dto : resultado) {
+            sumaRankings.put(dto.getPlaceId(), 0);
+        }
+
+        for (String criterio : criterios) {
+            List<HospitalCercanoDTO> ordenCriterioBase = resultado;
+            if (ORDEN_TIEMPO_ATENCION.equals(criterio)) {
+                ordenCriterioBase = resultado.stream()
+                        .sorted(comparatorPorTiempoAtencion())
+                        .toList();
+            } else if (ORDEN_VALORACION.equals(criterio)) {
+                ordenCriterioBase = resultado.stream()
+                        .sorted(comparatorPorValoracion())
+                        .toList();
+            }
+            // distancia: el propio orden de resultado (orden de Google)
+            final List<HospitalCercanoDTO> ordenCriterio = ordenCriterioBase;
+
+            Map<String, Integer> posiciones = IntStream.range(0, ordenCriterio.size())
+                    .boxed()
+                    .collect(Collectors.toMap(
+                            i -> ordenCriterio.get(i).getPlaceId(),
+                            i -> i,
+                            (a, b) -> a));
+            for (HospitalCercanoDTO dto : resultado) {
+                sumaRankings.merge(dto.getPlaceId(),
+                        posiciones.getOrDefault(dto.getPlaceId(), Integer.MAX_VALUE),
+                        Integer::sum);
+            }
+        }
+
+        Map<String, Integer> rankings = sumaRankings;
+        return resultado.stream()
+                .sorted(Comparator
+                        .<HospitalCercanoDTO>comparingInt(dto -> rankings.getOrDefault(dto.getPlaceId(), Integer.MAX_VALUE))
+                        .thenComparing(HospitalCercanoDTO::getNombre,
+                                Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
     }
 
     private Comparator<HospitalCercanoDTO> comparatorPorTiempoAtencion() {
         return Comparator.comparing(HospitalCercanoDTO::getMinutosEsperaEstimados,
                 Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(HospitalCercanoDTO::getTiempoEstimadoArriboMejorRuta,
+                        Comparator.nullsLast(Comparator.naturalOrder()));
+    }
+
+    /**
+     * Valoracion de mayor a menor; sin valoracion (null) se trata como puntaje 0.
+     * Desempate por cantidad de valoraciones (mayor a menor, null = 0) y luego
+     * por nombre del hospital (el devuelto por Google) ASC.
+     */
+    private Comparator<HospitalCercanoDTO> comparatorPorValoracion() {
+        return Comparator
+                .comparing((HospitalCercanoDTO dto) -> dto.getValoracionPromedio() != null
+                        ? dto.getValoracionPromedio() : 0d,
+                        Comparator.reverseOrder())
+                .thenComparing(dto -> dto.getCantidadValoraciones() != null
+                        ? dto.getCantidadValoraciones() : 0,
+                        Comparator.reverseOrder())
+                .thenComparing(HospitalCercanoDTO::getNombre,
                         Comparator.nullsLast(Comparator.naturalOrder()));
     }
 

@@ -142,7 +142,7 @@ minutosEsperaEstimados = bloquesEspera * minutosPromedioAtencion
 fechaHoraAtencionEstimada = now + minutosEsperaEstimados
 ```
 
-Only `EntradaCola.EN_COLA` entries are counted, never `GestorDeCola.consultasEnEspera`. A hospital is considered available for ranking only when `medicosActivos > 0` (`disponible=true`); otherwise it is excluded and an empty ranking means the frontend must display "no hay hospitales disponibles". Valid `ordenarPor` values live in `AtencionHospitalService.ORDENES_VALIDOS` (`distancia`, `tiempo-atencion` y combinados `distancia|tiempo-atencion`/`tiempo-atencion|distancia`), el orden es indistinto y extensible con `&`; el combinado usa suma de rankings (distancia según Google + tiempo según minutosEspera).
+Only `EntradaCola.EN_COLA` entries are counted, never `GestorDeCola.consultasEnEspera`. A hospital is considered available for ranking only when `medicosActivos > 0` (`disponible=true`); otherwise it is excluded and an empty ranking means the frontend must display "no hay hospitales disponibles". Valid `ordenarPor` values live in `AtencionHospitalService.ORDENES_VALIDOS` (`distancia`, `tiempo-atencion`, `valoracion` y combinados como `distancia|tiempo-atencion` o `distancia|tiempo-atencion|valoracion`), el orden de los criterios es indistinto, el separador es `|`, los valores son case-sensitive y extensible; el combinado usa suma de rankings (distancia según la posición en Google + tiempo según minutosEspera + valoración según `valoracionPromedio` de Google, con `null` tratado como 0), y los empates se rompen por `nombre` y luego por el orden de Google.
 
 ## When Estimation Changes
 
