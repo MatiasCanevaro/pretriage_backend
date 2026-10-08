@@ -24,7 +24,7 @@ public class GlobalExceptionHandler {
             RecepcionistaNoExisteException.class, AtencionPendienteException.class,
             NoSuchElementException.class, IllegalStateException.class, IllegalArgumentException.class,
             TokenCambioContraseniaInvalidoException.class, NoSePudoCambiarContraseniaException.class,
-            ConstraintViolationException.class })
+            ConstraintViolationException.class, ChatNoEncontradoException.class })
     public ResponseEntity<Map<String, String>> handleExceptions(
             RuntimeException e) {
 
