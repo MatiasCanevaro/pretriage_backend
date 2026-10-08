@@ -50,6 +50,9 @@ public class MetricasHospitalService {
         if (desde.isAfter(hasta)) {
             throw new IllegalArgumentException("La fecha desde no puede ser posterior a la fecha hasta");
         }
+        if (desde.isEqual(hasta)) {
+            throw new IllegalArgumentException("La fecha desde no puede ser igual a la fecha hasta");
+        }
 
         LocalDateTime inicio = desde.atStartOfDay();
         LocalDateTime fin = hasta.plusDays(1).atStartOfDay();

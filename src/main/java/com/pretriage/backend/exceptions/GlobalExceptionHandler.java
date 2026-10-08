@@ -10,6 +10,9 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+
+import jakarta.validation.ConstraintViolationException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -20,7 +23,8 @@ public class GlobalExceptionHandler {
             NoSePudoObtenerHospital.class, ObraSocialYaExisteException.class, ObraSocialNoExisteException.class,
             RecepcionistaNoExisteException.class, AtencionPendienteException.class,
             NoSuchElementException.class, IllegalStateException.class, IllegalArgumentException.class,
-            TokenCambioContraseniaInvalidoException.class, NoSePudoCambiarContraseniaException.class })
+            TokenCambioContraseniaInvalidoException.class, NoSePudoCambiarContraseniaException.class,
+            ConstraintViolationException.class })
     public ResponseEntity<Map<String, String>> handleExceptions(
             RuntimeException e) {
 
@@ -74,4 +78,21 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(errores);
     }
 
+    @ExceptionHandler({ MethodArgumentTypeMismatchException.class })
+    public ResponseEntity<Map<String, String>> handleValidation(
+            MethodArgumentTypeMismatchException e) {
+        String parametro = e.getName();
+        String tipo = e.getRequiredType().getSimpleName();
+        String errorMessage;
+        if (tipo.equals("LocalDate")) {
+            errorMessage = "El parámetro: '" + parametro + "' debe ser del tipo: '"
+                    + tipo + "' con el formato: 'YYYY-MM-DD'";
+        } else {
+            errorMessage = "El parámetro: '" + parametro + "' debe ser del tipo: '" + tipo + "'";
+        }
+
+        return ResponseEntity.badRequest()
+                .body(Map.of("error", errorMessage));
+    }
+    
 }
