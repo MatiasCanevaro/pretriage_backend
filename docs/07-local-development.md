@@ -140,6 +140,100 @@ the voice configuration requires a real servlet WebSocket `ServerContainer`, whi
 the default mock servlet context does not provide. `BackendApplicationTests`
 also checks the configured binary/text buffer limits and idle timeout.
 
+## Chat History Schema Migration
+
+`Chat.paciente` now maps many chats to one patient, preserving previous interview
+history after a new consultation starts. On an existing PostgreSQL database,
+remove the unique constraint left by the old `OneToOne` mapping:
+
+```powershell
+Get-Content -Raw scripts/migrations/20261011_chat_patient_history.sql | docker exec -i postgre psql -X -U myuser -d pretriage_db -v ON_ERROR_STOP=1 -f -
+```
+
+Apply this migration together with the new backend mapping. Hibernate schema
+`update` does not automatically remove existing unique constraints. The script
+only removes single-column uniqueness constraints on `chat.paciente_id`, retains
+the foreign key and all chats/messages, and creates a non-unique lookup index.
+It is transactional, uses a five-second lock timeout, and can be repeated.
+Fresh schemas generated from the new mapping do not have that unique constraint.
+
+The real PostgreSQL regression `ChatHistoryPersistenceTest` persists a closed
+chat and a new chat for the same patient and verifies that both histories remain.
+Use an isolated database when running it; see the datasource guidance above.
+
+Verified on October 11, 2026: `ChatHistoryPersistenceTest`, `ChatServiceTest`
+and `EsperaPacienteServiceTest` passed (46 tests) with an isolated PostgreSQL
+database. The migration also removed a recreated legacy constraint in that
+database and succeeded when repeated. It was then applied to the local
+`pretriage_db` with authorization; its existing chat and all nine messages
+remained intact and the patient foreign key was preserved.
+
+## Local Hospital Development Data
+
+After the backend creates its schema, populate repeatable synthetic hospital data:
+
+```powershell
+python -B scripts/seed_dev_hospital.py --with-active-doctors
+```
+
+The script defaults to Docker container `postgre`, user `myuser`, database
+`pretriage_db`, and hospital name `Hospital de Prueba - PreTriage`. Override them
+with `--db-container`, `--db-user`, `--db-name`, and `--hospital-name`.
+It reuses a hospital with that exact name and creates missing specialty links,
+one development sector and room per specialty, and their queue managers.
+With `--with-active-doctors` it also creates five synthetic local doctor
+identities, specialty assignments, and active sessions. These identities are
+not Auth0 accounts and cannot sign in. This option is for local development only;
+the sessions represent simulated capacity and remain active until closed.
+Omit the option to create only hospital infrastructure.
+
+The seed is transactional, does not delete patient/chats/consultations, and
+can be repeated without duplicating its data. It does not reactivate paused
+doctors or inactive rooms/sectors, or displace another doctor's occupied room.
+Existing paused sessions reserve their room and prevent a second seeded session.
+Use `--dry-run` to inspect SQL without accessing the database.
+
+`Hospital` has no `activo` field. Operational availability requires specialty
+links, an active sector and room, and active doctor sessions. The nearby patient
+endpoint also requires that Google Places returns the hospital's actual
+`place_id` near the patient's coordinates. A synthetic hospital without that ID
+will not appear in mobile's Google-based nearby list. Set a real ID:
+
+```powershell
+python -B scripts/seed_dev_hospital.py --with-active-doctors --place-id "REAL_GOOGLE_PLACE_ID"
+```
+
+For the local Hospital de Clinicas Jose de San Martin (UBA) demo, Google Places
+verified `ChIJwwfedJTKvJURtfBmDu6LFm0` at Av. Cordoba 2351, CABA on October 11,
+2026. Restore this local setup after a schema reset with:
+
+```powershell
+python -B scripts/seed_dev_hospital.py --with-active-doctors --place-id ChIJwwfedJTKvJURtfBmDu6LFm0
+```
+
+This attaches the real place to `Hospital de Prueba - PreTriage`; its seeded
+doctor capacity remains synthetic. The location is latitude `-34.5984007`,
+longitude `-58.3998358`. For mobile testing, set the emulator location near CABA;
+Google's nearby search will not return this hospital from another city.
+
+The script refuses to replace a different existing Place ID or attach an ID
+already assigned to another hospital. It does not call Google, infer an ID from
+the hospital name, or create memberships/admin accounts.
+
+To retain these data between backend runs, use `JPA_DDL_AUTO=update` in the backend
+root `.env` and start the app with that directory as its working directory.
+An environment variable or IntelliJ VM option overriding the setting can still
+select `create`/`create-drop`; check those if the schema keeps being recreated.
+The current `.env` is read at startup. If a running instance loaded `create-drop`,
+changing the file alone cannot prevent that instance from dropping its schema
+on shutdown; back up needed data before stopping it. Re-run the seed after a
+deliberate schema reset.
+
+Verified on October 11, 2026: the local database initially had one hospital but
+no sectors, rooms or doctor sessions. Running the seed created one active sector,
+room and doctor session for each of the five specialties; running it again
+inserted no duplicate seed rows.
+
 ## Common Local Issues
 
 ### Docker Permission Denied

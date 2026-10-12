@@ -38,6 +38,14 @@ result and deterministic rules. The same guard applies to the provider fallback.
 
 ## Chat Flow
 
+`Chat.paciente` is `ManyToOne`: a patient can retain several historical chats
+and create a new interview after cancelling a consultation. Closing a chat
+does not delete its messages. The former `OneToOne` mapping created a unique
+constraint on `chat.paciente_id`, which prevented a second interview even when
+the first one was finalized. Existing PostgreSQL schemas require the migration
+documented in [local development](07-local-development.md#chat-history-schema-migration);
+`ddl-auto=update` alone does not remove that old unique constraint.
+
 1. Patient starts a chat.
 2. Backend creates `Chat` associated with patient.
 3. Patient sends messages.

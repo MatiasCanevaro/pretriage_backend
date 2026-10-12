@@ -123,6 +123,17 @@ Las pruebas versionadas cubren los tres defectos observados en la revisión inic
 
 Verificación del 29 de septiembre de 2026: **82 pruebas focalizadas**, **310 pruebas Java en la suite completa** y **11 pruebas Python**, sin fallos. La suite completa usó PostgreSQL en una base aislada; las 82 focalizadas forman parte de las 310. Los contextos de aplicación arrancan con servidor en puerto aleatorio y verifican el contenedor WebSocket y sus límites.
 
+Verificación real del proveedor el 11 de octubre de 2026: la clave del `.env`
+local autenticó correctamente una consulta REST y una conexión WebSocket a
+Gemini Live. `models/gemini-3.8-live` aceptó el setup con audio, voz `Kore`, idioma
+`es-US`, transcripciones y una función de prueba. Ejecutó esa función, recibió
+su respuesta y generó 71.042 bytes de audio. Se usó solamente un mensaje técnico
+ficticio, sin datos de pacientes. No apareció un rechazo por facturación o cuota
+en esa sesión; esto no verifica el nivel de facturación de la cuenta ni garantiza
+capacidad para mayor volumen. La captura de micrófono, la reproducción en mobile
+y el flujo completo de preclasificación por voz siguen pendientes de una prueba
+real conjunta. La clave permanece en el `.env` ignorado por Git.
+
 El checkout mobile local consultado (`pretriage_frontend_mobile`, commit `51d74dc`) no contiene referencias a los eventos ni al WebSocket de voz en los archivos Kotlin versionados. Esto no permite confirmar una integración mobile terminada ni evaluar otra rama remota de mobile.
 
 ## Referencias y configuración

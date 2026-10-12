@@ -221,7 +221,7 @@ erDiagram
     MEMBRESIA_HOSPITAL }o--|| HOSPITAL : hospital
     MEMBRESIA_HOSPITAL }o--|| USUARIO_AUTH : creadaPor
     CHAT ||--o{ MENSAJE : mensajes
-    CHAT ||--|| PACIENTE : paciente
+    CHAT }o--|| PACIENTE : paciente
     MENSAJE }o--|| PACIENTE : pacienteAutor
     ATENCION_MEDICA ||--|| CONSULTA_MEDICA : consultaMedica
     ATENCION_MEDICA }o--|| SESION_ATENCION_MEDICA : sesionAtencionMedica

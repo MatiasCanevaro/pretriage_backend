@@ -76,16 +76,22 @@ Both manual waiting (`POST /api/paciente/consulta/cola/pausa-manual`) and absenc
 
 Patients can cancel their active hospital selection at any point of the attention flow (`POST /api/paciente/consulta/cancelar` — `EsperaPacienteService.cancelarSeleccion`, `docs/06-api-reference.md#cancel-hospital-selection`). The client requests confirmation before calling the endpoint, which is **idempotent**.
 
-From `EN_COLA`, `LLAMADO`, `EN_ESPERA` (manual or `AUSENTE_AL_LLAMADO`) or `ATRASADO`:
+From `EN_COLA`, `EN_ESPERA` (manual or `AUSENTE_AL_LLAMADO`) or `ATRASADO`:
 
 - `EntradaCola.estado = CANCELADA` (clears `tipoPausa`, `fechaHoraLimiteRespuesta`, `fechaHoraUltimaRepregunta`).
 - `ConsultaMedica.estadoConsulta = CANCELADA` (clears `medico` and `sala`).
 - The entry stops counting for estimation and is no longer offered to the doctor (`listarPacientesDisponibles`/`llamarProximo` only read `EN_COLA`; `obtenerSesionActual` only `LLAMADO`/`EN_ATENCION`), so a cancelled patient can never be called again within that selection.
 - If the AI triage chat is still open, it is finalized (`Chat.finalizado = true`).
 
+Mobile clears its saved chat ID only after the API confirms cancellation, and
+again after a successful new hospital selection (`POST /api/atencion/hospital`,
+HTTP 204). Opening chat for that new consultation creates a fresh interview,
+even when the patient selects the same hospital and specialty. The old chat
+remains historical; failed cancellation/selection requests retain the saved ID.
+
 The endpoint always resolves the patient's **current** hospital selection: it operates on the most recent `EntradaCola` of the patient (`RepoEntradasCola.findFirstByConsultaMedicaPacienteIdOrderByIdDesc`). Older `EntradaCola` records from previous selections that are already `CANCELADA` or `FINALIZADA` are never considered, so a historical entry can neither shadow the active selection nor produce a spurious `409`/no-op response.
 
-It is **not** possible to cancel a consultation in `EN_ATENCION` (in progress) or already `FINALIZADA` (409 `ConflictoDeEstadoException`). Cancellation is terminal: the selection cannot be resumed or re-linked. Reception admissions are out of scope for this endpoint (cancelled through `POST /api/recepcion/admisiones/{admisionId}/cancelar`, `docs/09-reception-admission.md`).
+It is **not** possible to cancel a consultation in `LLAMADO`, `EN_ATENCION` (in progress) or already `FINALIZADA` (409 `ConflictoDeEstadoException`). Cancellation is terminal: the selection cannot be resumed or re-linked. Reception admissions are out of scope for this endpoint (cancelled through `POST /api/recepcion/admisiones/{admisionId}/cancelar`, `docs/09-reception-admission.md`).
 
 ## Medical Studies Management
 
