@@ -55,11 +55,16 @@ public class GooglePlacesService {
                     "bicicleta", TravelMode.BICYCLE));
     /**
      * Campo mask para Nearby Search.
-     * Todos estos campos disparan el SKU "Nearby Search Pro" → 5.000 gratis/mes.
+     * id, displayName, formattedAddress, location, types disparan el SKU
+     * "Nearby Search Pro"; rating y userRatingCount suben toda la llamada al SKU
+     * "Nearby Search Enterprise" (se factura el SKU mas alto del mask).
+     * Enterprise incluye 1.000 requests gratis/mes (verificado 2026-10 contra
+     * https://developers.google.com/maps/documentation/places/web-service/nearby-search
+     * y https://developers.google.com/maps/billing-and-pricing/sku-details).
      * Ref:
      * https://developers.google.com/maps/documentation/places/web-service/nearby-search#fieldmask
      */
-    private static final String NEARBY_FIELD_MASK = "places.id,places.displayName,places.formattedAddress,places.location,places.types";
+    private static final String NEARBY_FIELD_MASK = "places.id,places.displayName,places.formattedAddress,places.location,places.types,places.rating,places.userRatingCount";
 
     /**
      * Campo mask para Place Details.
@@ -154,6 +159,8 @@ public class GooglePlacesService {
         hospitalCercanoDTO.setDireccion(place.getFormattedAddress());
         hospitalCercanoDTO.setPlaceId(place.getId());
         hospitalCercanoDTO.setNombre(nombre);
+        hospitalCercanoDTO.setValoracionPromedio(place.getRating());
+        hospitalCercanoDTO.setCantidadValoraciones(place.getUserRatingCount());
 
         return hospitalCercanoDTO;
     }

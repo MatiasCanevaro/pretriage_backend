@@ -211,6 +211,7 @@ package "Consultas y atención" {
       resumen_pretriage_json: text
       estado_consulta: varchar
       id_gestor_de_cola: bigint <<FK>>
+      id_chat: bigint <<FK,UQ>>
   }
   entity "entrada_cola" as entrada_cola {
     * id: bigint <<PK,NN>>
@@ -299,7 +300,7 @@ package "Chat" {
   entity "chat" as chat {
     * id: bigint <<PK,NN>>
       fecha_hora_creacion: timestamp
-      paciente_id: bigint <<FK,UQ>>
+      paciente_id: bigint <<FK>>
       finalizado: boolean <<NN>>
       resultado_triage_json: text
   }
@@ -310,7 +311,6 @@ package "Chat" {
       autor: varchar <<NN>>
       paciente_id: bigint <<FK>>
       fecha_hora_envio: timestamp <<NN>>
-      id_consulta_medica: bigint <<FK>>
   }
 }
 
@@ -318,6 +318,7 @@ chat ||--o{ mensaje : "chat_id"
 consulta_medica ||--|| admision_recepcion : "id_consulta_medica"
 consulta_medica ||--|| atencion_medica : "id_consulta_medica"
 consulta_medica ||--o| entrada_cola : "id_consulta_medica"
+consulta_medica |o--o| chat : "id_chat"
 consulta_medica ||--o{ mensaje : "id_consulta_medica"
 consulta_medica ||--|{ revision_prioridad_consulta : "id_consulta_medica"
 consulta_medica ||--o{ sintoma : "id_consulta_medica"
@@ -353,7 +354,7 @@ medico ||--|{ revision_prioridad_consulta : "id_medico"
 medico ||--o{ sesion_atencion_medica : "id_medico"
 membresia_hospital ||--|{ membresia_hospital_rol : "membresia_id"
 obra_social ||--o{ credencial : "id_obra_social"
-paciente ||--o| chat : "paciente_id"
+paciente ||--o{ chat : "paciente_id"
 paciente ||--o{ consulta_medica : "id_paciente"
 paciente ||--o{ credencial : "id_paciente"
 paciente ||--o{ estudio_clinico : "id_paciente"

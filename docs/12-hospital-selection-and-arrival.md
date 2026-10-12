@@ -14,10 +14,11 @@ GET /api/hospitales/cercanos?latitud={lat}&longitud={lon}&codigoEspecialidad={co
 
 - Filters hospitals by selected specialty and distance from patient's location.
 - Returns only hospitals available for attention (`disponible=true` — at least one `SesionAtencionMedica.ACTIVA` for the requested specialty). When no hospital satisfies this, the response is an empty list and the frontend must show "no hay hospitales disponibles".
-- Sorting is controlled by `ordenarPor` (optional, defaults to `distancia`; valores válidos en `ORDENES_VALIDOS`: `distancia`, `tiempo-atencion`, combinados `distancia|tiempo-atencion` / `tiempo-atencion|distancia` donde el orden es indistinto y extensible con `|`):
+- Sorting is controlled by `ordenarPor` (optional, defaults to `distancia` when omitted or empty; valid values in `ORDENES_VALIDOS`: `distancia`, `tiempo-atencion`, `valoracion`, combinados con `|` como `distancia|tiempo-atencion` o `distancia|tiempo-atencion|valoracion`, orden indistinto). Values are case-sensitive: `Valoracion` or any other spelling returns 400, and a combination with any invalid or duplicated criterion returns 400 even when the other criteria are valid:
   - `distancia` — keeps Google Places proximity order.
   - `tiempo-atencion` — orders by lower estimated attention wait time (see `docs/04-queue-and-estimation.md#end-of-queue-estimate-for-hospital-ranking`); ties are broken by `tiempoEstimadoArriboMejorRuta` (nulls last) then `nombre`.
-  - `distancia|tiempo-atencion` (o `tiempo-atencion|distancia`) — orden combinado por suma de rankings: `rank(distancia según posición en Google) + rank(tiempo según minutosEspera)`; el menor puntaje va primero y los empates se rompen por `nombre` (extensible agregando nuevos valores a `ORDENES_VALIDOS`).
+  - `valoracion` — orders by `valoracionPromedio` descending (Google Places rating, 1.0–5.0); hospitals without rating (`null`) are treated as 0 and go last without being excluded; ties break by `cantidadValoraciones` descending (null = 0) then `nombre` (the name returned by Google) ascending, keeping Google's order among equal names.
+  - Combinados (ej. `valoracion|distancia`, `distancia|tiempo-atencion|valoracion`) — orden combinado por suma de rankings: para cada criterio se calcula la posición del hospital en su orden individual (distancia = posición en Google, tiempo = minutos de espera, valoración = puntaje) y se suman; el menor puntaje va primero, los empates se rompen por `nombre` y luego por el orden de Google (extensible agregando nuevos valores a `ORDENES_VALIDOS`).
 - `transporte` is optional and defaults to `transporte-publico`. Valid values:
   - `transporte-publico`: Public transit (buses, trains, etc.)
   - `vehiculo`: Driving/car
@@ -30,6 +31,9 @@ GET /api/hospitales/cercanos?latitud={lat}&longitud={lon}&codigoEspecialidad={co
   - `minutosEsperaEstimados` — `bloquesEspera * minutosPromedioAtencion`
   - `fechaHoraAtencionEstimada` — `now + minutosEsperaEstimados`
   - `disponible` — `medicosActivos > 0` (only `true` entries are returned)
+- Each hospital also exposes its Google Places rating (requested live on every call; there is no persistence of ratings):
+  - `valoracionPromedio` — average rating on Google's 1.0–5.0 scale, or `null` when Google provides no rating (absence of data, not an error).
+  - `cantidadValoraciones` — number of registered reviews, or `null` when Google provides none.
 - Patient reviews the list and selects one.
 
 ### 2. Select Hospital
@@ -144,6 +148,8 @@ The frontend must:
 - **User selection**: Allow the patient to choose which route to follow.
 - **No persistence**: The selected route is NOT sent to the backend.
 - **Arrival confirmation**: When the patient physically arrives, the frontend calls the queue entry endpoint.
+- **Display hospital rating**: Show `valoracionPromedio` and `cantidadValoraciones` next to each hospital. When Google provides no rating (`valoracionPromedio` is `null`), show a "sin valoraciones" indication instead of a score.
+- **No rated hospitals message**: When every hospital in the list has `valoracionPromedio` equal to `null`, the frontend shows an appropriate message (e.g. "los hospitales cercanos aún no tienen valoraciones"); the backend does not signal this case — it always returns the full list.
 
 ## Backend Limitations
 

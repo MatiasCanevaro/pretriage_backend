@@ -18,6 +18,7 @@ reception-created patients.
 - `medico`
 - `sala`
 - `sector` (assigned automatically when the patient enters the queue)
+- `chat` (pretriage `Chat` linked when the bot finishes the triage; `null` = pretriage not done)
 
 Relevant states in `EstadoConsulta`:
 
@@ -37,7 +38,7 @@ Relevant states in `EstadoConsulta`:
 
 `Chat` represents one AI pre-triage conversation. Important fields:
 
-- `paciente`
+- `paciente` (`@ManyToOne`: a patient can have many chats over time; `POST /api/chat` always creates a new one and closes the previous open ones)
 - `mensajes`
 - `fechaHoraCreacion`
 - `finalizado`
@@ -45,6 +46,11 @@ Relevant states in `EstadoConsulta`:
 
 The structured triage result is stored as JSON in `resultadoTriageJson` and maps
 to `ConsultaMedica.nivelDeGravedadBot` when the triage finishes.
+When the bot finishes the triage, the patient's `ConsultaMedica` is linked to the
+chat through `ConsultaMedica.chat` (`@OneToOne`, FK `consulta_medica.id_chat`, unique;
+unidirectional from the consultation). A consultation without linked chat means the
+chatbot pretriage was not done (reception admission, hospital selection without chat,
+or a chat closed without finishing).
 
 `Mensaje` is one chat message. Important fields:
 

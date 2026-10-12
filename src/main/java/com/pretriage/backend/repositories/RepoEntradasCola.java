@@ -6,6 +6,8 @@ import com.pretriage.backend.model.consultas.TipoPausaCola;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
@@ -48,5 +50,18 @@ public interface RepoEntradasCola extends JpaRepository<EntradaCola, Long> {
             Long hospitalId, Long especialidadId, EstadoEntradaCola estado);
 
     long countByGestorDeColaSectorIdAndEstado(Long sectorId, EstadoEntradaCola estado);
-}
 
+    /**
+     * Timestamps de ingreso a la cola de las entradas del hospital en el rango {@code [desde, hasta)}.
+     * El tamaño de la lista es la cantidad de ingresos del período (ancla del embudo de métricas).
+     */
+    @Query("""
+            select e.fechaHoraIngreso from EntradaCola e
+            where e.gestorDeCola.hospital.id = :hospitalId
+              and e.fechaHoraIngreso >= :desde
+              and e.fechaHoraIngreso < :hasta
+            """)
+    List<LocalDateTime> findFechasHoraIngresoByHospitalEnRango(@Param("hospitalId") Long hospitalId,
+            @Param("desde") LocalDateTime desde,
+            @Param("hasta") LocalDateTime hasta);
+}

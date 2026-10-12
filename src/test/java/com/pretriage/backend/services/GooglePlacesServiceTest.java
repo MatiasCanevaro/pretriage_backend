@@ -94,6 +94,134 @@ public class GooglePlacesServiceTest {
     }
 
     @Test
+    void mapeaLaValoracionDeGoogleAlDtoDelHospitalCercano(){
+        wireMockServer.stubFor(post(urlEqualTo("/v1/places:searchNearby"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                            {
+                              "places": [
+                                {
+                                  "id": "hospital1",
+                                  "formattedAddress": "Av Siempre Viva 123",
+                                  "displayName": {
+                                    "text": "Hospital Italiano"
+                                  },
+                                  "rating": 4.5,
+                                  "userRatingCount": 120
+                                }
+                              ]
+                            }
+                            """)));
+
+        List<HospitalCercanoDTO> hospitales =
+                service.buscarHospitales(-34.6, -58.4);
+
+        assertEquals(1, hospitales.size());
+
+        HospitalCercanoDTO hospital = hospitales.getFirst();
+
+        assertEquals(4.5, hospital.getValoracionPromedio());
+        assertEquals(120, hospital.getCantidadValoraciones());
+    }
+
+    @Test
+    void elPuntajeQuedaNullYSeMantieneLaCantidadCuandoGoogleNoDevuelveRating(){
+        wireMockServer.stubFor(post(urlEqualTo("/v1/places:searchNearby"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                            {
+                              "places": [
+                                {
+                                  "id": "hospital1",
+                                  "formattedAddress": "Av Siempre Viva 123",
+                                  "displayName": {
+                                    "text": "Hospital Sin Resenas"
+                                  },
+                                  "userRatingCount": 3
+                                }
+                              ]
+                            }
+                            """)));
+
+        List<HospitalCercanoDTO> hospitales =
+                service.buscarHospitales(-34.6, -58.4);
+
+        assertEquals(1, hospitales.size());
+
+        HospitalCercanoDTO hospital = hospitales.getFirst();
+
+        assertNull(hospital.getValoracionPromedio());
+        assertEquals(3, hospital.getCantidadValoraciones());
+    }
+
+    @Test
+    void losCamposDeValoracionQuedanAmbosNullCuandoGoogleNoEnviaNingunoDeLosDos(){
+        wireMockServer.stubFor(post(urlEqualTo("/v1/places:searchNearby"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                            {
+                              "places": [
+                                {
+                                  "id": "hospital1",
+                                  "formattedAddress": "Av Siempre Viva 123",
+                                  "displayName": {
+                                    "text": "Hospital Sin Resenas"
+                                  }
+                                }
+                              ]
+                            }
+                            """)));
+
+        List<HospitalCercanoDTO> hospitales =
+                service.buscarHospitales(-34.6, -58.4);
+
+        assertEquals(1, hospitales.size());
+
+        HospitalCercanoDTO hospital = hospitales.getFirst();
+
+        assertNull(hospital.getValoracionPromedio());
+        assertNull(hospital.getCantidadValoraciones());
+    }
+
+    @Test
+    void mantieneElPuntajeSinCantidadCuandoGoogleEnviaSoloElRating(){
+        wireMockServer.stubFor(post(urlEqualTo("/v1/places:searchNearby"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                            {
+                              "places": [
+                                {
+                                  "id": "hospital1",
+                                  "formattedAddress": "Av Siempre Viva 123",
+                                  "displayName": {
+                                    "text": "Hospital Solo Puntaje"
+                                  },
+                                  "rating": 4.2
+                                }
+                              ]
+                            }
+                            """)));
+
+        List<HospitalCercanoDTO> hospitales =
+                service.buscarHospitales(-34.6, -58.4);
+
+        assertEquals(1, hospitales.size());
+
+        HospitalCercanoDTO hospital = hospitales.getFirst();
+
+        assertEquals(4.2, hospital.getValoracionPromedio());
+        assertNull(hospital.getCantidadValoraciones());
+    }
+
+    @Test
     void noSePuebeObtenerUnaListaDeHospitalesCercanosEnBaseALatitudLongitudSiNoHayHospitalesEnEseRadio(){
         wireMockServer.stubFor(post(urlEqualTo("/v1/places:searchNearby"))
                 .willReturn(aResponse()

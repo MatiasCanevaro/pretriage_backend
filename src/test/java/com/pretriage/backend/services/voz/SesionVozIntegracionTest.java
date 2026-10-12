@@ -5,6 +5,8 @@ import com.pretriage.backend.model.chat.*;
 import com.pretriage.backend.model.personas.Paciente;
 import com.pretriage.backend.repositories.RepoChat;
 import com.pretriage.backend.repositories.RepoPacientes;
+import com.pretriage.backend.repositories.RepoConsultasMedicas;
+import com.pretriage.backend.repositories.RepoEntradasCola;
 import com.pretriage.backend.services.AtencionHospitalService;
 import com.pretriage.backend.services.ChatService;
 import com.pretriage.backend.services.TriageIaClient;
@@ -79,7 +81,7 @@ class SesionVozIntegracionTest {
         assertEquals("FALLBACK_LOCAL", resultado.path("origenClasificacion").asText());
         assertTrue(flujo.chat.getMensajes().stream().anyMatch(m -> m.getContenido().contains("ahora es 8/10")));
         verify(flujo.ia, times(1)).consultar(anyString(), anyString(), eq(true));
-        verify(flujo.cola, times(1)).finalizarTriageEIngresarACola(eq("auth0|voz"), any(), anyString());
+        verify(flujo.cola, times(1)).finalizarTriageEIngresarACola(eq("auth0|voz"), any(), anyString(), any(Chat.class));
         verify(flujo.repo, times(1)).save(flujo.chat);
     }
 
@@ -105,9 +107,10 @@ class SesionVozIntegracionTest {
             when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(ia.consultar(anyString(), anyString(), anyBoolean()))
                     .thenThrow(new IllegalStateException("Ollama no disponible en este escenario"));
-            when(cola.finalizarTriageEIngresarACola(anyString(), any(), anyString()))
+            when(cola.finalizarTriageEIngresarACola(anyString(), any(), anyString(), any(Chat.class)))
                     .thenReturn(new TiempoEstimadoAtencionResponse());
-            ChatService service = new ChatService(repo, mock(RepoPacientes.class), cola, ia, mapper);
+            ChatService service = new ChatService(repo, mock(RepoPacientes.class), mock(RepoConsultasMedicas.class),
+                    mock(RepoEntradasCola.class), cola, ia, mapper);
             GeminiLiveCliente gemini = mock(GeminiLiveCliente.class);
             when(gemini.conectar(any())).thenReturn(CompletableFuture.completedFuture(conexion));
             sesion = new SesionVozChat("7", "auth0|voz",

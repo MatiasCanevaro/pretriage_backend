@@ -4,7 +4,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
-import com.pretriage.backend.model.chat.Mensaje;
+import com.pretriage.backend.model.chat.Chat;
 import com.pretriage.backend.model.hospitales.EspecialidadMedica;
 import com.pretriage.backend.model.hospitales.Hospital;
 import com.pretriage.backend.model.hospitales.Sala;
@@ -71,13 +71,16 @@ public class ConsultaMedica {
     @Enumerated(EnumType.STRING)
     private EstadoConsulta estadoConsulta;
 
-    @OneToMany
-    @JoinColumn(name = "id_consulta_medica", referencedColumnName = "id")
-    private List<Mensaje> chat;
+    /**
+     * Chat de pretriage del chatbot que generó esta consulta. Solo se vincula cuando el bot
+     * finaliza el chat e ingresa al paciente a la cola; {@code null} = pretriage no realizado.
+     */
+    @OneToOne
+    @JoinColumn(name = "id_chat", referencedColumnName = "id", unique = true)
+    private Chat chat;
 
     public ConsultaMedica(){
         this.sintomasBot = new ArrayList<>();
-        this.chat = new ArrayList<>();
         this.estadoConsulta = EstadoConsulta.PENDIENTE;
     }
 

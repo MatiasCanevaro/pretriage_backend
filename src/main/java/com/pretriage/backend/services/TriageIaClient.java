@@ -200,7 +200,7 @@ public class TriageIaClient {
 
     private void requireString(JsonNode object, String name) {
         JsonNode value = object.get(name);
-        if (value == null || !value.isTextual() || isBlank(value.textValue())) {
+        if (value == null || !value.isString() || isBlank(value.stringValue())) {
             throw invalid(name, "invalid_text");
         }
     }
@@ -211,7 +211,7 @@ public class TriageIaClient {
             throw invalid(name, "invalid_list");
         }
         for (JsonNode item : value) {
-            if (!item.isTextual() || isBlank(item.textValue())) {
+            if (!item.isString() || isBlank(item.stringValue())) {
                 throw invalid(name, "invalid_list_item");
             }
         }

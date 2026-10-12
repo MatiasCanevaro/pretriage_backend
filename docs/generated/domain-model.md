@@ -282,7 +282,7 @@ erDiagram
     CONSULTA_MEDICA }o--|| SECTOR : sector
     CONSULTA_MEDICA }o--|| PACIENTE : paciente
     CONSULTA_MEDICA ||--o{ SINTOMA : sintomasBot
-    CONSULTA_MEDICA ||--o{ MENSAJE : chat
+    CONSULTA_MEDICA ||--|| CHAT : chat
     ENTRADA_COLA }o--|| GESTOR_DE_COLA : gestorDeCola
     ENTRADA_COLA ||--|| CONSULTA_MEDICA : consultaMedica
     ESTUDIO_CLINICO }o--|| PACIENTE : paciente
