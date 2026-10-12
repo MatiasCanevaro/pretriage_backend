@@ -281,10 +281,11 @@ class ChatServiceTest {
         var resultado = chatService.enviarMensaje("1", "auth0|paciente",
                 "No tengo dificultad para respirar, dolor de pecho, confusion, desmayos ni convulsiones. El dolor de cabeza es 7 de 10, en la frente. No tengo enfermedades previas, alergias ni medicacion habitual.");
 
-        assertFalse(chat.isFinalizado());
-        assertNull(resultado.atencionEstimada());
+        assertTrue(chat.isFinalizado());
+        assertNotNull(resultado.atencionEstimada());
         assertEquals("FALLBACK_LOCAL", resultado.origenRespuesta());
-        verify(repoChat).save(argThat(chatGuardado -> !chatGuardado.isFinalizado()));
+        assertFalse(chat.getResultadoTriageJson().contains("\"requiereAtencionInmediata\":true"));
+        verify(repoChat).save(argThat(Chat::isFinalizado));
     }
     @Test
     void enviarMensajeCuandoLaIaRepiteLaPreguntaContinuaLaIndagacion() {
@@ -361,8 +362,8 @@ class ChatServiceTest {
 
         assertTrue(chat.isFinalizado());
         assertEquals("Cierre IA detallado", respuesta.respuesta().contenido());
-        assertEquals("OLLAMA", respuesta.origenRespuesta());
-        assertTrue(chat.getResultadoTriageJson().contains("\"origenClasificacion\":\"OLLAMA\""));
+        assertEquals("GEMINI", respuesta.origenRespuesta());
+        assertTrue(chat.getResultadoTriageJson().contains("\"origenClasificacion\":\"GEMINI\""));
         assertEquals(resultadoIa, new ObjectMapper().readValue(chat.getResultadoTriageJson(), TriageResultDTO.class));
         verify(triageIaClient).consultar(anyString(), contains("Datos aportados por el paciente"), eq(true));
     }
@@ -397,7 +398,7 @@ class ChatServiceTest {
         var turno = chatService.enviarMensaje("1", "auth0|paciente", "No puedo respirar.");
 
         assertTrue(chat.isFinalizado());
-        assertEquals("OLLAMA", turno.origenRespuesta());
+        assertEquals("GEMINI", turno.origenRespuesta());
         assertEquals(resultado, new ObjectMapper().readValue(chat.getResultadoTriageJson(), TriageResultDTO.class));
         verify(atencionHospitalService).finalizarTriageEIngresarACola(eq("auth0|paciente"), eq(NivelDeGravedad.MUY_URGENTE), anyString(), same(chat));
     }
@@ -433,7 +434,7 @@ class ChatServiceTest {
     }
 
     @Test
-    void alarmaLocalIncluyeAvisoUrgenteYResultadoCoherenteSiOllamaFalla() {
+    void alarmaLocalIncluyeAvisoUrgenteYResultadoCoherenteSiGeminiFalla() {
         Chat chat = prepararChat();
         when(triageIaClient.consultar(anyString(), anyString(), anyBoolean())).thenThrow(new RuntimeException("unavailable"));
 
@@ -463,7 +464,7 @@ class ChatServiceTest {
         var respuesta = chatService.enviarMensaje("1", "auth0|paciente", "No puedo respirar.");
 
         assertTrue(chat.isFinalizado());
-        assertEquals("OLLAMA", respuesta.origenRespuesta());
+        assertEquals("GEMINI", respuesta.origenRespuesta());
         assertTrue(respuesta.respuesta().contenido().contains("Llama a emergencias de inmediato."));
         assertEquals(1, respuesta.respuesta().contenido().split("Llama a emergencias de inmediato.", -1).length - 1);
     }
@@ -484,7 +485,7 @@ class ChatServiceTest {
     }
 
     @Test
-    void entrevistaDeVozGuardaTranscripcionYConservaClasificacionDeOllama() {
+    void entrevistaDeVozGuardaTranscripcionYConservaClasificacionDeGemini() {
         Paciente paciente = new Paciente();
         Chat chat = chatDeVoz(paciente);
         TriageResultDTO resultadoIa = new TriageResultDTO("dolor de cabeza", List.of("dolor de cabeza", "fiebre"),
@@ -498,10 +499,10 @@ class ChatServiceTest {
         var resultado = chatService.finalizarEntrevistaVoz("1", "auth0|paciente", turnosDeVoz(), resumen(List.of()));
 
         assertTrue(chat.isFinalizado());
-        assertEquals("OLLAMA", resultado.origenRespuesta());
+        assertEquals("GEMINI", resultado.origenRespuesta());
         assertEquals(List.of("BOT", "PACIENTE", "BOT", "PACIENTE", "BOT", "PACIENTE", "BOT"),
                 chat.getMensajes().stream().map(mensaje -> mensaje.getAutor().name()).toList());
-        assertTrue(chat.getResultadoTriageJson().contains("\"origenClasificacion\":\"OLLAMA\""));
+        assertTrue(chat.getResultadoTriageJson().contains("\"origenClasificacion\":\"GEMINI\""));
         verify(triageIaClient).consultar(anyString(), argThat(datos -> datos.contains("Resumen del entrevistador")
                 && datos.contains("motivoConsulta: dolor de cabeza con fiebre")
                 && datos.contains("Me duele la cabeza y tengo fiebre desde ayer")), eq(true));
@@ -509,7 +510,7 @@ class ChatServiceTest {
     }
 
     @Test
-    void entrevistaDeVozSinOllamaUsaElResumenYRespetaAlarmasDelEntrevistador() {
+    void entrevistaDeVozSinGeminiUsaElResumenYRespetaAlarmasDelEntrevistador() {
         Paciente paciente = new Paciente();
         Chat chat = chatDeVoz(paciente);
         when(triageIaClient.consultar(anyString(), anyString(), anyBoolean()))
@@ -775,6 +776,34 @@ class ChatServiceTest {
 
         assertTrue(chat.isFinalizado());
         verify(triageIaClient).consultar(anyString(), anyString(), eq(true));
+    }
+
+    @Test
+    void respuestasBrevesCompletasSolicitanCierreYNoRepitenPreguntas() throws Exception {
+        Chat chat = chatDeVoz(new Paciente());
+        List<TurnoVoz> turnos = List.of(
+                new TurnoVoz(AutorMensaje.PACIENTE, "Tengo dolor de cabeza y fiebre"),
+                new TurnoVoz(AutorMensaje.BOT, "Desde cuando empezo?"),
+                new TurnoVoz(AutorMensaje.PACIENTE, "12 horas"),
+                new TurnoVoz(AutorMensaje.BOT, "Del 0 al 10, cuanto te duele?"),
+                new TurnoVoz(AutorMensaje.PACIENTE, "Un ocho."),
+                new TurnoVoz(AutorMensaje.BOT, "Tenes dificultad para respirar, dolor de pecho o confusion?"),
+                new TurnoVoz(AutorMensaje.PACIENTE, "No"),
+                new TurnoVoz(AutorMensaje.BOT, "Tenes antecedentes, medicacion o alergias?"));
+        turnos.forEach(turno -> chat.agregarMensaje(new Mensaje(turno.contenido(), turno.autor(), chat.getPaciente())));
+        when(triageIaClient.consultar(anyString(), anyString(), eq(true)))
+                .thenReturn(new TriageAiResponse(false, "Desde cuando empezo?", null));
+        when(atencionHospitalService.finalizarTriageEIngresarACola(anyString(), any(), anyString(), eq(chat)))
+                .thenReturn(new TiempoEstimadoAtencionResponse());
+
+        var respuesta = chatService.enviarMensaje("1", "auth0|paciente", "Ninguna");
+
+        assertTrue(chat.isFinalizado());
+        assertNotNull(respuesta.atencionEstimada());
+        verify(triageIaClient).consultar(anyString(), anyString(), eq(true));
+        var resultado = new ObjectMapper().readValue(chat.getResultadoTriageJson(), TriageResultDTO.class);
+        assertEquals(8, resultado.intensidadDolor());
+        assertEquals("FALLBACK_LOCAL", respuesta.origenRespuesta());
     }
 
     private List<TurnoVoz> entrevistaCompletaVoz(String primerTurno) {

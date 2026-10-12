@@ -1,8 +1,8 @@
 # Chat de voz: mobile, backend y Gemini Live
 
-Integración de la rama `feature/chat-voz-gemini-live`, revisada y corregida sobre `921a8d2` el 29 de septiembre de 2026.
+Integración de la rama `feature/chat-voz-gemini-live`, actualizada el 11 de octubre de 2026 tras incorporar `desarrollo` en ambos repositorios.
 
-Gemini Live ahora conduce la entrevista directamente por voz: escucha, pregunta y responde con audio. Cuando decide cerrar, entrega un resumen al backend. Después de la despedida, el backend llama a Ollama para preclasificar, guarda la transcripción y actualiza la cola. El chat de texto conserva su flujo de preguntas con Ollama.
+Gemini Live ahora conduce la entrevista directamente por voz: escucha, pregunta y responde con audio. Cuando decide cerrar, entrega un resumen al backend. Después de la despedida, el backend llama a Gemini REST para preclasificar, guarda la transcripción y actualiza la cola. El chat de texto conserva su flujo de preguntas con Gemini REST.
 
 La versión anterior usaba Gemini para transcribir cada respuesta y leer las preguntas de Ollama. Esa arquitectura quedó reemplazada en voz: ya no existe la función `registrar_respuesta_paciente` ni se emite `turno_bot` por cada respuesta hablada.
 
@@ -15,7 +15,7 @@ La versión anterior usaba Gemini para transcribir cada respuesta y leer las pre
 | WebSocket del backend | Autenticar al paciente y conectar el canal mobile con Gemini. |
 | `SesionVozChat` | Acumular transcripciones, recibir el resumen, coordinar la despedida y solicitar la preclasificación. |
 | Gemini Live | Conducir la entrevista y llamar a `finalizar_entrevista`. El prompt indica que no asigne prioridad. |
-| `ChatService` + Ollama | Preclasificar el resumen y la transcripción del paciente, validar la salida y aplicar el fallback local si corresponde. |
+| `ChatService` + Gemini REST | Preclasificar el resumen y la transcripción del paciente, validar la salida y aplicar el fallback local si corresponde. |
 | PostgreSQL y servicios de cola | Guardar mensajes, resultado final y prioridad de la consulta. |
 
 Hay dos WebSockets: mobile ↔ backend y backend ↔ Google. La clave `GEMINI_API_KEY` permanece en el servidor. El backend no guarda grabaciones de audio en este flujo.
@@ -28,7 +28,7 @@ sequenceDiagram
     participant B as Backend / SesionVozChat
     participant G as Gemini Live
     participant C as ChatService
-    participant O as Ollama
+    participant O as Gemini REST
     participant D as PostgreSQL / cola
 
     M->>B: POST /api/chat con JWT, o GET del chat existente
@@ -70,15 +70,15 @@ sequenceDiagram
 
 La consulta mantiene el requisito de selección previa de especialidad y hospital para completar el triage y actualizar la cola. Crear un chat o abrir su canal de voz no realiza esa selección. Ver [flujo del paciente](02-patient-flow.md).
 
-En un chat nuevo, Gemini recibe el saludo inicial. Si ya hay respuestas, recibe el historial para continuar la entrevista. Durante la conversación el backend no consulta Ollama por cada intervención ni persiste cada fragmento: reúne turnos `TurnoVoz` en memoria. Al llegar a 12 respuestas le pide a Gemini que cierre; es una instrucción al modelo, no un cierre obligatorio del servidor.
+En un chat nuevo, Gemini recibe el saludo inicial. Si ya hay respuestas, recibe el historial para continuar la entrevista. Durante la conversación el backend no consulta Gemini REST por cada intervención ni persiste cada fragmento: reúne turnos `TurnoVoz` en memoria. Al llegar a 12 respuestas le pide a Gemini que cierre; es una instrucción al modelo, no un cierre obligatorio del servidor.
 
-`finalizar_entrevista` recibe motivo, síntomas, inicio, evolución, dolor, alarmas, antecedentes, medicación, alergias, embarazo y observaciones mediante `ResumenEntrevistaVoz`. No recibe prioridad. El validador compartido exige estructura válida y al menos una respuesta del paciente. En el caso normal exige al menos tres respuestas y evidencia de motivo, inicio, gravedad o evolución, exploración de alarmas y contexto clínico. Una alarma significativa o alcanzar 12 respuestas permite cerrar con datos incompletos, pero no con `{}` ni sin respuestas. Ante rechazo, la función devuelve un error y conserva la conversación para continuar. `ChatService` repite esta validación antes de modificar el chat o consultar Ollama.
+`finalizar_entrevista` recibe motivo, síntomas, inicio, evolución, dolor, alarmas, antecedentes, medicación, alergias, embarazo y observaciones mediante `ResumenEntrevistaVoz`. No recibe prioridad. El validador compartido exige estructura válida y al menos una respuesta del paciente. En el caso normal exige al menos tres respuestas y evidencia de motivo, inicio, gravedad o evolución, exploración de alarmas y contexto clínico. Una alarma significativa o alcanzar 12 respuestas permite cerrar con datos incompletos, pero no con `{}` ni sin respuestas. Ante rechazo, la función devuelve un error y conserva la conversación para continuar. `ChatService` repite esta validación antes de modificar el chat o consultar Gemini REST.
 
 Una vez aceptado el cierre, la sesión detiene el envío de audio del micrófono y envía `audioStreamEnd`. Espera audio o transcripción de la despedida, su `turnComplete` y una ventana de un segundo sin nuevos fragmentos de entrada. Cada fragmento tardío reinicia esa ventana. Después solicita el cierre de Gemini y sigue recibiendo transcripciones hasta la confirmación normal del transporte (`1000`); recién entonces toma la instantánea y clasifica una sola vez. Un cierre normal iniciado por el proveedor también permite completar este paso.
 
-Hay un límite total de 30 segundos desde que se acepta la función, independiente del tiempo posterior de Ollama. Si vence, falla la conexión o llega un cierre anormal, se intenta guardar la transcripción sin finalizar el chat y se emiten `error` y `fin`; no se clasifica una entrevista con cierre sin confirmar. La ventana reduce la pérdida de fragmentos tardíos, pero no garantiza recuperar texto que Google nunca envíe antes del cierre: `turnComplete` no confirma que haya terminado la transcripción de entrada.
+Hay un límite total de 30 segundos desde que se acepta la función, independiente del tiempo posterior de Gemini REST. Si vence, falla la conexión o llega un cierre anormal, se intenta guardar la transcripción sin finalizar el chat y se emiten `error` y `fin`; no se clasifica una entrevista con cierre sin confirmar. La ventana reduce la pérdida de fragmentos tardíos, pero no garantiza recuperar texto que Google nunca envíe antes del cierre: `turnComplete` no confirma que haya terminado la transcripción de entrada.
 
-`ChatService.finalizarEntrevistaVoz` agrega la transcripción al chat y solicita a Ollama una respuesta final. El prompt indica que, si el resumen contradice al paciente, prevalece la transcripción. Si hay alarmas detectadas localmente o declaradas en el resumen, exige prioridad al menos 4 y atención inmediata; en caso contrario usa fallback. La clasificación final actualiza `Chat.resultadoTriageJson`, el resumen de la consulta y la prioridad de su entrada en cola.
+`ChatService.finalizarEntrevistaVoz` agrega la transcripción al chat y solicita a Gemini REST una respuesta final. El prompt indica que, si el resumen contradice al paciente, prevalece la transcripción. Si hay alarmas detectadas localmente o declaradas en el resumen, exige prioridad al menos 4 y atención inmediata; en caso contrario usa fallback. La clasificación final actualiza `Chat.resultadoTriageJson`, el resumen de la consulta y la prioridad de su entrada en cola.
 
 El fallback también prioriza los datos extraídos de la transcripción: conserva inicio y evolución conocidos, usa la última intensidad explícita válida y respeta negaciones de síntomas, antecedentes, medicación y alergias. Los marcadores como «no informado» y las alarmas negadas no se convierten en hallazgos positivos. Los extractores son reglas lingüísticas acotadas, no una interpretación completa del lenguaje; por eso se conserva el texto literal del paciente en observaciones.
 
@@ -95,11 +95,11 @@ El endpoint sigue siendo `/api/chat/{id}/voz`. Admite JWT por `Authorization: Be
 | `interrumpido` | Interrumpir la reproducción y vaciar el audio pendiente. |
 | `turno_completo` | Terminó un turno de Gemini; no equivale a triage finalizado. |
 | `entrevista_finalizada` | Detener micrófono y mostrar preclasificación pendiente. El resumen todavía no contiene una prioridad final. |
-| `triage_finalizado` | Mostrar `respuesta` y `atencionEstimada`. `origenRespuesta` indica `OLLAMA` o `FALLBACK_LOCAL`. |
+| `triage_finalizado` | Mostrar `respuesta` y `atencionEstimada`. `origenRespuesta` indica `GEMINI` o `FALLBACK_LOCAL`. |
 | `fin` o cierre del socket | Terminar la sesión; si falta `triage_finalizado`, consultar el estado del chat por HTTP. |
 | `error`, `sesion_por_expirar` | Mostrar el estado y preparar recuperación por texto o una sesión nueva, según el estado persistido. |
 
-Mobile debe conservar el socket del backend tras `entrevista_finalizada`: el resultado llega después, por `triage_finalizado`. La respuesta final de Ollama se entrega como texto; Gemini ya terminó su sesión y no la lee. El cliente debe dejar reproducir el audio de despedida que haya recibido.
+Mobile debe conservar el socket del backend tras `entrevista_finalizada`: el resultado llega después, por `triage_finalizado`. La respuesta final de Gemini REST se entrega como texto; Gemini ya terminó su sesión y no la lee. El cliente debe dejar reproducir el audio de despedida que haya recibido.
 
 `{"tipo":"fin_audio"}` indica pausa del micrófono y se traduce a `audioStreamEnd`. `{"tipo":"cerrar"}` cierra el canal. Antes de finalizar la entrevista, el backend intenta guardar lo acumulado sin clasificar; después de aceptar el cierre de Gemini, la clasificación pendiente continúa aunque mobile se desconecte. No enviar las transcripciones nuevamente por el endpoint de texto: se duplicarían.
 
@@ -115,11 +115,11 @@ Las pruebas versionadas cubren los tres defectos observados en la revisión inic
 
 | Defecto | Comportamiento verificado |
 | --- | --- |
-| Resumen contradice la transcripción | Con fallo de Ollama, «desde ayer, dolor 8/10» prevalece sobre «hoy, dolor 2»; el caso sintético conserva dolor 8, inicio ayer y prioridad 4. |
-| Cierre sin información suficiente | `{}` se rechaza sin consultar Ollama ni guardar una clasificación; la entrevista puede continuar y finalizar luego con información suficiente. |
+| Resumen contradice la transcripción | Con fallo de Gemini REST, «desde ayer, dolor 8/10» prevalece sobre «hoy, dolor 2»; el caso sintético conserva dolor 8, inicio ayer y prioridad 4. |
+| Cierre sin información suficiente | `{}` se rechaza sin consultar Gemini REST ni guardar una clasificación; la entrevista puede continuar y finalizar luego con información suficiente. |
 | Transcripción tardía descartada | Se aceptan fragmentos después de `turnComplete` y hasta confirmar el cierre; se reinicia la ventana de drenaje y se clasifica una vez. También se prueban timeout, cierre anormal, callbacks duplicados y desconexión de mobile. |
 
-`SesionVozIntegracionTest` combina la sesión, el validador y `ChatService` reales con repositorios y proveedores simulados. `SesionVozChatTest` usa un reloj controlado para comprobar vencimientos sin pausas de tiempo real. No se probó micrófono de mobile ni una sesión real de Gemini. Los comandos reproducibles están en [desarrollo local](07-local-development.md#voice-chat-regression-tests).
+`SesionVozIntegracionTest` combina la sesión, el validador y `ChatService` reales con repositorios y proveedores simulados. `SesionVozChatTest` usa un reloj controlado para comprobar vencimientos sin pausas de tiempo real. Estas pruebas no cubren el micrófono ni la reproducción de mobile. Las verificaciones reales del proveedor se describen a continuación. Los comandos reproducibles están en [desarrollo local](07-local-development.md#voice-chat-regression-tests).
 
 Verificación del 29 de septiembre de 2026: **82 pruebas focalizadas**, **310 pruebas Java en la suite completa** y **11 pruebas Python**, sin fallos. La suite completa usó PostgreSQL en una base aislada; las 82 focalizadas forman parte de las 310. Los contextos de aplicación arrancan con servidor en puerto aleatorio y verifican el contenedor WebSocket y sus límites.
 
@@ -134,7 +134,7 @@ capacidad para mayor volumen. La captura de micrófono, la reproducción en mobi
 y el flujo completo de preclasificación por voz siguen pendientes de una prueba
 real conjunta. La clave permanece en el `.env` ignorado por Git.
 
-El checkout mobile local consultado (`pretriage_frontend_mobile`, commit `51d74dc`) no contiene referencias a los eventos ni al WebSocket de voz en los archivos Kotlin versionados. Esto no permite confirmar una integración mobile terminada ni evaluar otra rama remota de mobile.
+El checkout mobile `pretriage_frontend_mobile` incorporó el cliente de voz en `246f815` y recibió los cambios de `desarrollo` en `84f08b4`. Incluye el canal WebSocket y manejo de eventos de voz. La compilación Android y la prueba de micrófono/reproducción quedan a cargo del usuario desde IntelliJ.
 
 ## Referencias y configuración
 
@@ -144,3 +144,13 @@ El checkout mobile local consultado (`pretriage_frontend_mobile`, commit `51d74d
 - [GeminiLiveCliente](../src/main/java/com/pretriage/backend/services/voz/GeminiLiveCliente.java): conexión con Google.
 - [Configuración local](07-local-development.md): `GEMINI_API_KEY`, modelo, voz, idioma y orígenes. El modelo por defecto es `models/gemini-3.8-live`; una configuración no vacía no comprueba su disponibilidad real.
 - [Referencia oficial de Gemini Live](https://ai.google.dev/api/live): protocolo y ausencia de orden garantizado para `inputTranscription`.
+
+## Migración del 11 de octubre de 2026
+
+Texto, clasificación final de voz y formularios de recepción usan `GeminiJsonClient` con JSON Schema. `GEMINI_CHAT_MODEL` configura el modelo REST; `GEMINI_LIVE_MODEL` configura el modelo de audio. Ambos usan `GEMINI_API_KEY`, guardada únicamente en el backend. La entrevista de voz sigue usando Live y su clasificación final usa REST. No se requiere Ollama.
+
+Texto y voz comparten la validación de suficiencia: respuestas breves como «12 horas», «un ocho» o «no» se interpretan según la pregunta anterior. Si están cubiertos síntomas, inicio, gravedad/evolución, alarmas y antecedentes, el texto solicita clasificación final. Una pregunta repetida o una salida inválida no mantiene abierta una entrevista completa: se cierra con el fallback local identificado como tal. El límite de doce respuestas sigue vigente.
+
+Verificación de la migración: **362 pruebas Java** en PostgreSQL aislado y **12 pruebas Python**, sin fallos. Dos E2E reales contra el backend temporal en `localhost:18080` y Gemini REST guardaron origen `GEMINI`: el caso de fiebre/dolor de garganta cerró en cuatro respuestas y el de dolor de pecho/dificultad respiratoria cerró en una respuesta con prioridad 5 y aviso urgente. Se comprobó el vínculo `ConsultaMedica.chat`, el estado `EN_COLA` y la concordancia de prioridad en resultado, consulta y entrada de cola.
+
+También se ejecutó `ChatService.finalizarEntrevistaVoz` con Gemini REST real y una transcripción sintética de cefalea/fiebre: cerró con origen `GEMINI`, conservó dolor 8/10 y respondió en aproximadamente 2,3 segundos. Los repositorios y el servicio de cola fueron simulados en esa comprobación; no constituye una prueba completa del micrófono, los dos WebSockets y la persistencia. Los tiempos son observaciones de estas ejecuciones, no garantías de rendimiento.

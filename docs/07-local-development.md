@@ -5,16 +5,15 @@
 - Java 21
 - Docker Desktop
 - PostgreSQL through `compose.yaml`
-- Ollama running locally
-- Model `llama3.2:3b`
+- Internet access and a Gemini API key (`GEMINI_API_KEY`)
 - `.env` with Auth0 and test credentials
 
 ## Important Properties
 
 ```properties
-spring.ai.ollama.chat.model=llama3.2:3b
-spring.ai.ollama.chat.temperature=0
-spring.ai.ollama.chat.seed=42
+pretriage.ia.gemini.model=${GEMINI_CHAT_MODEL:gemini-3.5-flash-lite}
+pretriage.ia.gemini.api-key=${GEMINI_API_KEY:}
+pretriage.ia.gemini.request-timeout=${GEMINI_REQUEST_TIMEOUT:45s}
 pretriage.estimacion.minutos-promedio-atencion=10
 pretriage.cambio-contrasenia.expiracion-minutos=${PRETRIAGE_CAMBIO_CONTRASENIA_EXPIRACION:15}
 pretriage.cambio-contrasenia.max-solicitudes-por-hora=${PRETRIAGE_CAMBIO_MAX_POR_HORA:3}
@@ -31,7 +30,7 @@ pretriage.voz.origenes-permitidos=${PRETRIAGE_VOZ_ORIGENES:*}
 ```
 
 The voice chat (`/api/chat/{id}/voz`) is optional: without `GEMINI_API_KEY` its
-handshake returns `503` and the text chat is unaffected. Set the key in `.env`
+handshake returns `503`; text and reception classification use their local fallback. Set the key in `.env`
 to enable it, and restrict `PRETRIAGE_VOZ_ORIGENES` (comma-separated origin
 patterns) outside local development.
 
@@ -120,7 +119,7 @@ The script reads credentials from `.env`:
 - `AUTH0_TEST_PASSWORD`
 
 It seeds patient/hospital/specialty/sector/room data through Docker, performs
-real login, calls backend endpoints and Ollama, and validates the persisted
+real login, calls backend endpoints and Gemini, and validates the persisted
 classification, its origin, priority and both queue states. It rejects early
 closure and final local fallback by default.
 
@@ -132,7 +131,7 @@ Run the voice session, shared close validator, service fallback and authenticati
 .\mvnw.cmd "-Dtest=SesionVozChatTest,SesionVozIntegracionTest,ValidadorCierreEntrevistaVozTest,ChatVozHandshakeInterceptorTest,ChatServiceTest,TriageIaClientTest" test
 ```
 
-These tests simulate Gemini and Ollama. They do not verify microphone capture, audio playback
+These tests simulate Gemini Live and Gemini REST. They do not verify microphone capture, audio playback
 or provider availability. See [the voice integration flow](14-chat-voz-gemini-live.md).
 
 Full application context tests use `SpringBootTest.WebEnvironment.RANDOM_PORT`:
@@ -240,19 +239,15 @@ inserted no duplicate seed rows.
 
 If tests fail with access to `npipe:////./pipe/dockerDesktopLinuxEngine`, run from a shell/session that has Docker Desktop access.
 
-### Ollama Model Missing
+### Gemini unavailable
 
-Check available models:
-
-```powershell
-ollama list
-```
-
-Pull model:
-
-```powershell
-ollama pull llama3.2:3b
-```
+Set `GEMINI_API_KEY` in the ignored `.env` and optionally `GEMINI_CHAT_MODEL`.
+The REST default is `gemini-3.5-flash-lite`; the audio default is `models/gemini-3.8-live`.
+Restart the backend after configuration changes. Keys are never needed in mobile.
+Missing keys, HTTP errors, quota exhaustion or invalid output use `FALLBACK_LOCAL`
+for text/reception/final voice classification. A Live connection itself requires
+an available Live model and key. Availability and quotas depend on the account;
+the E2E precheck reads model metadata and the full flow then verifies generation.
 
 ### Backend Not Running
 

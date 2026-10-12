@@ -4,10 +4,6 @@ import com.pretriage.backend.controllers.dtos.TriageAiResponse;
 import com.pretriage.backend.exceptions.ProveedorIaException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.Answers;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.prompt.ChatOptions;
-import org.springframework.ai.ollama.api.OllamaChatOptions;
 import tools.jackson.databind.ObjectMapper;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -27,20 +23,18 @@ import org.mockito.ArgumentCaptor;
 import java.util.Map;
 
 class TriageIaClientTest {
-    private ChatClient chatClient;
+    private GeminiJsonClient geminiClient;
     private TriageIaClient client;
 
     @BeforeEach
     void setUp() {
-        chatClient = mock(ChatClient.class, Answers.RETURNS_DEEP_STUBS);
-        ChatClient.Builder builder = mock(ChatClient.Builder.class);
-        when(builder.build()).thenReturn(chatClient);
-        client = new TriageIaClient(builder, new ObjectMapper());
+        geminiClient = mock(GeminiJsonClient.class);
+        client = new TriageIaClient(geminiClient, new ObjectMapper());
     }
 
     @Test
     void aceptaResultadoIntermedioConCamposNumericosNulos() {
-        when(chatClient.prompt().options(any()).system(anyString()).user(anyString()).call().content())
+        when(geminiClient.generar(anyString(), anyString(), any()))
                 .thenReturn("""
                         {
                           "finalizado": false,
@@ -63,93 +57,93 @@ class TriageIaClientTest {
                           }
                         }
                         """);
-        clearInvocations(chatClient);
+        clearInvocations(geminiClient);
 
         TriageAiResponse response = client.consultar("sistema", "conversacion");
 
         assertFalse(response.finalizado());
         assertEquals(null, response.resultado().nivelPrioridad());
-        verify(chatClient, times(1)).prompt();
+        verify(geminiClient, times(1)).generar(anyString(), anyString(), any());
     }
 
     @Test
     void rechazaCierreSinResultadoYAcotaLosIntentos() {
-        when(chatClient.prompt().options(any()).system(anyString()).user(anyString()).call().content())
+        when(geminiClient.generar(anyString(), anyString(), any()))
                 .thenReturn("{\"finalizado\":true,\"mensaje\":\"Listo\",\"resultado\":null}");
-        clearInvocations(chatClient);
+        clearInvocations(geminiClient);
 
         assertThrows(ProveedorIaException.class, () -> client.consultar("sistema", "conversacion"));
 
-        verify(chatClient, times(1)).prompt();
+        verify(geminiClient, times(1)).generar(anyString(), anyString(), any());
     }
 
     @Test
     void rechazaJsonMalformadoSinReintentosIlimitados() {
-        when(chatClient.prompt().options(any()).system(anyString()).user(anyString()).call().content())
+        when(geminiClient.generar(anyString(), anyString(), any()))
                 .thenReturn("{esto no es json");
-        clearInvocations(chatClient);
+        clearInvocations(geminiClient);
 
         assertThrows(ProveedorIaException.class, () -> client.consultar("sistema", "conversacion"));
 
-        verify(chatClient, times(1)).prompt();
+        verify(geminiClient, times(1)).generar(anyString(), anyString(), any());
     }
 
     @Test
     void aceptaCierreValidoConPrioridad() {
-        when(chatClient.prompt().options(any()).system(anyString()).user(anyString()).call().content())
+        when(geminiClient.generar(anyString(), anyString(), any()))
                 .thenReturn(response(true, "5", "3", "[\"dolor de garganta\"]"));
-        clearInvocations(chatClient);
+        clearInvocations(geminiClient);
 
         TriageAiResponse result = client.consultar("sistema", "conversacion");
 
         assertTrue(result.finalizado());
         assertEquals(3, result.resultado().nivelPrioridad());
-        verify(chatClient, times(1)).prompt();
+        verify(geminiClient, times(1)).generar(anyString(), anyString(), any());
     }
 
     @Test
     void rechazaCierreConPrioridadNula() {
-        when(chatClient.prompt().options(any()).system(anyString()).user(anyString()).call().content())
+        when(geminiClient.generar(anyString(), anyString(), any()))
                 .thenReturn(response(true, "5", "null", "[\"dolor\"]"));
-        clearInvocations(chatClient);
+        clearInvocations(geminiClient);
 
         assertThrows(ProveedorIaException.class, () -> client.consultar("sistema", "conversacion"));
-        verify(chatClient, times(1)).prompt();
+        verify(geminiClient, times(1)).generar(anyString(), anyString(), any());
     }
 
     @Test
     void rechazaNumerosFueraDeRango() {
-        when(chatClient.prompt().options(any()).system(anyString()).user(anyString()).call().content())
+        when(geminiClient.generar(anyString(), anyString(), any()))
                 .thenReturn(response(false, "11", "null", "[\"dolor\"]"));
-        clearInvocations(chatClient);
+        clearInvocations(geminiClient);
 
         assertThrows(ProveedorIaException.class, () -> client.consultar("sistema", "conversacion"));
-        verify(chatClient, times(1)).prompt();
+        verify(geminiClient, times(1)).generar(anyString(), anyString(), any());
     }
 
     @Test
     void rechazaPrioridadFueraDeRango() {
-        when(chatClient.prompt().options(any()).system(anyString()).user(anyString()).call().content())
+        when(geminiClient.generar(anyString(), anyString(), any()))
                 .thenReturn(response(true, "5", "6", "[\"dolor\"]"));
-        clearInvocations(chatClient);
+        clearInvocations(geminiClient);
 
         assertThrows(ProveedorIaException.class, () -> client.consultar("sistema", "conversacion"));
-        verify(chatClient, times(1)).prompt();
+        verify(geminiClient, times(1)).generar(anyString(), anyString(), any());
     }
 
     @Test
     void rechazaSintomasNoInformadosEnCierre() {
-        when(chatClient.prompt().options(any()).system(anyString()).user(anyString()).call().content())
+        when(geminiClient.generar(anyString(), anyString(), any()))
                 .thenReturn(response(true, "2", "2", "[\"no informado\"]"));
-        clearInvocations(chatClient);
+        clearInvocations(geminiClient);
 
         assertThrows(ProveedorIaException.class, () -> client.consultar("sistema", "conversacion"));
-        verify(chatClient, times(1)).prompt();
+        verify(geminiClient, times(1)).generar(anyString(), anyString(), any());
     }
 
     @Test
     void rechazaRespuestaRealDeAlarmaSinMotivoUtil() {
-        when(chatClient.prompt().options(any()).system(anyString()).user(anyString()).call().content())
+        when(geminiClient.generar(anyString(), anyString(), any()))
                 .thenReturn("""
                         {
                           "finalizado": true,
@@ -172,58 +166,48 @@ class TriageIaClientTest {
                           "mensaje": "Gracias. Registre tus sintomas y la preclasificacion."
                         }
                         """);
-        clearInvocations(chatClient);
+        clearInvocations(geminiClient);
 
         assertThrows(ProveedorIaException.class, () -> client.consultar("sistema", "conversacion", true));
-        verify(chatClient, times(1)).prompt();
+        verify(geminiClient, times(1)).generar(anyString(), anyString(), any());
     }
 
     @Test
     void fallaConUnaSolaLlamadaSiElProveedorNoResponde() {
-        when(chatClient.prompt().options(any()).system(anyString()).user(anyString()).call().content())
+        when(geminiClient.generar(anyString(), anyString(), any()))
                 .thenThrow(new IllegalStateException("provider unavailable"));
-        clearInvocations(chatClient);
+        clearInvocations(geminiClient);
 
         assertThrows(ProveedorIaException.class, () -> client.consultar("sistema", "conversacion"));
-        verify(chatClient, times(1)).prompt();
+        verify(geminiClient, times(1)).generar(anyString(), anyString(), any());
     }
 
     @Test
-    void enviaEsquemaNativoDeOllamaConRangosNumericos() {
-        ChatClient.ChatClientRequestSpec request = chatClient.prompt();
-        when(request.options(any()).system(anyString()).user(anyString()).call().content())
+    @SuppressWarnings("unchecked")
+    void enviaEsquemaNativoDeGeminiConRangosNumericos() {
+        when(geminiClient.generar(anyString(), anyString(), any()))
                 .thenReturn(response(false, "null", "null", "[\"dolor\"]"));
-        clearInvocations(chatClient, request);
-
         client.consultar("sistema", "conversacion");
-
-        ArgumentCaptor<ChatOptions.Builder> options = ArgumentCaptor.forClass(ChatOptions.Builder.class);
-        verify(request).options(options.capture());
-        OllamaChatOptions built = assertInstanceOf(OllamaChatOptions.Builder.class, options.getValue()).build();
-        String schema = built.getFormat().toString();
-        assertTrue(schema.contains("minimum=0"));
-        assertTrue(schema.contains("maximum=10"));
-        assertTrue(schema.contains("minimum=1"));
-        assertTrue(schema.contains("maximum=5"));
+        ArgumentCaptor<Map<String, Object>> schema = ArgumentCaptor.forClass(Map.class);
+        verify(geminiClient).generar(anyString(), anyString(), schema.capture());
+        String value = schema.getValue().toString();
+        assertTrue(value.contains("minimum=0"));
+        assertTrue(value.contains("maximum=10"));
+        assertTrue(value.contains("minimum=1"));
+        assertTrue(value.contains("maximum=5"));
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void modoFinalExigeFinalizadoTrueYPrioridadNoNulaEnElEsquema() {
-        ChatClient.ChatClientRequestSpec request = chatClient.prompt();
-        when(request.options(any()).system(anyString()).user(anyString()).call().content())
+        when(geminiClient.generar(anyString(), anyString(), any()))
                 .thenReturn(response(true, "5", "3", "[\"dolor\"]"));
-        clearInvocations(chatClient, request);
-
         client.consultar("sistema", "conversacion", true);
-
-        ArgumentCaptor<ChatOptions.Builder> options = ArgumentCaptor.forClass(ChatOptions.Builder.class);
-        verify(request).options(options.capture());
-        OllamaChatOptions built = assertInstanceOf(OllamaChatOptions.Builder.class, options.getValue()).build();
-        Map<?, ?> root = (Map<?, ?>) built.getFormat();
-        Map<?, ?> properties = (Map<?, ?>) root.get("properties");
+        ArgumentCaptor<Map<String, Object>> schema = ArgumentCaptor.forClass(Map.class);
+        verify(geminiClient).generar(anyString(), anyString(), schema.capture());
+        Map<?, ?> properties = (Map<?, ?>) schema.getValue().get("properties");
         Map<?, ?> finalizado = (Map<?, ?>) properties.get("finalizado");
-        Map<?, ?> resultado = (Map<?, ?>) properties.get("resultado");
-        Map<?, ?> resultSchema = resultado;
+        Map<?, ?> resultSchema = (Map<?, ?>) properties.get("resultado");
         Map<?, ?> resultProperties = (Map<?, ?>) resultSchema.get("properties");
         Map<?, ?> priority = (Map<?, ?>) resultProperties.get("nivelPrioridad");
         assertEquals(java.util.List.of(true), finalizado.get("enum"));
@@ -233,13 +217,13 @@ class TriageIaClientTest {
 
     @Test
     void modoFinalRechazaRespuestaQueAunDiceNoFinalizado() {
-        when(chatClient.prompt().options(any()).system(anyString()).user(anyString()).call().content())
+        when(geminiClient.generar(anyString(), anyString(), any()))
                 .thenReturn(response(false, "null", "null", "[\"dolor\"]"));
-        clearInvocations(chatClient);
+        clearInvocations(geminiClient);
 
         assertThrows(ProveedorIaException.class,
                 () -> client.consultar("sistema", "conversacion", true));
-        verify(chatClient, times(1)).prompt();
+        verify(geminiClient, times(1)).generar(anyString(), anyString(), any());
     }
 
     private String response(boolean finalizado, String intensidad, String prioridad, String sintomas) {

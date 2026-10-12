@@ -110,8 +110,6 @@ public class ChatService {
             el motivo, intensidad o inicio si el paciente ya los informo en cualquier mensaje.
             """;
 
-    private static final Pattern INTENSIDAD_PATRON = Pattern.compile("(\\b\\d{1,2})\\s*/\\s*10|(\\b\\d{1,2})\\s+de\\s+10");
-
     private static final Set<EstadoEntradaCola> ESTADOS_ENTRADA_TERMINALES =
             EnumSet.of(EstadoEntradaCola.FINALIZADA, EstadoEntradaCola.CANCELADA);
 
@@ -196,7 +194,7 @@ public class ChatService {
         chat.agregarMensaje(mensajePaciente);
 
         TriageAiResponse respuestaIa;
-        String origenRespuesta = "OLLAMA";
+        String origenRespuesta = "GEMINI";
         String textoPaciente = textoPaciente(chat);
         boolean alarmaCritica = contieneAlarmaCritica(textoPaciente);
         boolean debeSolicitarCierre = alarmaCritica
@@ -253,7 +251,7 @@ public class ChatService {
 
     /**
      * Cierra una entrevista conducida por Gemini Live: guarda la transcripcion y pide a
-     * Ollama la preclasificacion a partir del resumen recolectado.
+     * Gemini la preclasificacion a partir del resumen recolectado.
      */
     @Transactional
     public ChatTurnResponse finalizarEntrevistaVoz(String idChat,
@@ -277,7 +275,7 @@ public class ChatService {
         boolean hayAlarma = contieneAlarmaLiteralVoz(chat)
                 || !ValidadorCierreEntrevistaVoz.signosAlarmaSignificativos(resumen).isEmpty();
         TriageAiResponse respuestaIa;
-        String origenRespuesta = "OLLAMA";
+        String origenRespuesta = "GEMINI";
         try {
             respuestaIa = triageIaClient.consultar(FINAL_SYSTEM_PROMPT_VOZ,
                     construirDatosVozParaClasificacion(chat, resumen), true);
@@ -602,38 +600,7 @@ public class ChatService {
     }
 
     private boolean tieneDatosSuficientesParaCerrar(Chat chat) {
-        List<Mensaje> mensajesPaciente = chat.getMensajes().stream()
-                .filter(mensaje -> mensaje.getAutor() == AutorMensaje.PACIENTE)
-                .toList();
-        if (mensajesPaciente.size() < 3) {
-            return false;
-        }
-
-        String texto = normalizarTexto(String.join(" ", mensajesPaciente.stream().map(Mensaje::getContenido).toList()));
-        boolean tieneMotivoYSintomasBasicos = contieneAlguno(texto, "dolor", "fiebre", "tos", "vomitos", "nauseas", "mareo", "sangrado");
-        boolean tieneInicio = texto.contains("desde ayer") || texto.contains("hoy") || texto.contains("hace ") || texto.contains("empezo");
-        boolean tieneGravedadOEvolucion = extraerIntensidad(texto) != null
-                || texto.contains("39")
-                || contieneAlguno(texto, "empeora", "mejora", "no baja", "se mantiene", "fuerte", "leve");
-        boolean exploroAlarmas = contieneAlguno(texto,
-                "dificultad para respirar",
-                "falta de aire",
-                "dolor de pecho",
-                "perdida de conciencia",
-                "desmayo",
-                "confusion",
-                "convulsion",
-                "sangrado");
-        boolean tieneContextoBasico = contieneAlguno(texto,
-                "antecedentes",
-                "enfermedad",
-                "medicacion",
-                "medicamento",
-                "alergia",
-                "embarazo",
-                "no tomo",
-                "no tengo enfermedades");
-        return tieneMotivoYSintomasBasicos && tieneInicio && tieneGravedadOEvolucion && exploroAlarmas && tieneContextoBasico;
+        return ValidadorCierreEntrevistaVoz.tieneDatosSuficientes(turnosLiteralesVoz(chat));
     }
 
     private boolean contieneAlguno(String textoNormalizado, String... variantes) {
@@ -662,7 +629,8 @@ public class ChatService {
                 .toList();
         String texto = normalizarTexto(String.join(" ", mensajesPaciente.stream().map(Mensaje::getContenido).toList()));
 
-        if (mensajesPaciente.size() >= MAX_MENSAJES_PACIENTE || contieneAlarmaCritica(texto)) {
+        if (mensajesPaciente.size() >= MAX_MENSAJES_PACIENTE || contieneAlarmaCritica(texto)
+                || tieneDatosSuficientesParaCerrar(chat)) {
             return forzarCierre(chat);
         }
 
@@ -671,7 +639,7 @@ public class ChatService {
                 .map(Mensaje::getContenido)
                 .map(this::normalizarTexto)
                 .toList();
-        String pregunta = siguientePreguntaFallback(texto, mensajesPaciente.size(), preguntasBot);
+        String pregunta = siguientePreguntaFallback(chat, texto, mensajesPaciente.size(), preguntasBot);
         if (pregunta == null) {
             if (tieneDatosSuficientesParaCerrar(chat)) {
                 return forzarCierre(chat);
@@ -686,12 +654,13 @@ public class ChatService {
         return new TriageAiResponse(false, pregunta, construirResumenBasico(chat));
     }
 
-    private String siguientePreguntaFallback(String texto, int cantidadMensajesPaciente, List<String> preguntasBot) {
+    private String siguientePreguntaFallback(Chat chat, String texto, int cantidadMensajesPaciente, List<String> preguntasBot) {
         List<String> candidatas = new ArrayList<>();
         if (!tieneInicioInformado(texto)) {
             candidatas.add("Cuando empezaron los sintomas y vienen mejorando, empeorando o se mantienen igual?");
         }
-        if (tieneDolor(texto) && extraerIntensidad(texto) == null) {
+        if (tieneDolor(texto)
+                && ValidadorCierreEntrevistaVoz.ultimaIntensidadLiteral(turnosLiteralesVoz(chat)) == null) {
             candidatas.add("Necesito precisar el dolor: del 0 al 10, cuanto te duele ahora y en que zona lo sentis?");
         }
         if (!exploroSignosAlarma(texto)) {
@@ -792,7 +761,7 @@ public class ChatService {
             signosAlarma.add("signo de alarma critico");
         }
 
-        Integer intensidadDolor = extraerIntensidad(textoNormalizado);
+        Integer intensidadDolor = ValidadorCierreEntrevistaVoz.ultimaIntensidadLiteral(turnosLiteralesVoz(chat));
 
         String inicio = extraerInicio(textoNormalizado);
         String evolucion = extraerEvolucion(textoNormalizado);
@@ -918,19 +887,6 @@ public class ChatService {
         int inicio = Math.max(0, indiceFrase - 100);
         String ventana = textoNormalizado.substring(inicio, indiceFrase);
         return ventana.matches(".*\\b(no|sin|niega|niego|descarta|descarto|niegan)\\b.*");
-    }
-
-    private Integer extraerIntensidad(String textoNormalizado) {
-        Matcher matcher = INTENSIDAD_PATRON.matcher(textoNormalizado);
-        if (matcher.find()) {
-            String valor = matcher.group(1) != null ? matcher.group(1) : matcher.group(2);
-            try {
-                return Integer.parseInt(valor);
-            } catch (NumberFormatException ignored) {
-                return null;
-            }
-        }
-        return null;
     }
 
     private String extraerInicio(String textoNormalizado) {

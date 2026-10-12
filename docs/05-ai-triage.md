@@ -6,35 +6,26 @@ AI triage collects initial symptoms and produces a structured result. It does no
 
 ## Model
 
-Spring AI Ollama is configured with:
+Text chat, final voice classification and reception forms use `GeminiJsonClient`
+against the Gemini REST `generateContent` API. Speech interaction remains on Gemini Live.
 
 ```properties
-spring.ai.ollama.chat.model=llama3.2:3b
-spring.ai.ollama.chat.temperature=0
-spring.ai.ollama.chat.seed=42
-spring.ai.retry.max-attempts=1
-spring.http.clients.connect-timeout=2s
-spring.http.clients.read-timeout=45s
+pretriage.ia.gemini.api-key=${GEMINI_API_KEY:}
+pretriage.ia.gemini.model=${GEMINI_CHAT_MODEL:gemini-3.5-flash-lite}
+pretriage.ia.gemini.base-url=${GEMINI_API_BASE_URL:https://generativelanguage.googleapis.com/v1beta}
+pretriage.ia.gemini.connect-timeout=5s
+pretriage.ia.gemini.request-timeout=${GEMINI_REQUEST_TIMEOUT:45s}
 ```
 
-The HTTP limits apply to the auto-configured Ollama client. Reception-assisted
-triage catches provider failures and continues with its deterministic fallback;
-it must not remain pending indefinitely when Ollama is unavailable. Only one
-provider attempt is made; the default exponential retry sequence is intentionally
-disabled.
+The key is sent in `x-goog-api-key` and stays in the backend. Requests use
+temperature zero and `generationConfig.responseFormat.text.mimeType=APPLICATION_JSON`
+with JSON Schema. One bounded request is made, without retries. Quota exhaustion,
+missing configuration, blocked/truncated responses and invalid JSON use the
+existing local fallback; response bodies and clinical text are not logged.
+Temperature zero does not guarantee identical classifications across calls.
 
-Reception form classification sends the generated `TriageResultDTO` JSON Schema
-to Ollama as a provider-native structured-output constraint and validates the
-response against that same schema. This prevents semantically valid answers with
-renamed or nested fields from being discarded and replaced by the conservative
-fallback.
-
-Classification uses temperature `0` and a fixed seed so identical forms are
-reproducible. A deterministic coherence guard also caps an explicitly low-risk
-form at level `2` when pain is `0..3`, evolution is improving, fever is absent,
-and no alarm signs were recorded. Reception forms may report multiple pains; the
-classifier evaluates all of them and uses the highest intensity for the structured
-result and deterministic rules. The same guard applies to the provider fallback.
+Reception evaluates the highest reported pain intensity and retains its existing
+deterministic low-risk guard and fallback. Spring AI/Gemini REST dependencies are removed.
 
 ## Chat Flow
 
@@ -64,16 +55,16 @@ enough information. Missing information triggers follow-up questions; alarm
 conditions and the 12-message patient limit allow an earlier or bounded close.
 
 `ChatTurnResponse.origenRespuesta` identifies the source of each response:
-`OLLAMA` or `FALLBACK_LOCAL`. The final JSON additionally contains
+`GEMINI` or `FALLBACK_LOCAL`. The final JSON additionally contains
 `origenClasificacion` with the same values. A successful HTTP response alone does
-not prove that Ollama supplied the classification. These fields are additive;
+not prove that Gemini REST supplied the classification. These fields are additive;
 `respuesta` and `atencionEstimada` retain their existing meanings.
 
 ## Voice Chat (Gemini Live)
 
 `WS /api/chat/{id}/voz` offers a speech-to-speech interview for the same chat
 (model `gemini-3.8-live`, configurable). Gemini Live talks directly with the
-patient; Ollama still produces the preclassification:
+patient; Gemini REST produces the final preclassification:
 
 1. The backend (`SesionVozChat`) proxies client audio to Gemini Live over
    `BidiGenerateContent`, so the API key never reaches the browser.
@@ -94,16 +85,16 @@ patient; Ollama still produces the preclassification:
    Meaningful alarms or twelve patient responses allow incomplete-data closure,
    but never bypass valid structure or the need for a patient response.
    Rejected calls return a corrective tool error and keep the interview open.
-   `ChatService` repeats this validation before changing the chat or calling Ollama.
+   `ChatService` repeats this validation before changing the chat or calling Gemini REST.
 5. The backend stops sending microphone audio and signals `audioStreamEnd`.
    After Gemini's goodbye turn it drains late input transcriptions, requests
    transport closure and waits for normal close confirmation. Only then
    `ChatService.finalizarEntrevistaVoz` stores the
    transcription as `Mensaje`s and sends the summary plus the patient
-   transcription to Ollama (`FINAL_SYSTEM_PROMPT` + voice clause: on conflict the
+   transcription to Gemini REST (`FINAL_SYSTEM_PROMPT` + voice clause: on conflict the
    transcription prevails).
-6. The Ollama result goes through the same validation, priority mapping,
-   `Chat.resultadoTriageJson` and queue update as the text chat. If Ollama fails,
+6. The Gemini REST result goes through the same validation, priority mapping,
+   `Chat.resultadoTriageJson` and queue update as the text chat. If Gemini REST fails,
    returns invalid output, or omits immediate attention while the transcription
    or the summary contain alarm signs, a local fallback built from the summary
    (alarms, pain, history) and the transcription is used (`FALLBACK_LOCAL`).
@@ -149,7 +140,7 @@ The result contains fields such as:
 
 ## Chat Output Validation
 
-`TriageIaClient` supplies the response schema to Ollama and validates the returned
+`TriageIaClient` supplies the response schema to Gemini REST and validates the returned
 JSON before the chat uses it. Unreported pain intensity may be `null`; priority
 may be `null` while the interview remains open. A final result must have a valid
 priority from 1 to 5 and meaningful clinical content. Invalid provider output is
@@ -199,7 +190,16 @@ The debug log includes:
 - Assigned severity and queue priority.
 - Queue state.
 
-## Verification of the Ollama Chat Fix
+## Interview closure and brief answers
+
+Text and voice share `ValidadorCierreEntrevistaVoz` patient-evidence checks.
+Answers such as `12 horas`, `un ocho` and `no` are interpreted only in the context
+of the preceding onset, pain-scale, alarm or history question. An unrelated `no`
+does not count as an alarm denial. Complete interviews request the final schema;
+if the provider still asks another question, the local fallback closes the chat.
+Historical results with `origenClasificacion=OLLAMA` remain unchanged in storage.
+
+## Historical verification of the Ollama Chat Fix
 
 The 2026-09-29 verification used `llama3.2:3b` and an isolated PostgreSQL database:
 

@@ -38,6 +38,17 @@ public final class ValidadorCierreEntrevistaVoz {
         if (alarma || alarmaResumen || respuestas >= MAX_RESPUESTAS) {
             return Optional.empty();
         }
+        return validarSuficiencia(turnos, respuestas);
+    }
+
+    /** Text and voice use the same patient evidence, including answers to preceding questions. */
+    public static boolean tieneDatosSuficientes(List<TurnoVoz> historial) {
+        if (historial == null) return false;
+        return validarSuficiencia(historial,
+                historial.stream().filter(ValidadorCierreEntrevistaVoz::esRespuesta).count()).isEmpty();
+    }
+
+    private static Optional<String> validarSuficiencia(List<TurnoVoz> turnos, long respuestas) {
         if (respuestas < 3) {
             return Optional.of("Continua la entrevista: aun faltan respuestas del paciente. Confirma inicio, gravedad o evolucion, signos de alarma y antecedentes antes de cerrar.");
         }
@@ -50,7 +61,9 @@ public final class ValidadorCierreEntrevistaVoz {
                 pregunta = texto;
             } else if (esRespuesta(turno)) {
                 sintomas |= contiene(texto, SINTOMAS);
-                inicio |= inicioInformado(texto);
+                inicio |= inicioInformado(texto)
+                        || (contiene(pregunta, "desde cuando|cuando empez|cuanto tiempo|inicio")
+                            && contiene(texto, "\\d+ (?:minutos?|horas?|dias?|semanas?|meses?)"));
                 gravedad |= extraerIntensidad(texto, pregunta) != null || contiene(texto, EVOLUCION)
                         || contiene(texto, "39(?:[.,]\\d+)?");
                 alarmasExploradas |= contiene(texto, ALARMAS + "|sangrado|empeoramiento importante")
@@ -115,9 +128,13 @@ public final class ValidadorCierreEntrevistaVoz {
         Integer ultima = null;
         while (matcher.find()) ultima = Integer.parseInt(matcher.group(1));
         if (ultima != null) return ultima;
-        var respuestaNumerica = Pattern.compile("^(10|[0-9])[.!]?$").matcher(texto);
-        if (contiene(pregunta, "intensidad|del 0 al 10|de 0 a 10") && respuestaNumerica.matches()) {
-            return Integer.parseInt(respuestaNumerica.group(1));
+        String respuesta = texto.replaceFirst("^(?:un|una)\\s+", "").replaceAll("[.!]$", "").strip();
+        if (contiene(pregunta, "intensidad|(?:0|1|cero|uno) (?:al|a) (?:10|diez)")) {
+            if (respuesta.matches("10|[0-9]")) return Integer.parseInt(respuesta);
+            List<String> numeros = List.of("cero", "uno", "dos", "tres", "cuatro", "cinco",
+                    "seis", "siete", "ocho", "nueve", "diez");
+            int indice = numeros.indexOf(respuesta);
+            if (indice >= 0) return indice;
         }
         return null;
     }

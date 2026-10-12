@@ -3,8 +3,6 @@ package com.pretriage.backend.services;
 import com.pretriage.backend.controllers.dtos.TriageAiResponse;
 import com.pretriage.backend.controllers.dtos.TriageResultDTO;
 import com.pretriage.backend.exceptions.ProveedorIaException;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.ollama.api.OllamaChatOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -19,7 +17,7 @@ import java.util.Map;
 /**
  * Small boundary around the provider used by the conversational triage flow.
  *
- * <p>The response schema is sent to Ollama as a native structured-output
+ * <p>The response schema is sent to Gemini as a native structured-output
  * constraint. The response is still checked locally because a provider can
  * return syntactically valid JSON which does not satisfy the application
  * contract.</p>
@@ -31,7 +29,7 @@ public class TriageIaClient {
     private static final String MENSAJE = "mensaje";
 
     /**
-     * Ollama accepts a JSON Schema in the request's {@code format} property.
+     * Gemini accepts a JSON Schema in the request's structured-output configuration.
      * The two nullable integer fields are intentionally represented as a union:
      * an unfinished interview may not have a pain score or a priority yet.
      */
@@ -50,12 +48,12 @@ public class TriageIaClient {
             y asigna nivelPrioridad como entero de 1 a 5 según la informacion disponible.
             """;
 
-    private final ChatClient chatClient;
+    private final GeminiJsonClient geminiClient;
     private final ObjectMapper objectMapper;
     private final Logger logger = LoggerFactory.getLogger(TriageIaClient.class);
 
-    public TriageIaClient(ChatClient.Builder chatClientBuilder, ObjectMapper objectMapper) {
-        this.chatClient = chatClientBuilder.build();
+    public TriageIaClient(GeminiJsonClient geminiClient, ObjectMapper objectMapper) {
+        this.geminiClient = geminiClient;
         this.objectMapper = objectMapper;
     }
 
@@ -80,13 +78,9 @@ public class TriageIaClient {
 
         String rawResponse;
         try {
-            rawResponse = chatClient.prompt()
-                        .options(OllamaChatOptions.builder()
-                                .format(finalizacionRequerida ? FINAL_OUTPUT_SCHEMA : OUTPUT_SCHEMA))
-                        .system(finalizacionRequerida ? systemPrompt + "\n\n" + FINALIZATION_DIRECTIVE : systemPrompt)
-                        .user(conversation)
-                        .call()
-                        .content();
+            rawResponse = geminiClient.generar(
+                    finalizacionRequerida ? systemPrompt + "\n\n" + FINALIZATION_DIRECTIVE : systemPrompt,
+                    conversation, finalizacionRequerida ? FINAL_OUTPUT_SCHEMA : OUTPUT_SCHEMA);
         }
         catch (Exception exception) {
             logger.warn("Triage IA fallback category={} reason={}", "provider_failure", "call_failed");
@@ -105,6 +99,23 @@ public class TriageIaClient {
                         "invalid_response", "response", "malformed_or_unreadable");
             }
             throw new ProveedorIaException(exception);
+        }
+    }
+
+    /** Reception shares the result schema and local validator with digital triage. */
+    @SuppressWarnings("unchecked")
+    public TriageResultDTO clasificarResultado(String systemPrompt, String input) {
+        try {
+            var properties = (Map<String, Object>) FINAL_OUTPUT_SCHEMA.get("properties");
+            var resultSchema = (Map<String, Object>) properties.get(RESULTADO);
+            String raw = geminiClient.generar(systemPrompt, input, resultSchema);
+            var wrapped = objectMapper.createObjectNode();
+            wrapped.put(FINALIZADO, true);
+            wrapped.put(MENSAJE, "Clasificacion completada");
+            wrapped.set(RESULTADO, objectMapper.readTree(raw));
+            return parseAndValidate(wrapped.toString(), true).resultado();
+        } catch (Exception error) {
+            throw new ProveedorIaException(new IllegalStateException("Gemini no devolvio una clasificacion valida"));
         }
     }
 

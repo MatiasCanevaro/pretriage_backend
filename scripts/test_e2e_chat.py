@@ -10,7 +10,7 @@ import e2e_chat
 
 class E2EHelpersTest(unittest.TestCase):
     @staticmethod
-    def result(origin="OLLAMA", priority=3):
+    def result(origin="GEMINI", priority=3):
         return {"motivoConsulta": "fiebre", "sintomas": ["fiebre"], "inicio": "ayer",
                 "evolucion": "estable", "intensidadDolor": None, "signosAlarma": [],
                 "antecedentesRelevantes": [], "medicamentos": [], "alergias": [],
@@ -55,7 +55,7 @@ class E2EHelpersTest(unittest.TestCase):
                "sector_activa": True, "sala_activa": True, "prioridad": 3}
         args = SimpleNamespace(db_user="u", db_name="d", db_container="c", allow_fallback=False)
         with patch.object(e2e_chat, "run_psql", return_value=json.dumps(row)):
-            with self.assertRaisesRegex(RuntimeError, "origin is OLLAMA"):
+            with self.assertRaisesRegex(RuntimeError, "origin is GEMINI"):
                 e2e_chat.validate_persisted_state(args, "subject", 10, ["fiebre"])
 
     def test_validation_accepts_consistent_persisted_state(self):
@@ -66,9 +66,19 @@ class E2EHelpersTest(unittest.TestCase):
                "gestor_especialidad_id": 2, "gestor_sector_id": 4, "nivel_de_gravedad_bot": "URGENTE",
                "sector_activa": True, "sala_activa": True, "prioridad": 3}
         args = SimpleNamespace(db_user="u", db_name="d", db_container="c", allow_fallback=False)
-        with patch.object(e2e_chat, "run_psql", return_value=json.dumps(row)):
+        with patch.object(e2e_chat, "run_psql", return_value=json.dumps(row)) as query:
             _, result = e2e_chat.validate_persisted_state(args, "subject", 10, ["fiebre"])
+        self.assertIn("cm.id_chat = c.id", query.call_args.args[0])
         self.assertEqual(result["nivelPrioridad"], 3)
+
+    def test_gemini_precheck_uses_key_header_and_generation_capability(self):
+        with patch.object(e2e_chat, "http_json", return_value={"supportedGenerationMethods": ["generateContent"]}) as http:
+            e2e_chat.check_gemini("models/gemini-test", "dummy-key", "https://example.invalid/v1beta")
+        self.assertNotIn("dummy-key", http.call_args.args[1])
+        self.assertEqual(http.call_args.kwargs["extra_headers"], {"x-goog-api-key": "dummy-key"})
+        with patch.object(e2e_chat, "http_json", return_value={"supportedGenerationMethods": ["bidiGenerateContent"]}):
+            with self.assertRaisesRegex(RuntimeError, "generateContent"):
+                e2e_chat.check_gemini("gemini-test", "dummy-key", "https://example.invalid/v1beta")
 
     def test_validation_rejects_priority_severity_mismatch(self):
         row = {"chat_id": 10, "chat_patient_id": 3, "consulta_patient_id": 3,

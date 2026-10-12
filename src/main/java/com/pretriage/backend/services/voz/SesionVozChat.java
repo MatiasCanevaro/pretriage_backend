@@ -29,7 +29,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Entrevista de pre-triage por voz (speech-to-speech). Gemini Live conversa directamente con
  * el paciente siguiendo su propia secuencia de preguntas; cuando junta los datos necesarios
  * llama a {@code finalizar_entrevista} con un resumen. Entonces la sesion de voz termina y
- * {@link ChatService#finalizarEntrevistaVoz} pide a Ollama la preclasificacion.
+ * {@link ChatService#finalizarEntrevistaVoz} pide a Gemini la preclasificacion.
  */
 public class SesionVozChat implements GeminiLiveOyente {
     private static final Logger log = LoggerFactory.getLogger(SesionVozChat.class);
@@ -89,7 +89,7 @@ public class SesionVozChat implements GeminiLiveOyente {
     private final GeminiLiveProperties properties;
     private final ObjectMapper objectMapper;
     private final CanalVozCliente canal;
-    // Persistencia y clasificacion fuera del hilo de lectura del WebSocket (Ollama puede tardar).
+    // Persistencia y clasificacion fuera del hilo de lectura del WebSocket (Gemini puede tardar).
     private final ExecutorService tareas;
     private final ScheduledExecutorService temporizador;
     private final Duration ventanaDrenaje;

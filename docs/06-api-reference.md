@@ -340,7 +340,7 @@ Body:
 ```
 
 Returns `ChatTurnResponse` with `respuesta`, `atencionEstimada` and the additive
-field `origenRespuesta` (`OLLAMA` or `FALLBACK_LOCAL`). When triage finalizes,
+field `origenRespuesta` (`GEMINI` or `FALLBACK_LOCAL`). When triage finalizes,
 `atencionEstimada` is populated and the existing queue entry's priority is
 updated. When the bot finalizes, the patient's `ConsultaMedica` is linked to this chat
 (`ConsultaMedica.chat`, FK `consulta_medica.id_chat`); that link is what the hospital metrics
@@ -363,7 +363,7 @@ GET /api/chat/{id}/voz?access_token={jwt}   (WebSocket upgrade)
 ```
 
 Speech-to-speech interview for an existing open chat: Gemini Live asks the
-questions; when it has enough data the session ends and Ollama preclassifies the
+questions; when it has enough data the session ends and Gemini REST preclassifies the
 collected summary (see `docs/05-ai-triage.md#voice-chat-gemini-live`).
 The JWT may be sent as `Authorization: Bearer` or, because browsers cannot set
 headers on a WebSocket handshake, as the `access_token` query parameter
@@ -392,7 +392,7 @@ Server -> client:
 - `{"tipo":"entrevista_finalizada","resumen":ResumenEntrevistaVoz}`: Gemini closed
   the interview; microphone audio is ignored from now on.
 - `{"tipo":"triage_finalizado","respuesta":MensajeDTO,"atencionEstimada":...,"origenRespuesta":...}`:
-  Ollama (or local fallback) preclassification, same meaning as the final
+  Gemini REST (or local fallback) preclassification, same meaning as the final
   `ChatTurnResponse` of `POST /api/chat/{id}/mensajes`.
 - `{"tipo":"fin"}`: session over; the server then closes the WebSocket.
 

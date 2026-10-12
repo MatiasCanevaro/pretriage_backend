@@ -106,7 +106,7 @@ class SesionVozIntegracionTest {
             when(repo.findByIdAndPacienteUsuarioAuthId(7L, "auth0|voz")).thenReturn(Optional.of(chat));
             when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(ia.consultar(anyString(), anyString(), anyBoolean()))
-                    .thenThrow(new IllegalStateException("Ollama no disponible en este escenario"));
+                    .thenThrow(new IllegalStateException("Gemini no disponible en este escenario"));
             when(cola.finalizarTriageEIngresarACola(anyString(), any(), anyString(), any(Chat.class)))
                     .thenReturn(new TiempoEstimadoAtencionResponse());
             ChatService service = new ChatService(repo, mock(RepoPacientes.class), mock(RepoConsultasMedicas.class),

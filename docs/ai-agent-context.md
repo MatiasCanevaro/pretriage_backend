@@ -54,7 +54,7 @@ The system manages the first medical attention workflow:
   `WebSocketConfig`; `ChatService.finalizarEntrevistaVoz` /
   `registrarTurnosVoz`. Gemini Live conducts the voice interview with a prompt
   mirroring `SYSTEM_PROMPT` and closes it via `finalizar_entrevista`
-  (`ResumenEntrevistaVoz`); priority is never assigned by Gemini: Ollama
+  (`ResumenEntrevistaVoz`); priority is never assigned by the Live interview model: Gemini REST
   classifies the summary + transcription after the Gemini session ends, with the
   validated output contract and an explicit local fallback.
   `ValidadorCierreEntrevistaVoz` gates closure in both the session and the service
@@ -63,9 +63,11 @@ The system manages the first medical attention workflow:
   summary fields in voice fallback. Classify only after normal Gemini transport
   closure; incomplete closure preserves the transcript for continuation.
 
-Chat responses expose `origenRespuesta` (`OLLAMA` / `FALLBACK_LOCAL`); final
+Chat responses expose `origenRespuesta` (`GEMINI` / `FALLBACK_LOCAL`); final
 `Chat.resultadoTriageJson` also stores `origenClasificacion`. Repeated questions
-must prompt for missing information instead of closing the interview. Preserve
+must prompt for missing information while evidence is insufficient. Complete
+interviews request final classification and close with the identified local
+fallback if the provider keeps asking questions. Preserve
 valid final AI classifications instead of overwriting them with local rules.
 Immediate-attention final messages must include the result's safety recommendation.
 The real chat E2E must verify final origin, structured content and queue priority;

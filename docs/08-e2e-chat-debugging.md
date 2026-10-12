@@ -1,6 +1,6 @@
 ﻿# E2E Chat Debugging
 
-`scripts/e2e_chat.py` exercises real login, backend endpoints, Ollama and PostgreSQL.
+`scripts/e2e_chat.py` exercises real login, backend endpoints, Gemini REST and PostgreSQL.
 Use synthetic messages and a disposable database: the seed cancels the test
 patient's existing consultations and deletes their previous chats and messages.
 
@@ -50,13 +50,13 @@ No tengo enfermedades previas, no tomo medicacion y no tengo alergias.
 
 ## Success Criteria
 
-- Ollama is reachable and the requested model is installed.
+- The Gemini API key can access a model supporting `generateContent`. This metadata precheck does not prove generation quota availability.
 - Login, hospital selection and chat endpoints succeed.
 - The interview consumes the scripted messages and finishes; early closure is
   rejected by default.
 - The stored result has meaningful motive/symptoms and the expected fields.
-- Final `origenClasificacion` is `OLLAMA` by default. The per-turn response exposes
-  `origenRespuesta` (`OLLAMA` or `FALLBACK_LOCAL`).
+- Final `origenClasificacion` is `GEMINI` by default. The per-turn response exposes
+  `origenRespuesta` (`GEMINI` or `FALLBACK_LOCAL`).
 - Chat and consultation belong to the authenticated patient; consultation and
   queue entry both have `EN_COLA`, and the assigned sector is consistent.
 - Result priority, consultation severity and queue priority agree.
@@ -79,16 +79,16 @@ optional chat, so queue membership alone never proves AI classification.
 --min-turns 1
 --allow-early-finalization
 --allow-fallback
---skip-ollama-check
+--skip-gemini-check
 ```
 
 Use `--allow-early-finalization` for cases intentionally expected to close
 immediately, such as an alarm scenario. `--min-turns` sets a custom minimum.
 `--expected-symptom` can be repeated. `--allow-fallback` explicitly accepts local
-classification; such a run does not demonstrate Ollama classification.
-`--skip-ollama-check` only skips the availability precheck.
+classification; such a run does not demonstrate Gemini REST classification.
+`--skip-gemini-check` only skips the availability precheck.
 
-## Alarm Case with Ollama
+## Alarm Case with Gemini REST
 
 `scripts/chat_case_alarm.txt` contains a single synthetic message reporting
 chest pain and difficulty breathing. Run it against the isolated backend:
@@ -98,7 +98,7 @@ python scripts/e2e_chat.py --backend-url http://localhost:18080 --db-name pretri
 ```
 
 `--expect-immediate-attention` requires immediate attention, nonempty alarm signs,
-urgent priority and `OLLAMA` origin in both the final HTTP response and stored
+urgent priority and `GEMINI` origin in both the final HTTP response and stored
 classification. It also checks that the final patient-facing message includes
 the stored safety recommendation. It does not accept a local fallback, even with
 `--allow-fallback`. Repeatable `--expected-alarm TERM` can additionally check

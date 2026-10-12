@@ -7,7 +7,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.ai.chat.client.ChatClient;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
@@ -17,15 +16,13 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class TriageFormularioServiceTest {
-    @Mock ChatClient.Builder builder;
-    @Mock ChatClient chatClient;
+    @Mock TriageIaClient triageClient;
     @Mock ObjectMapper objectMapper;
     private TriageFormularioService service;
 
     @BeforeEach
     void setUp() {
-        when(builder.build()).thenReturn(chatClient);
-        service = new TriageFormularioService(builder, objectMapper);
+        service = new TriageFormularioService(triageClient, objectMapper);
     }
 
     @Test

@@ -78,9 +78,10 @@ def load_messages_file(path: Path) -> list[str]:
     return messages
 
 
-def http_json(method, url, body=None, token=None, timeout=120):
+def http_json(method, url, body=None, token=None, timeout=120, extra_headers=None):
     data = None
     headers = {"Accept": "application/json"}
+    headers.update(extra_headers or {})
     if body is not None:
         data = json.dumps(body).encode("utf-8")
         headers["Content-Type"] = "application/json"
@@ -199,6 +200,12 @@ WHERE cm.id_paciente = p.id
   AND p.auth_id = {sql_quote(subject)}
   AND cm.estado_consulta IN ({active_consultas});
 
+UPDATE consulta_medica cm
+SET id_chat = NULL
+FROM chat c, paciente p
+WHERE cm.id_chat = c.id AND c.paciente_id = p.id
+  AND p.auth_id = {sql_quote(subject)};
+
 DELETE FROM mensaje m
 USING chat c, paciente p
 WHERE m.chat_id = c.id
@@ -259,14 +266,16 @@ COMMIT;
     run_psql(sql, args.db_user, args.db_name, args.db_container)
 
 
-def check_ollama(model: str, timeout=5):
-    try:
-        response = http_json("GET", "http://localhost:11434/api/tags", timeout=timeout)
-    except RuntimeError as exc:
-        raise RuntimeError("Ollama is not reachable at http://localhost:11434") from exc
-    models = [item.get("name") for item in response.get("models", [])]
-    if model not in models:
-        raise RuntimeError(f"Ollama model {model!r} is not installed. Available models: {models}")
+def check_gemini(model: str, api_key: str, base_url: str, timeout=10):
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY is required for the Gemini precheck")
+    model = model.removeprefix("models/")
+    if not model or any(char not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-" for char in model):
+        raise RuntimeError("Invalid Gemini model name")
+    response = http_json("GET", f"{base_url.rstrip('/')}/models/{model}", timeout=timeout,
+                         extra_headers={"x-goog-api-key": api_key})
+    if "generateContent" not in response.get("supportedGenerationMethods", []):
+        raise RuntimeError("Selected Gemini model does not support generateContent")
 
 
 def write_debug(path, payload):
@@ -337,7 +346,7 @@ FROM (
          g.id_sector AS gestor_sector_id
   FROM chat c
   JOIN paciente p ON p.id = c.paciente_id
-  JOIN consulta_medica cm ON cm.id_paciente = p.id
+  JOIN consulta_medica cm ON cm.id_chat = c.id AND cm.id_paciente = p.id
   LEFT JOIN entrada_cola ec ON ec.id_consulta_medica = cm.id
   LEFT JOIN gestor_de_cola g ON g.id = ec.id_gestor_de_cola
   LEFT JOIN sector s ON s.id = cm.id_sector
@@ -387,9 +396,9 @@ FROM (
         checks["immediate attention has alarm signs"] = bool(result["signosAlarma"])
         checks["immediate attention has urgent priority"] = result["nivelPrioridad"] in (4, 5)
     origin = result.get("origenClasificacion")
-    checks["classification origin is recognized"] = origin in ("OLLAMA", "FALLBACK_LOCAL")
+    checks["classification origin is recognized"] = origin in ("GEMINI", "FALLBACK_LOCAL")
     if expect_immediate_attention or not args.allow_fallback:
-        checks["classification origin is OLLAMA"] = origin == "OLLAMA"
+        checks["classification origin is GEMINI"] = origin == "GEMINI"
     failed = [name for name, passed in checks.items() if not passed]
     if failed:
         raise RuntimeError("Persisted state validation failed: " + "; ".join(failed))
@@ -398,7 +407,7 @@ FROM (
 
 def main():
     global FAILURE_CONTEXT
-    parser = argparse.ArgumentParser(description="Run a real E2E chat flow against the backend and Ollama.")
+    parser = argparse.ArgumentParser(description="Run a real E2E chat flow against the backend and Gemini.")
     parser.add_argument("--backend-url", default=os.environ.get("BACKEND_URL", "http://localhost:8080"))
     parser.add_argument("--env-file", default=".env")
     parser.add_argument("--db-user", default=os.environ.get("DB_USER", "myuser"))
@@ -411,8 +420,8 @@ def main():
     parser.add_argument("--room-name", default=os.environ.get("E2E_ROOM_NAME", "Sala E2E Chat"))
     parser.add_argument("--specialty", default=os.environ.get("E2E_ESPECIALIDAD", "CLINICA_MEDICA"))
     parser.add_argument("--specialty-name", default=os.environ.get("E2E_ESPECIALIDAD_NOMBRE", "Clinica medica"))
-    parser.add_argument("--ollama-model", default=os.environ.get("E2E_OLLAMA_MODEL", "llama3.2:3b"))
-    parser.add_argument("--skip-ollama-check", action="store_true")
+    parser.add_argument("--gemini-model", help="Override GEMINI_CHAT_MODEL for the availability precheck")
+    parser.add_argument("--skip-gemini-check", action="store_true")
     parser.add_argument("--message", action="append", dest="messages", help="Message to send. Repeat to override defaults.")
     parser.add_argument("--messages-file", default=os.environ.get("E2E_MESSAGES_FILE"), help="Text file with one patient message per non-empty line.")
     parser.add_argument("--debug-log", default=os.environ.get("E2E_DEBUG_LOG", "target/e2e_chat_last_debug.json"))
@@ -424,7 +433,7 @@ def main():
     parser.add_argument("--allow-early-finalization", action="store_true", help="Allow the scripted chat to finalize before all messages are sent")
     parser.add_argument("--allow-fallback", action="store_true", help="Allow FALLBACK_LOCAL in persisted origenClasificacion")
     parser.add_argument("--expected-alarm", action="append", default=None, help="Expected alarm sign term; repeat for multiple terms")
-    parser.add_argument("--expect-immediate-attention", action="store_true", help="Require immediate attention and OLLAMA provenance")
+    parser.add_argument("--expect-immediate-attention", action="store_true", help="Require immediate attention and GEMINI provenance")
     args = parser.parse_args()
     FAILURE_CONTEXT = {"path": args.debug_log, "stage": "argument parsing", "turnosScript": []}
 
@@ -458,10 +467,12 @@ def main():
         raise RuntimeError("--min-turns must be at least 1")
     backend_url = args.backend_url.rstrip("/")
 
-    if not args.skip_ollama_check:
-        set_failure_stage("ollama preflight")
-        check_ollama(args.ollama_model)
-        print(f"Ollama OK: {args.ollama_model}")
+    if not args.skip_gemini_check:
+        set_failure_stage("gemini preflight")
+        model = args.gemini_model or env_value(dotenv, "GEMINI_CHAT_MODEL", "gemini-3.5-flash-lite")
+        check_gemini(model, env_value(dotenv, "GEMINI_API_KEY"),
+                     env_value(dotenv, "GEMINI_API_BASE_URL", "https://generativelanguage.googleapis.com/v1beta"))
+        print(f"Gemini OK: {model}")
 
     set_failure_stage("login")
     login = http_json("POST", f"{backend_url}/api/login", {"email": email, "password": password})
@@ -510,8 +521,8 @@ def main():
             if turn.get("atencionEstimada") is not None:
                 final_turn = turn
                 print(f"Triage finalizado OK | atencionEstimada={turn['atencionEstimada']}")
-                if args.expect_immediate_attention and turn.get("origenRespuesta") != "OLLAMA":
-                    raise RuntimeError("Alarm final turn must have origenRespuesta=OLLAMA")
+                if args.expect_immediate_attention and turn.get("origenRespuesta") != "GEMINI":
+                    raise RuntimeError("Alarm final turn must have origenRespuesta=GEMINI")
                 ensure_no_early_finalization(index, min_turns, args.allow_early_finalization)
                 break
             time.sleep(0.2)

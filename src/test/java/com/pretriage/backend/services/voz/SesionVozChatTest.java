@@ -138,12 +138,12 @@ class SesionVozChatTest {
     }
 
     @Test
-    void alFinalizarCierraGeminiYRecienEntoncesPideLaPreclasificacionAOllama() {
+    void alFinalizarCierraGeminiYRecienEntoncesPideLaPreclasificacionAGemini() {
         TiempoEstimadoAtencionResponse atencion = new TiempoEstimadoAtencionResponse();
         atencion.setConsultaId(10L);
         when(chatService.finalizarEntrevistaVoz(eq("7"), eq("auth0|paciente"), anyList(), any()))
                 .thenReturn(new ChatTurnResponse(new MensajeDTO("Gracias. Registre tus sintomas.", "BOT",
-                        LocalDateTime.now()), atencion, "OLLAMA"));
+                        LocalDateTime.now()), atencion, "GEMINI"));
         SesionVozChat sesion = sesion(historialNuevo());
         sesion.iniciar();
         sesion.alRecibir("{\"setupComplete\":{}}");
@@ -184,7 +184,7 @@ class SesionVozChatTest {
         JsonNode triage = canal.eventos.stream().map(this::json)
                 .filter(e -> "triage_finalizado".equals(e.path("tipo").asText())).findFirst().orElseThrow();
         assertEquals(10L, triage.path("atencionEstimada").path("consultaId").asLong());
-        assertEquals("OLLAMA", triage.path("origenRespuesta").asText());
+        assertEquals("GEMINI", triage.path("origenRespuesta").asText());
         assertEquals("fin", json(canal.eventos.getLast()).path("tipo").asText());
         verify(chatService, never()).registrarTurnosVoz(anyString(), anyString(), anyList());
     }
@@ -283,7 +283,7 @@ class SesionVozChatTest {
     void fragmentosTardiosReinicianDrenajeYSeIncluyenHastaConfirmarCierre() {
         when(chatService.finalizarEntrevistaVoz(anyString(), anyString(), anyList(), any()))
                 .thenReturn(new ChatTurnResponse(new MensajeDTO("Cierre", "BOT", LocalDateTime.now()),
-                        new TiempoEstimadoAtencionResponse(), "OLLAMA"));
+                        new TiempoEstimadoAtencionResponse(), "GEMINI"));
         try (RelojManual reloj = new RelojManual()) {
             SesionVozChat sesion = sesion(historialNuevo(), reloj, Duration.ofMillis(100), Duration.ofSeconds(1));
             sesion.iniciar();
@@ -313,7 +313,7 @@ class SesionVozChatTest {
     void desconectarMobileNoDescartaTranscripcionPendienteTrasAceptarCierre() {
         when(chatService.finalizarEntrevistaVoz(anyString(), anyString(), anyList(), any()))
                 .thenReturn(new ChatTurnResponse(new MensajeDTO("Cierre", "BOT", LocalDateTime.now()),
-                        new TiempoEstimadoAtencionResponse(), "OLLAMA"));
+                        new TiempoEstimadoAtencionResponse(), "GEMINI"));
         SesionVozChat sesion = sesion(historialNuevo());
         sesion.iniciar();
         entrada(sesion, "Tengo dolor de pecho");

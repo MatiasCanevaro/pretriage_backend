@@ -140,6 +140,27 @@ class ValidadorCierreEntrevistaVozTest {
         assertTrue(ValidadorCierreEntrevistaVoz.validar(turnos.subList(0, 11), escaso).isPresent());
     }
 
+    @Test
+    void respuestasBrevesConservanContextoYPermitenCerrarTextoYVoz() {
+        var turnos = List.of(
+                paciente("Me duele la cabeza y tengo fiebre"),
+                bot("Desde cuando empezaron los sintomas?"), paciente("12 horas"),
+                bot("Del cero al diez, cuanto te duele?"), paciente("Un ocho."),
+                bot("Tenes dificultad para respirar, dolor de pecho o confusion?"), paciente("No"),
+                bot("Tenes antecedentes, alergias o medicacion habitual?"), paciente("Ninguna"));
+        assertTrue(ValidadorCierreEntrevistaVoz.tieneDatosSuficientes(turnos));
+        assertTrue(ValidadorCierreEntrevistaVoz.validar(turnos, resumen()).isEmpty());
+        assertEquals(8, ValidadorCierreEntrevistaVoz.ultimaIntensidadLiteral(turnos));
+    }
+
+    @Test
+    void unNoSinPreguntaDeAlarmaNoCuentaComoExploracion() {
+        var turnos = List.of(paciente("Me duele la cabeza desde ayer, igual, 5/10"),
+                bot("Tenes tos?"), paciente("No"),
+                bot("Antecedentes o alergias?"), paciente("No"));
+        assertFalse(ValidadorCierreEntrevistaVoz.tieneDatosSuficientes(turnos));
+    }
+
     private static List<TurnoVoz> completa() {
         return List.of(paciente("Dolor de cabeza desde ayer, intensidad 5/10"),
                 paciente("No tengo dificultad para respirar ni dolor de pecho"),
