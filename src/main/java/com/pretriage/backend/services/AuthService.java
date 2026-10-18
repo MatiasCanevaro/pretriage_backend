@@ -1,7 +1,6 @@
 package com.pretriage.backend.services;
 
 import com.pretriage.backend.controllers.dtos.LoginResponseDTO;
-import com.pretriage.backend.controllers.dtos.RefreshTokenRequest;
 import com.pretriage.backend.controllers.dtos.auth0.AuthIdTokenResponse;
 import com.pretriage.backend.controllers.dtos.auth0.AuthTokenResponse;
 import com.pretriage.backend.controllers.dtos.auth0.AuthUserDetailsResponse;

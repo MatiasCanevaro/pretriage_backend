@@ -5,7 +5,6 @@ import com.pretriage.backend.controllers.dtos.LoginResponseDTO;
 import com.pretriage.backend.controllers.dtos.RefreshTokenRequest;
 import com.pretriage.backend.controllers.dtos.RegisterRequest;
 import com.pretriage.backend.controllers.dtos.TipoUsuario;
-import com.pretriage.backend.controllers.dtos.auth0.AuthIdTokenResponse;
 import com.pretriage.backend.model.personas.*;
 import com.pretriage.backend.repositories.RepoMedico;
 import com.pretriage.backend.repositories.RepoPacientes;
