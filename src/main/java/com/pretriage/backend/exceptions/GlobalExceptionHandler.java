@@ -13,8 +13,10 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import jakarta.validation.ConstraintViolationException;
+import lombok.extern.slf4j.Slf4j;
 
 @RestControllerAdvice
+@Slf4j
 public class GlobalExceptionHandler {
 
     @ExceptionHandler({ CredencialValidaYaExisteException.class, CredencialInvalidaException.class,
@@ -48,10 +50,11 @@ public class GlobalExceptionHandler {
                 .body(Map.of("error", e.getMessage()));
     }
 
-    @ExceptionHandler({ ProveedorIaException.class, ArchivoS3Exception.class, UsuarioLocalNoExisteException.class })
+    @ExceptionHandler({ Exception.class, ProveedorIaException.class, ArchivoS3Exception.class, UsuarioLocalNoExisteException.class })
     public ResponseEntity<Map<String, String>> handleInternalServerErrors(RuntimeException e) {
+        log.error("ocurrio un error inesperado( {} ): {}", e.getClass(), e.getMessage());
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(Map.of("error", e.getMessage()));
+                .body(Map.of("error", "Ocurrió un error inesperado. Intentá nuevamente más tarde."));
     }
 
     @ExceptionHandler(RefreshTokenInvalidoException.class)
