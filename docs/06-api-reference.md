@@ -180,7 +180,52 @@ pretriage.cambio-contrasenia.email.mode=${PRETRIAGE_CAMBIO_EMAIL_MODE:${PRETRIAG
 pretriage.cambio-contrasenia.email.from=${PRETRIAGE_CAMBIO_EMAIL_FROM:${PRETRIAGE_INVITATIONS_EMAIL_FROM:no-reply@pretriage.local}}
 ```
 
-Endpoints públicos en `SpringSecurityConfig` (`/api/auth/cambio-contrasenia/**`).
+Endpoints públicos en `SpringSecurityConfig` (`/api/auth/cambio-contrasenia/solicitar-token`, `/api/auth/cambio-contrasenia/validar`, `/api/auth/cambio-contrasenia`). El endpoint autenticado `/api/auth/cambio-contrasenia/actual` NO es público (ver debajo).
+
+### Cambiar Contraseña (autenticado)
+
+```http
+POST /api/auth/cambio-contrasenia/actual
+```
+
+Requiere JWT (`Authorization: Bearer ...`): NO está en los `permitAll` de `SpringSecurityConfig`, cae en `.anyRequest().authenticated()`. El usuario siempre envía la contraseña actual y la nueva. El sujeto del JWT (`jwt.getSubject()`) debe corresponder a un `UsuarioAuth` local.
+
+Body (`CambiarContraseniaAutenticadaRequest`):
+
+```json
+{
+  "contraseniaActual": "ContraActual123!",
+  "contraseniaNueva": "NuevaPass123!"
+}
+```
+
+Reglas de la contraseña nueva (anotaciones estándar de Bean Validation sobre `CambiarContraseniaAutenticadaRequest`: `@NotBlank` + un `@Pattern` por regla): 8-32 caracteres (contados por punto de código Unicode, `ñ` y acentos cuentan como 1), al menos una mayúscula, al menos una minúscula y al menos un número o carácter especial (todo carácter que no sea letra, ni dígito, ni espacio). La validación se ejecuta en el controller con `@Valid`, antes de la lógica de cambio: los fallos de fortaleza NO cuentan como intento fallido.
+
+Success `200`:
+
+```json
+{
+  "message": "Contraseña cambiada con éxito"
+}
+```
+
+Errores:
+
+* `401` sin cabecera `Authorization`, con token inválido o expirado (resource server).
+* `400 { "contraseniaNueva": "<mensaje de la regla incumplida>" }` cuando la nueva no cumple fortaleza o está vacía: la validación vive en las anotaciones del DTO (`@NotBlank` + `@Pattern` por regla) y se resuelve con `@Valid` en el controller ANTES de invocar la lógica de cambio; estos fallos de fortaleza NO cuentan como intento fallido.
+* `400 { "contraseniaNueva": "La contraseña nueva debe ser distinta de la contraseña actual" }` o `400 { "contraseniaActual": "La contraseña actual es incorrecta" }`: llegan a la lógica de cambio y SÍ cuentan como intento fallido.
+* `400 { "error": "La contraseña es demasiado débil..." }` cuando Auth0 rechaza el guardado (`NoSePudoCambiarContraseniaException`); también cuenta como intento fallido.
+* `423 { "error": "El cambio de contraseña está bloqueado por intentos fallidos. Podrás intentarlo nuevamente en N minuto(s)." }` tras superar el máximo de intentos (`CambioContraseniaBloqueadoException` -> `423 Locked`).
+* `500 { "error": "Ocurrió un error inesperado. Intentá nuevamente más tarde." }` cuando el JWT es válido pero no existe el `UsuarioAuth` local (divergencia Auth0/base local; se registra log WARN, sin detalles internos en la respuesta).
+
+Flujo backend: el controller valida el DTO con `@Valid` (anotaciones estándar `@NotBlank` + `@Pattern` por regla de fortaleza; un fallo responde `400` sin invocar al servicio y sin contar como intento fallido) y luego `CambioContraseniaAutenticadoService.cambiarContrasenia` resuelve `UsuarioAuth` por `jwt.getSubject()` -> verifica bloqueo (`BloqueoCambioContrasenia.estaBloqueado`; vencido el bloqueo el contador vuelve a 0) -> rechaza que la nueva sea igual a la actual -> verifica la contraseña actual contra Auth0 (`AuthService.obtenerTokenParaLogearUsuario`, grant `password-realm`; el token se descarta) -> guarda la nueva vía `AuthService.guardarContraseniaEnAuth0` (`PATCH /api/v2/users/{id}` con M2M `client_credentials`, método compartido con el flujo por token). Cualquier intento que llegue a la lógica de cambio y no termine en éxito incrementa `intentosFallidos` (una fila por usuario en `bloqueo_cambio_contrasenia`); al alcanzar `max-intentos` se bloquea `horas-bloqueo` desde el último fallo. El éxito reinicia el contador. El bloqueo aplica SOLO a este endpoint: no afecta el resto de la aplicación ni el flujo por token.
+
+Config (`application.properties`):
+
+```properties
+pretriage.cambio-contrasenia-autenticado.max-intentos=${PRETRIAGE_CAMBIO_AUTENTICADO_MAX_INTENTOS:3}
+pretriage.cambio-contrasenia-autenticado.horas-bloqueo=${PRETRIAGE_CAMBIO_AUTENTICADO_HORAS_BLOQUEO:24}
+```
 
 ## Specialties
 

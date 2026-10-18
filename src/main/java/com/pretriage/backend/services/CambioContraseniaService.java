@@ -2,7 +2,6 @@ package com.pretriage.backend.services;
 
 import com.pretriage.backend.controllers.dtos.SolicitarTokenCambioContraseniaResponse;
 import com.pretriage.backend.exceptions.LimiteSolicitudesCambioContraseniaException;
-import com.pretriage.backend.exceptions.NoSePudoCambiarContraseniaException;
 import com.pretriage.backend.exceptions.TokenCambioContraseniaInvalidoException;
 import com.pretriage.backend.model.personas.CambioContraseniaToken;
 import com.pretriage.backend.model.personas.EstadoCambioContrasenia;
@@ -14,19 +13,13 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestClientResponseException;
-import tools.jackson.databind.ObjectMapper;
 
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -35,27 +28,12 @@ import java.util.Optional;
 public class CambioContraseniaService {
 
     private static final String MENSAJE_GENERICO = "Si el correo existe, le enviamos un token al correo indicado, por favor, revise su mail e ingrese el token";
-    private static final String REALM_NAME = "Username-Password-Authentication";
 
     private final RepoUsuariosAuth repoUsuariosAuth;
     private final RepoCambioContraseniaToken repoCambioContraseniaToken;
     private final TokenService tokenService;
     private final PasswordResetEmailPort passwordResetEmailPort;
-
-    private final RestClient restClient = RestClient.create();
-    private final ObjectMapper objectMapper = new ObjectMapper();
-
-    @Value("${auth0.base-path}")
-    private String auth0BasePath;
-
-    @Value("${auth0.client-id.machine-to-machine}")
-    private String auth0M2mClientId;
-
-    @Value("${auth0.client-secret.machine-to-machine}")
-    private String auth0M2mClientSecret;
-
-    @Value("${auth0.scope.machine-to-machine}")
-    private String auth0M2mScope;
+    private final AuthService authService;
 
     @Value("${pretriage.cambio-contrasenia.expiracion-minutos:15}")
     private long expiracionMinutos;
@@ -184,89 +162,9 @@ public class CambioContraseniaService {
     }
 
     private void llamarApiCambioContrasenia(String auth0Id, String nuevaPass) {
-        try {
-            String m2mToken = obtenerTokenM2M();
-
-            // Auth0 Management API PATCH /api/v2/users/{id}
-            Map<String, String> body = Map.of(
-                    "password", nuevaPass,
-                    "connection", REALM_NAME);
-
-            restClient.patch()
-                    .uri(auth0BasePath + "/api/v2/users/" + auth0Id)
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + m2mToken)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(body)
-                    .retrieve()
-                    .toBodilessEntity();
-
-            log.info("Contraseña cambiada en Auth0 para {}", auth0Id);
-
-        } catch (RestClientResponseException e) {
-            log.error("Auth0 PATCH password falló para {} con status {}", auth0Id, e.getStatusCode(), e);
-            String mensaje = mensajeSeguroAuth0(e);
-            throw new NoSePudoCambiarContraseniaException(mensaje);
-        } catch (NoSePudoCambiarContraseniaException e) {
-            throw e;
-        } catch (Exception e) {
-            log.error("Error inesperado al cambiar contraseña Auth0 para {}", auth0Id, e);
-            throw new NoSePudoCambiarContraseniaException();
-        }
-    }
-
-    private String obtenerTokenM2M() {
-        Map<String, String> bodyRequest = Map.of(
-                "client_id", auth0M2mClientId,
-                "client_secret", auth0M2mClientSecret,
-                "audience", auth0BasePath + "/api/v2/",
-                "scope", auth0M2mScope,
-                "grant_type", "client_credentials");
-
-        String responseJson = restClient.post()
-                .uri(auth0BasePath + "/oauth/token")
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(bodyRequest)
-                .retrieve()
-                .body(String.class);
-
-        if (responseJson == null) {
-            throw new NoSePudoCambiarContraseniaException("No se pudo obtener token M2M de Auth0");
-        }
-
-        try {
-            // Reusa formato AuthTokenResponse pero parse manual para evitar dependencia
-            // circular
-            Map<?, ?> map = objectMapper.readValue(responseJson, Map.class);
-            Object access = map.get("access_token");
-            if (access == null) {
-                throw new NoSePudoCambiarContraseniaException();
-            }
-            return access.toString();
-        } catch (NoSePudoCambiarContraseniaException e) {
-            throw e;
-        } catch (Exception e) {
-            log.error("Error parseando token M2M", e);
-            throw new NoSePudoCambiarContraseniaException();
-        }
-    }
-
-    private String mensajeSeguroAuth0(RestClientResponseException exception) {
-        String response = "";
-        try {
-            response = exception.getResponseBodyAsString().toLowerCase(Locale.ROOT);
-        } catch (Exception ignored) {
-        }
-
-        if (response.contains("passwordstrengtherror") || response.contains("password is too weak")) {
-            return "La contraseña es demasiado débil. Usá mayúsculas, minúsculas, números y símbolos.";
-        }
-        if (response.contains("password is too common") || response.contains("passwordistoocommon")) {
-            return "La contraseña es demasiado común. Elegí otra más segura.";
-        }
-        if (response.contains("user not found") || response.contains("404")) {
-            return "Usuario no encontrado en Auth0.";
-        }
-        return "No se pudo cambiar la contraseña. Revisá la política de contraseñas e intentá nuevamente.";
+        // El guardado M2M (PATCH /api/v2/users/{id}) vive en AuthService para
+        // no duplicar la lógica entre este flujo y el cambio autenticado.
+        authService.guardarContraseniaEnAuth0(auth0Id, nuevaPass);
     }
 
     private static String normalizarEmail(String email) {

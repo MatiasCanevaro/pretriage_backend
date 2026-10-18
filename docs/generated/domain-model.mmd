@@ -151,10 +151,12 @@ erDiagram
     ASIGNACION_MEDICO_HOSPITAL {
         Long id
     }
+    BLOQUEO_CAMBIO_CONTRASENIA {
+        int intentosFallidos
+        LocalDateTime bloqueadoHasta
+    }
     CAMBIO_CONTRASENIA_TOKEN {
-        Long id
         String token
-        LocalDateTime fechaHoraCreacion
         LocalDateTime fechaHoraExpiracion
         EstadoCambioContrasenia estado
     }
@@ -265,7 +267,6 @@ erDiagram
     ASIGNACION_MEDICO_HOSPITAL }o--|| MEDICO : medico
     ASIGNACION_MEDICO_HOSPITAL }o--|| HOSPITAL : hospital
     ASIGNACION_MEDICO_HOSPITAL }o--|| ESPECIALIDAD_MEDICA : especialidad
-    CAMBIO_CONTRASENIA_TOKEN }o--|| USUARIO_AUTH : usuario
     CREDENCIAL_PROFESIONAL }o--|| MEDICO : medico
     MEDICO ||--|| USUARIO_AUTH : usuarioAuth
     MEDICO ||--o{ CREDENCIAL_PROFESIONAL : credencialesProfesionales

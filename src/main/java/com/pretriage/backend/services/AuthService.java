@@ -5,6 +5,7 @@ import com.pretriage.backend.controllers.dtos.RefreshTokenRequest;
 import com.pretriage.backend.controllers.dtos.auth0.AuthIdTokenResponse;
 import com.pretriage.backend.controllers.dtos.auth0.AuthTokenResponse;
 import com.pretriage.backend.controllers.dtos.auth0.AuthUserDetailsResponse;
+import com.pretriage.backend.exceptions.NoSePudoCambiarContraseniaException;
 import com.pretriage.backend.exceptions.NoSePudoCrearUsuario;
 import com.pretriage.backend.exceptions.RefreshTokenInvalidoException;
 import com.nimbusds.jwt.JWTParser;
@@ -130,6 +131,41 @@ public class AuthService {
         return this.mapToLoginResponseDTO(response);
     }
 
+    /**
+     * Guarda la nueva contraseña del usuario en Auth0 (PATCH
+     * /api/v2/users/{id} con token M2M). Método compartido entre el flujo de
+     * restablecimiento por token y el cambio autenticado, para no duplicar la
+     * lógica M2M.
+     */
+    public void guardarContraseniaEnAuth0(String auth0Id, String nuevaContrasenia) {
+        try {
+            String tokenM2m = this.obtenerTokenParaCrearUsuario();
+
+            Map<String, String> bodyRequest = Map.of(
+                    PASSWORD_FIELD, nuevaContrasenia,
+                    CONNECTION_FIELD, REALM_NAME);
+
+            restClient.patch()
+                    .uri(AUTH0_BASE_PATH + "/api/v2/users/" + auth0Id)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenM2m)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(bodyRequest)
+                    .retrieve()
+                    .toBodilessEntity();
+
+            log.info("Contraseña actualizada en Auth0 para {}", auth0Id);
+
+        } catch (RestClientResponseException e) {
+            log.error("Auth0 PATCH password falló para {} con status {}", auth0Id, e.getStatusCode(), e);
+            throw new NoSePudoCambiarContraseniaException(mensajeSeguroAuth0CambioContrasenia(e));
+        } catch (NoSePudoCambiarContraseniaException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Error inesperado al cambiar contraseña Auth0 para {}", auth0Id, e);
+            throw new NoSePudoCambiarContraseniaException();
+        }
+    }
+
     private String obtenerTokenParaCrearUsuario() {
         Map<String, String> bodyRequest = Map.of(
                 CLIENT_ID_FIELD, AUTH0_M2M_CLIENT_ID,
@@ -205,6 +241,25 @@ public class AuthService {
         }
 
         return "No se pudo crear el usuario en Auth0. Revisá la configuración o intentá nuevamente.";
+    }
+
+    private String mensajeSeguroAuth0CambioContrasenia(RestClientResponseException exception) {
+        String response = "";
+        try {
+            response = exception.getResponseBodyAsString().toLowerCase(Locale.ROOT);
+        } catch (Exception ignored) {
+        }
+
+        if (response.contains("passwordstrengtherror") || response.contains("password is too weak")) {
+            return "La contraseña es demasiado débil. Usá mayúsculas, minúsculas, números y símbolos.";
+        }
+        if (response.contains("password is too common") || response.contains("passwordistoocommon")) {
+            return "La contraseña es demasiado común. Elegí otra más segura.";
+        }
+        if (response.contains("user not found") || response.contains("404")) {
+            return "Usuario no encontrado en Auth0.";
+        }
+        return "No se pudo cambiar la contraseña. Revisá la política de contraseñas e intentá nuevamente.";
     }
 
     private boolean esUsuarioExistente(RestClientResponseException exception) {

@@ -24,7 +24,7 @@ public class GlobalExceptionHandler {
             RecepcionistaNoExisteException.class, AtencionPendienteException.class,
             NoSuchElementException.class, IllegalStateException.class, IllegalArgumentException.class,
             TokenCambioContraseniaInvalidoException.class, NoSePudoCambiarContraseniaException.class,
-            ConstraintViolationException.class, ChatNoEncontradoException.class })
+            ConstraintViolationException.class, ChatNoEncontradoException.class, ContraseniaInvalidaException.class })
     public ResponseEntity<Map<String, String>> handleExceptions(
             RuntimeException e) {
 
@@ -48,8 +48,8 @@ public class GlobalExceptionHandler {
                 .body(Map.of("error", e.getMessage()));
     }
 
-    @ExceptionHandler({ ProveedorIaException.class, ArchivoS3Exception.class })
-    public ResponseEntity<Map<String, String>> handleProviderException(RuntimeException e) {
+    @ExceptionHandler({ ProveedorIaException.class, ArchivoS3Exception.class, UsuarioLocalNoExisteException.class })
+    public ResponseEntity<Map<String, String>> handleInternalServerErrors(RuntimeException e) {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(Map.of("error", e.getMessage()));
     }
@@ -63,6 +63,14 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(LimiteSolicitudesCambioContraseniaException.class)
     public ResponseEntity<Map<String, String>> handleLimiteSolicitudes(LimiteSolicitudesCambioContraseniaException e) {
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .body(Map.of("error", e.getMessage()));
+    }
+
+    @ExceptionHandler(CambioContraseniaBloqueadoException.class)
+    public ResponseEntity<Map<String, String>> handleCambioContraseniaBloqueado(
+            CambioContraseniaBloqueadoException e) {
+        // 423 Locked: el recurso (la opción de cambiar la contraseña) está bloqueado.
+        return ResponseEntity.status(HttpStatus.LOCKED)
                 .body(Map.of("error", e.getMessage()));
     }
 
