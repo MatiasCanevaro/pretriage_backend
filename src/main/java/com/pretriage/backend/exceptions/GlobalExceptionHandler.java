@@ -51,7 +51,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler({ Exception.class, ProveedorIaException.class, ArchivoS3Exception.class, UsuarioLocalNoExisteException.class })
-    public ResponseEntity<Map<String, String>> handleInternalServerErrors(RuntimeException e) {
+    public ResponseEntity<Map<String, String>> handleInternalServerErrors(Exception e) {
         log.error("ocurrio un error inesperado( {} ): {}", e.getClass(), e.getMessage());
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(Map.of("error", "Ocurrió un error inesperado. Intentá nuevamente más tarde."));
