@@ -11,6 +11,8 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
@@ -26,7 +28,8 @@ public class GlobalExceptionHandler {
             RecepcionistaNoExisteException.class, AtencionPendienteException.class,
             NoSuchElementException.class, IllegalStateException.class, IllegalArgumentException.class,
             TokenCambioContraseniaInvalidoException.class, NoSePudoCambiarContraseniaException.class,
-            ConstraintViolationException.class, ChatNoEncontradoException.class, ContraseniaInvalidaException.class })
+            ConstraintViolationException.class, ChatNoEncontradoException.class, ContraseniaInvalidaException.class, 
+            NoResourceFoundException.class, HttpMediaTypeNotSupportedException.class })
     public ResponseEntity<Map<String, String>> handleExceptions(
             RuntimeException e) {
 
