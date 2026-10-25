@@ -1,6 +1,5 @@
 package com.pretriage.backend.services;
 
-import com.github.tomakehurst.wiremock.core.Admin;
 import com.pretriage.backend.controllers.dtos.CredencialRequest;
 import com.pretriage.backend.controllers.dtos.CredencialResponse;
 import com.pretriage.backend.controllers.dtos.ObraSocialDTO;

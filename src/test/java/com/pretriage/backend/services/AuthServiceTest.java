@@ -6,7 +6,6 @@ package com.pretriage.backend.services;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.pretriage.backend.controllers.dtos.LoginResponseDTO;
-import com.pretriage.backend.controllers.dtos.auth0.AuthRegisterTokenYUserId;
 import com.pretriage.backend.exceptions.NoSePudoCrearUsuario;
 import com.pretriage.backend.exceptions.RefreshTokenInvalidoException;
 import org.junit.jupiter.api.AfterAll;

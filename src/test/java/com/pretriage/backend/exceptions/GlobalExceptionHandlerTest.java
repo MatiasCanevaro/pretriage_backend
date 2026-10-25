@@ -5,6 +5,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GlobalExceptionHandlerTest {
     private final GlobalExceptionHandler handler = new GlobalExceptionHandler();
@@ -44,5 +46,35 @@ class GlobalExceptionHandlerTest {
         var respuesta = handler.handleExceptions(new AtencionPendienteException());
         assertEquals(HttpStatus.BAD_REQUEST, respuesta.getStatusCode());
         assertEquals(new AtencionPendienteException().getMessage(), respuesta.getBody().get("error"));
+    }
+
+    @Test
+    void devuelveLockedConMinutosRestantesParaCambioContraseniaBloqueado() {
+        var respuesta = handler.handleCambioContraseniaBloqueado(new CambioContraseniaBloqueadoException(27));
+
+        assertEquals(HttpStatus.LOCKED, respuesta.getStatusCode());
+        String mensaje = respuesta.getBody().get("error");
+        assertTrue(mensaje.contains("27"));
+        assertTrue(mensaje.contains("bloqueado"));
+    }
+
+    @Test
+    void devuelveBadRequestConMapaDeCamposParaContraseniaInvalida() {
+        var respuesta = handler.handleExceptions(
+                new ContraseniaInvalidaException( "La contraseña nueva debe ser distinta de la contraseña actual"));
+
+        assertEquals(HttpStatus.BAD_REQUEST, respuesta.getStatusCode());
+        assertEquals("La contraseña nueva debe ser distinta de la contraseña actual",
+                respuesta.getBody().get("error"));
+    }
+
+    @Test
+    void devuelveErrorInternoGenericoParaUsuarioLocalInexistente() {
+        var respuesta = handler.handleInternalServerErrors(new UsuarioLocalNoExisteException("auth0|no-existe"));
+
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, respuesta.getStatusCode());
+        String mensaje = respuesta.getBody().get("error");
+        assertFalse(mensaje.contains("auth0|no-existe"));
+        assertTrue(mensaje.contains("Intentá nuevamente más tarde"));
     }
 }

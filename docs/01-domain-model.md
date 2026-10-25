@@ -253,11 +253,9 @@ stores name, document, email, and a platform-level `RolSistema` (`ADMIN` or
 `USER`). `Medico`, `Recepcionista`, and `Paciente` profiles own a one-to-one
 `UsuarioAuth`; patient profiles make it optional.
 
-`CambioContraseniaToken` stores a password-reset token. Important fields:
+`CambioContraseniaToken` stores a password-reset token. Both password-change records extend the `RegistroCambioContrasenia` `@MappedSuperclass` (`id`, `usuario` (`UsuarioAuth`), `fechaHoraCreacion`; not an entity, each subclass keeps its own table so `cambio_contrasenia_token` is unchanged). `CambioContraseniaToken` adds:
 
-- `usuario` (`UsuarioAuth`)
 - `token` (opaque, `unique`, plain for email warning)
-- `fechaHoraCreacion`
 - `fechaHoraExpiracion`
 - `estado`
 
@@ -268,7 +266,14 @@ States in `EstadoCambioContrasenia`:
 - `EXPIRO`
 - `INVALIDADO` (superseded by a newer `PENDIENTE` for the same user; not counted for validation)
 
-`expiro()` checks `LocalDateTime.now().isAfter(fechaHoraExpiracion)`. Token lifetime and rate limit (`pretriage.cambio-contrasenia.expiracion-minutos`, `max-solicitudes-por-hora`, `ventana-horas`) are configurable via `application.properties`. `UsuarioAuth.cambiosDeContrasenia` is `@OneToMany(cascade=ALL)`.
+`expiro()` checks `LocalDateTime.now().isAfter(fechaHoraExpiracion)`. Token lifetime and rate limit (`pretriage.cambio-contrasenia.expiracion-minutos`, `max-solicitudes-por-hora`, `ventana-horas`) are configurable via `application.properties`. `UsuarioAuth.cambiosDeContrasenia` is `@OneToMany(cascade=ALL)` mapped to the inherited `usuario` field.
+
+`BloqueoCambioContrasenia` (also extends `RegistroCambioContrasenia`, table `bloqueo_cambio_contrasenia`, unique `id_usuario`) stores the current lockout state of the authenticated password change: one row per user with:
+
+- `intentosFallidos` (consecutive failed attempts; any non-success counts)
+- `bloqueadoHasta` (nullable `LocalDateTime`; while in the future the endpoint answers `423`)
+
+`estaBloqueado(now)`/`minutosRestantes(now)` drive the `423` response. Reaching `pretriage.cambio-contrasenia-autenticado.max-intentos` (3) sets `bloqueadoHasta = now + horas-bloqueo` (24 = 1 day); an expired lock resets the counter to 0 and a success clears it. The lock only affects `POST /api/auth/cambio-contrasenia/actual` (`CambioContraseniaAutenticadoService`).
 
 `MembresiaHospital` links one global identity to one hospital. Important fields:
 

@@ -2,7 +2,6 @@ package com.pretriage.backend.controllers;
 
 import com.pretriage.backend.controllers.dtos.EstudioClinicoDTO;
 import com.pretriage.backend.services.EstudioClinicoService;
-import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
@@ -14,7 +13,6 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.http.MediaType;
 
-import java.io.File;
 import java.util.List;
 import java.util.Map;
 

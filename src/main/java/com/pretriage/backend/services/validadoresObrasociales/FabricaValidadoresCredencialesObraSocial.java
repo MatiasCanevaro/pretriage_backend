@@ -1,6 +1,5 @@
 package com.pretriage.backend.services.validadoresObrasociales;
 
-import com.pretriage.backend.exceptions.ObraSocialSinValidadorException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
