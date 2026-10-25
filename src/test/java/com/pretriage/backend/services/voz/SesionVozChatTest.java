@@ -10,6 +10,7 @@ import com.pretriage.backend.model.chat.AutorMensaje;
 import com.pretriage.backend.services.ChatService;
 import com.pretriage.backend.exceptions.ProveedorIaException;
 import com.pretriage.backend.exceptions.EntradaChatNoClinicaException;
+import com.pretriage.backend.services.entrevista.ProgresoEntrevista;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -33,7 +34,6 @@ import java.util.concurrent.FutureTask;
 import java.util.concurrent.Delayed;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
-import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -74,7 +74,7 @@ class SesionVozChatTest {
         assertTrue(instruccion.contains("No anuncies que la entrevista termino"));
         assertTrue(instruccion.contains("solo se puede decir despues de esa respuesta exitosa"));
         assertTrue(instruccion.contains("Si la funcion devuelve \"error\","));
-        assertTrue(instruccion.contains("maximo cuatro preguntas"));
+        assertFalse(instruccion.contains("maximo cuatro preguntas"));
         assertTrue(instruccion.replaceAll("\\s+", " ").contains("temperatura solo si la midio"));
         assertTrue(instruccion.contains("finalizar_entrevista"));
         assertTrue(instruccion.contains("pre-triage"));
@@ -336,13 +336,7 @@ class SesionVozChatTest {
                         LocalDateTime.now()), atencion, "GEMINI"));
         SesionVozChat sesion = sesion(historialNuevo());
         sesion.iniciar();
-        entrada(sesion, "Me duele la harina de trigo desde ayer.");
-        salida(sesion, "Del 0 al 10, cuanto te duele?");
-        turnoCompleto(sesion);
-        entrada(sesion, "4");
-        salida(sesion, "¿Hay algo más que quieras contar sobre lo que te pasa?");
-        turnoCompleto(sesion);
-        entrada(sesion, "No, nada más.");
+        relatoClinicoSuficiente(sesion);
 
         sesion.alRecibir(llamadaFinalizar("ambiguo", List.of()));
         esperar(() -> conexion.enviados.stream().anyMatch(m -> m.contains("\"id\":\"ambiguo\"")));
@@ -364,15 +358,9 @@ class SesionVozChatTest {
         assertTrue(sinAclaracion.path("response").path("error").asText().contains("aclaracion nueva"));
         verify(chatService, times(1)).validarAlcanceCierreVoz(anyString(), anyString(), anyList(), any());
 
-        salida(sesion, "¿Podés aclarar qué sentís al hablar de harina de trigo?");
+        salida(sesion, "¿Podés aclarar algo más sobre el dolor de cabeza?");
         turnoCompleto(sesion);
-        entrada(sesion, "Quise decir ardor al tragar después de comer harina.");
-        salida(sesion, "¿Desde cuándo te arde al tragar?");
-        turnoCompleto(sesion);
-        entrada(sesion, "El ardor al tragar empezó ayer.");
-        salida(sesion, "Del 0 al 10, ¿qué intensidad tienen el dolor y el ardor al tragar?");
-        turnoCompleto(sesion);
-        entrada(sesion, "4/10 en ambos.");
+        entrada(sesion, "El dolor de cabeza sigue igual desde ayer.");
         sesion.alRecibir(llamadaFinalizar("aclarado", List.of()));
         esperar(() -> conexion.enviados.stream().anyMatch(m -> m.contains("\"id\":\"aclarado\"")));
         salida(sesion, SesionVozChat.MENSAJE_DESPEDIDA);
@@ -384,7 +372,7 @@ class SesionVozChatTest {
         verify(chatService, times(2)).validarAlcanceCierreVoz(eq("7"), eq("auth0|paciente"), anyList(), any());
         verify(chatService).finalizarEntrevistaVoz(eq("7"), eq("auth0|paciente"), turnos.capture(), any());
         assertTrue(turnos.getAllValues().getLast().stream()
-                .anyMatch(t -> "Quise decir ardor al tragar después de comer harina.".equals(t.contenido())));
+                .anyMatch(t -> "El dolor de cabeza sigue igual desde ayer.".equals(t.contenido())));
         verify(chatService, never()).registrarCierreVozFallido(anyString(), anyString(), anyList());
         verify(chatService, never()).registrarTurnosVoz(anyString(), anyString(), anyList());
         assertTrue(canal.eventos.stream().anyMatch(e -> e.contains("triage_finalizado")));
@@ -571,14 +559,14 @@ class SesionVozChatTest {
         }).when(chatService).validarAlcanceCierreVoz(anyString(), anyString(), anyList(), any());
         SesionVozChat sesion = sesion(historialNuevo());
         sesion.iniciar();
-        relatoHarinaSuficiente(sesion);
+        relatoClinicoSuficiente(sesion);
         sesion.alRecibir(llamadaFinalizar("fin", List.of("dolor toracico")));
         assertTrue(inicioClasificacion.await(2, TimeUnit.SECONDS));
         sesion.cerrar();
         liberarClasificacion.countDown();
         ArgumentCaptor<List<TurnoVoz>> turnos = ArgumentCaptor.captor();
         verify(chatService, timeout(2_000)).registrarTurnosVoz(eq("7"), eq("auth0|paciente"), turnos.capture());
-        assertTrue(turnos.getValue().stream().anyMatch(t -> t.contenido().contains("harina de trigo")));
+        assertTrue(turnos.getValue().stream().anyMatch(t -> t.contenido().contains("Me duele la cabeza desde ayer.")));
         verify(chatService).validarAlcanceCierreVoz(anyString(), anyString(), anyList(), any());
         verify(chatService, never()).finalizarEntrevistaVoz(anyString(), anyString(), anyList(), any());
         verify(chatService, never()).registrarCierreVozFallido(anyString(), anyString(), anyList());
@@ -664,7 +652,7 @@ class SesionVozChatTest {
         sesion.iniciar();
         doThrow(new EntradaChatNoClinicaException(EstadoEntradaChat.FUERA_DE_CONTEXTO))
                 .when(chatService).validarAlcanceCierreVoz(anyString(), anyString(), anyList(), any());
-        relatoHarinaSuficiente(sesion);
+        relatoClinicoSuficiente(sesion);
         sesion.alRecibir(llamadaFinalizar("fin", List.of("dolor toracico")));
         esperar(() -> conexion.enviados.stream().anyMatch(m -> m.contains("toolResponse")));
         JsonNode respuesta = json(conexion.enviados.getLast()).path("toolResponse").path("functionResponses").get(0);
@@ -676,17 +664,68 @@ class SesionVozChatTest {
     }
 
     @Test
-    void alLlegarAlLimiteDeRespuestasPideCerrarLaEntrevista() {
+    void superarOchoRespuestasSinResolverElMotivoNoFuerzaElCierre() {
         List<MensajeDTO> historial = new ArrayList<>(historialNuevo());
-        IntStream.range(0, ChatService.MAX_MENSAJES_PACIENTE - 1).forEach(i ->
-                historial.add(new MensajeDTO("respuesta " + i, "PACIENTE", LocalDateTime.now())));
+        List.of("Tengo fiebre", "Tengo tos", "Tengo náuseas", "Tengo mareos", "Tengo diarrea",
+                        "Tengo sangrado", "Tengo debilidad", "Tengo picazón")
+                .forEach(texto -> historial.add(new MensajeDTO(texto, "PACIENTE", LocalDateTime.now())));
         SesionVozChat sesion = sesion(historial);
         sesion.iniciar();
+        int mensajesPrevios = conexion.enviados.size();
 
-        entrada(sesion, "Ultima respuesta");
+        entrada(sesion, "También me arde la piel");
         turnoCompleto(sesion);
 
-        assertTrue(textoCliente(conexion.enviados.getLast()).contains("limite de respuestas"));
+        assertTrue(conexion.enviados.subList(mensajesPrevios, conexion.enviados.size()).stream()
+                .noneMatch(mensaje -> mensaje.contains("clientContent")));
+        assertFalse(canal.eventos.stream().anyMatch(evento -> evento.contains("entrevista_finalizada")));
+        verify(chatService, never()).finalizarEntrevistaVoz(anyString(), anyString(), anyList(), any());
+    }
+
+    @Test
+    void enviaUnUnicoAvisoInternoCuandoElProgresoAutorizaElCierre() {
+        SesionVozChat sesion = sesion(historialNuevo());
+        sesion.iniciar();
+        entrada(sesion, "Me duele la cabeza desde ayer.");
+        salida(sesion, "Del 0 al 10, cuánto te duele?");
+        turnoCompleto(sesion);
+        entrada(sesion, "4");
+        salida(sesion, "¿Hay algo más que quieras contar sobre lo que te pasa?");
+        turnoCompleto(sesion);
+        entrada(sesion, "No, nada más.");
+
+        int mensajesPrevios = conexion.enviados.size();
+        turnoCompleto(sesion);
+
+        List<String> avisos = conexion.enviados.subList(mensajesPrevios, conexion.enviados.size()).stream()
+                .filter(mensaje -> mensaje.contains("clientContent"))
+                .map(this::textoCliente)
+                .toList();
+        assertEquals(1, avisos.size());
+        assertTrue(avisos.getFirst().contains("Llama ahora a finalizar_entrevista"));
+        assertFalse(avisos.getFirst().contains("limite de respuestas"));
+    }
+
+    @Test
+    void progresoDeVozCuentaTurnosPreviosExcluidosSinEnviarlosAlModelo() {
+        List<ProgresoEntrevista.Turno> excluidos = List.of(
+                new ProgresoEntrevista.Turno(AutorMensaje.PACIENTE, "respuesta excluida uno", true),
+                new ProgresoEntrevista.Turno(AutorMensaje.PACIENTE, "respuesta excluida dos", true),
+                new ProgresoEntrevista.Turno(AutorMensaje.PACIENTE, "respuesta excluida tres", true));
+        when(chatService.obtenerTurnosParaProgresoVoz("7", "auth0|paciente")).thenReturn(excluidos);
+        SesionVozChat sesion = sesion(historialNuevo());
+        sesion.iniciar();
+        sesion.alRecibir("{\"setupComplete\":{}}");
+        int mensajesPrevios = conexion.enviados.size();
+
+        entrada(sesion, "respuesta de voz sin avance");
+        turnoCompleto(sesion);
+
+        List<String> mensajesNuevos = conexion.enviados.subList(mensajesPrevios, conexion.enviados.size());
+        assertTrue(mensajesNuevos.stream().anyMatch(mensaje -> mensaje.contains("clientContent")
+                && textoCliente(mensaje).contains("falta de avance")));
+        assertTrue(conexion.enviados.stream().noneMatch(mensaje -> mensaje.contains("respuesta excluida")));
+        verify(chatService, times(1)).obtenerTurnosParaProgresoVoz("7", "auth0|paciente");
     }
 
     @Test
@@ -760,11 +799,11 @@ class SesionVozChatTest {
         return mensaje.toString();
     }
 
-    private void relatoHarinaSuficiente(SesionVozChat sesion) {
-        entrada(sesion, "Me duele la harina de trigo desde ayer.");
-        salida(sesion, "Del 0 al 10, cuanto te duele?");
+    private void relatoClinicoSuficiente(SesionVozChat sesion) {
+        entrada(sesion, "Me duele la cabeza desde ayer.");
+        salida(sesion, "Del 0 al 10, ¿cuánto te duele la cabeza?");
         turnoCompleto(sesion);
-        entrada(sesion, "4");
+        entrada(sesion, "4/10.");
         salida(sesion, "¿Hay algo más que quieras contar sobre lo que te pasa?");
         turnoCompleto(sesion);
         entrada(sesion, "No, nada más.");

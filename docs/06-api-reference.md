@@ -410,25 +410,36 @@ field `origenRespuesta` (`GEMINI` for new successful chat turns). When triage fi
 updated. When the bot finalizes, the patient's `ConsultaMedica` is linked to this chat
 (`ConsultaMedica.chat`, FK `consulta_medica.id_chat`); that link is what the hospital metrics
 count as "pretriage realizado". The final stored `Chat.resultadoTriageJson` includes
-`origenClasificacion` with the source of that classification. An HTTP success
-may also represent a fixed backend scope response (`origenRespuesta=CONTROL_CONTEXTO`)
-after Gemini marks input `AMBIGUO` or `FUERA_DE_CONTEXTO`. These successful turns
-have `atencionEstimada=null`, keep the chat open and store no classification.
-Their patient text stays visible but is internally excluded from subsequent
-clinical analysis and the answer cap. Provider failures and invalid model responses
+`origenClasificacion` with the source of that classification, plus backend-owned
+`seguimientoEntrevista` metadata containing closure reason and datum states/attempts
+(without duplicating values or citations). Historical results without it remain valid.
+An HTTP success may also represent scope handling (`origenRespuesta=CONTROL_CONTEXTO`)
+after Gemini marks input `AMBIGUO` or `FUERA_DE_CONTEXTO`: ambiguity uses a verified
+clarification, off-topic input a fixed redirection. These turns have
+`atencionEstimada=null`, keep the chat open and store no classification.
+Excluded patient text remains visible locally and counts toward technical resource
+limits, but is not resent as provider context or accepted as clinical evidence.
+Provider failures and invalid model responses
 return HTTP 500 with an `error` message; no local classification is created.
 During interviewing, Gemini receives a question schema (`mensaje`, `estadoEntrada`); the
 backend decides when to request final classification. A relevant candidate is
 checked independently for scope and consistency with patient facts before it is
 shown. A malformed, out-of-scope or repeated question permits one remote correction.
 A successful question returns a normal
-`GEMINI` turn with `atencionEstimada=null`. The shared interview policy permits up
-to four quantification questions about symptoms already named by the patient, plus
-one open invitation and a maximum of eight patient answers. Each turn asks about one
+`GEMINI` turn with `atencionEstimada=null`. The shared policy tracks objectives for
+each reported symptom and datum, plus one open invitation. It allows three attempts
+per datum, 24 total patient turns and four consecutive replies without progress;
+the old eight-answer/four-question conditions do not establish completion. Each turn asks about one
 concept. Saying there are no other symptoms stops the search for new symptoms while
 allowing bounded follow-up about reported symptoms; saying they do not want to
 continue ends the interview. Unknown or unmeasured values remain unknown without
 repetition, and a clear alarm closes immediately. See the [interview policy](17-simple-chat-questions.md).
+When resources are exhausted without comprehensible clinical facts, a terminal
+response uses `origenRespuesta=CIERRE_SIN_DATOS`, `atencionEstimada=null`,
+`finalizado=true` and `estadoClasificacion=NO_SOLICITADA` in the authoritative GET.
+No result or queue update is created. Clients synchronize GET after that origin;
+they must not infer `COMPLETADA` from interview closure alone. See
+[closure by resolved data](21-cierre-por-datos-resueltos.md).
 Transient REST failures have [bounded automatic retries](19-gemini-retries.md):
 two HTTP attempts per Gemini invocation by default, sharing the turn's 45-second
 budget with semantic verification and any correction. If an unfinished turn still fails, the

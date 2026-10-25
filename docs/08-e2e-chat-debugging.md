@@ -55,7 +55,10 @@ No tengo enfermedades previas, no tomo medicacion y no tengo alergias.
 - The backend follows the short evidence-led flow: no minimum answer count or
   fixed topic checklist, uses one open invitation for other symptoms or useful
   context, keeps relevant context volunteered earlier, and closes when the patient
-  has nothing more to add. At most eight patient answers are accepted.
+  has nothing more to add and the relevant data are resolved or explicitly unknown.
+  Eight replies no longer force closure. Independent limits bound attempts per
+  datum, replies without progress and total turns; see
+  [closure by resolved data](21-cierre-por-datos-resueltos.md).
 - The stored result has meaningful motive/symptoms and the expected fields.
 - Final `origenClasificacion` is `GEMINI` by default. The per-turn response exposes
   `origenRespuesta` (`GEMINI`).

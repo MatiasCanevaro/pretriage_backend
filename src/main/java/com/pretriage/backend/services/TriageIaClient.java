@@ -246,7 +246,10 @@ public class TriageIaClient {
             requireExactProperties(question, List.of(MENSAJE, ESTADO_ENTRADA));
             requireString(question, MENSAJE);
             EstadoEntradaChat estado = parseEstadoEntrada(question.get(ESTADO_ENTRADA));
-            if (estado == EstadoEntradaChat.RELEVANTE) {
+            // Ambiguous-entry questions are user-visible too, so verify their scope and
+            // safety before ChatService is allowed to persist them. FUERA_DE_CONTEXTO
+            // is replaced by a fixed server response and needs no model-authored text.
+            if (estado != EstadoEntradaChat.FUERA_DE_CONTEXTO) {
                 verificarRespuestaPregunta(conversation, question, maxWait, operationStartedAt);
             }
             return new TriageAiResponse(false, question.get(MENSAJE).stringValue(), null, estado);

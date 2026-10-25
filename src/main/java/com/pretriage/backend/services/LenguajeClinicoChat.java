@@ -9,8 +9,10 @@ import java.util.regex.Pattern;
 public final class LenguajeClinicoChat {
     private LenguajeClinicoChat() {}
 
-    /** Upper safety bound for patient turns across an interview. */
-    public static final int MAX_RESPUESTAS_PACIENTE = 8;
+    /** Compatibility alias for the resource budget; closure is decided by ProgresoEntrevista. */
+    @Deprecated(forRemoval = false)
+    public static final int MAX_RESPUESTAS_PACIENTE =
+            com.pretriage.backend.services.entrevista.ProgresoEntrevista.MAX_TURNOS;
 
     /** Shared clinical-scope policy. Protocol-specific status fields live in TriageIaClient. */
     public static final String REGLAS_ALCANCE_ENTRADA = """
@@ -68,8 +70,8 @@ public final class LenguajeClinicoChat {
             duracion/inicio, intensidad o impacto de los sintomas que ya afirmo. La invitacion abierta y las
             preguntas de cuantificacion son distintas. Pregunta una sola dimension por turno, aunque puedes
             referirte a varios sintomas cuando preguntas por esa misma dimension.
-            Cuantifica solo sintomas afirmados, con un maximo de cuatro preguntas de cuantificacion en total
-            y una invitacion abierta. Puedes agrupar varios sintomas del mismo episodio en una pregunta sobre
+            Cuantifica solo sintomas afirmados y solo los datos pertinentes que sigan pendientes, con una
+            unica invitacion abierta. Puedes agrupar varios sintomas del mismo episodio en una pregunta sobre
             una variable compartida, pero no asumas que la respuesta de un sintoma aplica a otro ni que el
             inicio dicho para uno se aplica a otro. Si hay dolor,
             pregunta intensidad de 0 a 10. Para fiebre pregunta la temperatura solo si el paciente la midio;
@@ -133,10 +135,9 @@ public final class LenguajeClinicoChat {
             el paciente lo confirme. Si no se entendio el nombre de un medicamento, pedi que lo repita
             o lo deletree. No pidas aclaracion por un error ortografico evidente o una variante regional clara.
             No cierres voluntariamente con un motivo ambiguo sin intentar aclararlo. Si hay un signo de
-            alarma claro, cierra sin demoras y clasifica solo lo que el paciente afirmo claramente. Al llegar
-            al limite de respuestas, cierra con los datos claros disponibles solo si hay hechos clinicos
-            comprensibles; si el unico motivo sigue ambiguo o no hay datos clinicos claros, pide una
-            aclaracion y no conviertas el termino no aclarado en un sintoma para forzar el cierre.
+            alarma claro, cierra sin demoras y clasifica solo lo que el paciente afirmo claramente. Si el
+            unico motivo sigue ambiguo o no hay datos clinicos claros, pide una aclaracion y no conviertas el
+            termino no aclarado en un sintoma para forzar el cierre.
             """;
 
     // Regional spelling only: this cannot create symptoms, change priority or guess medical names.

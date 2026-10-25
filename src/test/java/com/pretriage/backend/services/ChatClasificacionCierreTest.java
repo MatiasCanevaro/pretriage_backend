@@ -6,6 +6,7 @@ import com.pretriage.backend.model.chat.*;
 import com.pretriage.backend.model.personas.Paciente;
 import com.pretriage.backend.repositories.*;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
@@ -107,6 +108,26 @@ class ChatClasificacionCierreTest {
         verify(ia, never()).consultarCorreccionFinal(anyString(), anyString(), any());
         verifyNoInteractions(cola);
     }
+
+    @Test void cierreVozPorLimiteConEntradaAmbiguaNoCreaClasificacionNiCola() {
+        var turnos = java.util.stream.IntStream.range(0, 24)
+                .mapToObj(i -> new TurnoVoz(AutorMensaje.PACIENTE, "No sé cómo explicarlo"))
+                .toList();
+        when(ia.consultarAlcance(anyString(), any())).thenReturn(EstadoEntradaChat.AMBIGUO);
+        when(ia.consultar(anyString(), anyString(), eq(true)))
+                .thenReturn(new TriageAiResponse(false, "No entendí bien la consulta.", null, EstadoEntradaChat.AMBIGUO));
+
+        service.validarAlcanceCierreVoz("1", "patient", turnos, summary());
+        var response = service.finalizarEntrevistaVoz("1", "patient", turnos, summary());
+
+        assertEquals("CIERRE_SIN_DATOS", response.origenRespuesta());
+        assertTrue(chat.isFinalizado());
+        assertEquals(EstadoClasificacionChat.NO_SOLICITADA, chat.getEstadoClasificacion());
+        assertNull(chat.getResultadoTriageJson());
+        verify(ia).consultarAlcance(anyString(), any());
+        verify(ia).consultar(anyString(), anyString(), eq(true));
+        verifyNoInteractions(cola);
+    }
     @Test void reintentoDeProcesamientoNoAgregaMensajeDelPacienteYNoReclasificaUnCompletado() {
         chat.agregarMensaje(new Mensaje("Tengo dolor de pecho", AutorMensaje.PACIENTE, chat.getPaciente()));
         chat.setFinalizado(true); chat.setEstadoClasificacion(EstadoClasificacionChat.FALLIDA);
@@ -116,6 +137,33 @@ class ChatClasificacionCierreTest {
         assertEquals(EstadoClasificacionChat.COMPLETADA, chat.getEstadoClasificacion());
         assertThrows(ChatFinalizadoException.class, () -> service.reintentarClasificacion("1", "patient"));
         verify(cola, times(1)).finalizarTriageEIngresarACola(anyString(), any(), anyString(), same(chat));
+    }
+    @Test void reintentoLegacyConDatosPendientesMantienePromptDeCierreYSinNuevaPregunta() throws Exception {
+        chat.agregarMensaje(new Mensaje("¿Cuál es el principal motivo de consulta?", AutorMensaje.BOT, null));
+        chat.agregarMensaje(new Mensaje("Tengo fiebre", AutorMensaje.PACIENTE, chat.getPaciente()));
+        chat.setFinalizado(true);
+        chat.setEstadoClasificacion(EstadoClasificacionChat.FALLIDA);
+        var resultado = new TriageResultDTO("fiebre", List.of("fiebre"), "no informado", "no informado",
+                null, List.of(), List.of(), List.of(), List.of(), "no informado", "no informado",
+                2, false, "Consulta con un profesional de salud.");
+        when(ia.consultar(anyString(), anyString(), eq(true)))
+                .thenReturn(new TriageAiResponse(true, "Gracias. Ya registré tus respuestas.", resultado));
+
+        service.reintentarClasificacion("1", "patient");
+
+        ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
+        verify(ia, times(1)).consultar(prompt.capture(), anyString(), eq(true));
+        assertTrue(prompt.getValue().contains("Estado de cierre de entrevista: CIERRE_PREVIO"));
+        assertTrue(prompt.getValue().contains("La entrevista ya está cerrada"));
+        assertTrue(prompt.getValue().contains("no hagas nuevas preguntas"));
+        assertFalse(prompt.getValue().contains("Pregunta desde cuándo"));
+        assertEquals(EstadoClasificacionChat.COMPLETADA, chat.getEstadoClasificacion());
+        assertEquals(1, chat.getMensajes().stream().filter(m -> m.getAutor() == AutorMensaje.PACIENTE).count());
+        var guardado = new ObjectMapper().readTree(chat.getResultadoTriageJson());
+        assertEquals("CIERRE_PREVIO", guardado.path("seguimientoEntrevista").path("motivoCierre").asText());
+        assertTrue(guardado.path("seguimientoEntrevista").path("datos").size() > 0);
+        verify(ia, never()).consultarCorreccionFinal(anyString(), anyString(), any());
+        verify(cola, times(1)).finalizarTriageEIngresarACola(eq("patient"), any(), anyString(), same(chat));
     }
     @Test void unChatHistoricoFallidoNoPuedeReclasificarOtraConsulta() {
         chat.setFinalizado(true); chat.setEstadoClasificacion(EstadoClasificacionChat.FALLIDA);

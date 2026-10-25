@@ -26,6 +26,7 @@ import com.pretriage.backend.repositories.RepoConsultasMedicas;
 import com.pretriage.backend.repositories.RepoEntradasCola;
 import com.pretriage.backend.repositories.RepoPacientes;
 import com.pretriage.backend.services.voz.ValidadorCierreEntrevistaVoz;
+import com.pretriage.backend.services.entrevista.ProgresoEntrevista;
 import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -174,6 +175,16 @@ public class ChatService {
                 .toList();
     }
 
+    /** Returns the full local progress projection, including exclusion flags; never provider input. */
+    @Transactional(readOnly = true)
+    public List<ProgresoEntrevista.Turno> obtenerTurnosParaProgresoVoz(String idChat, String idPaciente) {
+        Chat chat = buscarChatPropio(idChat, idPaciente);
+        return chat.getMensajes().stream()
+                .map(mensaje -> new ProgresoEntrevista.Turno(mensaje.getAutor(), mensaje.getContenido(),
+                        Boolean.TRUE.equals(mensaje.getExcluidoDelTriage())))
+                .toList();
+    }
+
     @Transactional(noRollbackFor = ProveedorIaException.class)
     public ChatTurnResponse enviarMensaje(String idChat, String idPaciente, String contenido) {
         Chat chat = buscarChatPropio(idChat, idPaciente);
@@ -181,11 +192,20 @@ public class ChatService {
         Mensaje mensajePaciente = new Mensaje(contenido.trim(), AutorMensaje.PACIENTE, chat.getPaciente());
         chat.agregarMensaje(mensajePaciente);
         boolean clasificacionSolicitada = false;
+        ProgresoEntrevista progreso = progresoEntrevista(chat);
         try {
-            boolean alarmaCritica = ValidadorCierreEntrevistaVoz.contieneAlarmaLiteral(turnosLiteralesVoz(chat));
-            boolean cierreRequerido = alarmaCritica
-                    || cantidadMensajesPaciente(chat) >= MAX_MENSAJES_PACIENTE
-                    || tieneDatosSuficientesParaCerrar(chat);
+            // An unparseable answer to the one pending question stays excluded. The
+            // progress projection may count it locally, but classifier input filters it out.
+            if (requiereAclaracionDeDato(progreso)
+                    && !progreso.ultimoTurnoPacienteTieneHechos()
+                    && esRespuestaPuraConUnidadIncompatible(mensajePaciente.getContenido())) {
+                mensajePaciente.setExcluidoDelTriage(true);
+            }
+            progreso = progresoEntrevista(chat);
+            boolean cierreRequerido = progreso.puedeCerrar();
+            if (cierreRequerido && !hayTurnoPacienteIncluido(chat)) {
+                return cerrarSinHechosClinicos(chat, progreso);
+            }
             clasificacionSolicitada = cierreRequerido;
             if (cierreRequerido) iniciarClasificacion(chat);
             long inicioConsulta = System.nanoTime();
@@ -193,17 +213,24 @@ public class ChatService {
             java.util.Optional<TriageIaClient.MotivoRechazoSemantico> rechazoSemantico = java.util.Optional.empty();
             if (cierreRequerido) {
                 String datos = construirDatosParaClasificacion(chat);
-                var clasificacion = consultarClasificacionFinal(chat, datos);
+                String promptFinal = promptFinal(progreso, false);
+                var clasificacion = consultarClasificacionFinal(chat, datos, promptFinal);
                 respuesta = clasificacion.respuesta();
                 rechazoSemantico = clasificacion.rechazoSemantico();
-                respuesta = corregirClasificacionSiHaceFalta(chat, respuesta, datos, inicioConsulta, rechazoSemantico);
+                respuesta = corregirClasificacionSiHaceFalta(chat, respuesta, datos, inicioConsulta, rechazoSemantico, promptFinal);
             } else {
                 respuesta = consultarPregunta(chat, inicioConsulta);
             }
             if (estadoEntrada(respuesta) != EstadoEntradaChat.RELEVANTE) {
                 mensajePaciente.setExcluidoDelTriage(true);
-                if (clasificacionSolicitada) deshacerCierreTentativo(chat);
-                return registrarRespuestaDeAlcance(chat, estadoEntrada(respuesta));
+                if (clasificacionSolicitada) {
+                    if (permiteCierreAdministrativo(progreso)) {
+                        return cerrarSinHechosClinicos(chat, progreso);
+                    }
+                    deshacerCierreTentativo(chat);
+                    return registrarRespuestaDeAlcance(chat, estadoEntrada(respuesta), null);
+                }
+                return registrarRespuestaDeAlcance(chat, estadoEntrada(respuesta), respuesta);
             }
             boolean respuestaValida = respuesta != null && respuesta.mensaje() != null
                     && !respuesta.mensaje().isBlank()
@@ -212,13 +239,13 @@ public class ChatService {
             if (respuesta.finalizado() && !esResultadoFinalValido(respuesta.resultado())) {
                 throw respuestaIaInvalida(chat, "invalid_classification");
             }
-            if (respuesta.finalizado() && !puedeAceptarCierreIa(chat, respuesta)) {
+            if (respuesta.finalizado() && !puedeAceptarCierreIa(chat, respuesta, progreso)) {
                 throw respuestaIaInvalida(chat, "premature_or_unsafe_closure");
             }
             if (cierreRequerido && !respuesta.finalizado()) {
                 throw respuestaIaInvalida(chat, "required_closure_missing");
             }
-            return registrarRespuestaBot(chat, idPaciente, respuesta, "GEMINI");
+            return registrarRespuestaBot(chat, idPaciente, respuesta, "GEMINI", progreso, null);
         } catch (RuntimeException error) {
             if (clasificacionSolicitada && error instanceof ProveedorIaException) {
                 marcarClasificacionFallida(chat);
@@ -255,10 +282,13 @@ public class ChatService {
         if (chat.isFinalizado()) throw new ChatFinalizadoException();
         List<TurnoVoz> entrevistaCompleta = new ArrayList<>(turnosLiteralesVoz(chat));
         if (turnos != null) entrevistaCompleta.addAll(turnos);
+        ValidadorCierreEntrevistaVoz.validarConContexto(turnosParaProgresoVoz(chat, turnos), resumen)
+                .ifPresent(error -> { throw new IllegalArgumentException(error); });
         EstadoEntradaChat estado = triageIaClient.consultarAlcance(
                 construirDatosVozParaClasificacion(entrevistaCompleta, resumen),
                 java.time.Duration.ofSeconds(45));
-        if (estado != EstadoEntradaChat.RELEVANTE) {
+        ProgresoEntrevista progreso = progresoEntrevista(chat, turnos);
+        if (estado != EstadoEntradaChat.RELEVANTE && !permiteCierreAdministrativo(progreso)) {
             throw new EntradaChatNoClinicaException(estado);
         }
     }
@@ -274,9 +304,10 @@ public class ChatService {
         if (chat.isFinalizado()) throw new ChatFinalizadoException();
         List<TurnoVoz> entrevistaCompleta = new ArrayList<>(turnosLiteralesVoz(chat));
         if (turnos != null) entrevistaCompleta.addAll(turnos);
-        ValidadorCierreEntrevistaVoz.validar(entrevistaCompleta, resumen)
+        ValidadorCierreEntrevistaVoz.validarConContexto(turnosParaProgresoVoz(chat, turnos), resumen)
                 .ifPresent(error -> { throw new IllegalArgumentException(error); });
         agregarTurnosVoz(chat, turnos == null ? List.of() : turnos);
+        ProgresoEntrevista progreso = progresoEntrevista(chat);
         iniciarClasificacion(chat);
         long inicio = System.nanoTime();
         try {
@@ -284,7 +315,7 @@ public class ChatService {
             TriageAiResponse respuesta;
             java.util.Optional<TriageIaClient.MotivoRechazoSemantico> rechazoSemantico = java.util.Optional.empty();
             try {
-                respuesta = triageIaClient.consultar(FINAL_SYSTEM_PROMPT_VOZ, datos, true);
+                respuesta = triageIaClient.consultar(promptFinal(progreso, true), datos, true);
             } catch (ProveedorIaException error) {
                 rechazoSemantico = TriageIaClient.motivoRechazo(error);
                 if (rechazoSemantico.isEmpty() && !TriageIaClient.esErrorDeRespuesta(error)) throw error;
@@ -292,12 +323,14 @@ public class ChatService {
             } catch (RuntimeException error) {
                 throw error instanceof ProveedorIaException ? error : new ProveedorIaException(error);
             }
-            respuesta = corregirClasificacionSiHaceFalta(chat, respuesta, datos, inicio, rechazoSemantico);
+            respuesta = corregirClasificacionSiHaceFalta(chat, respuesta, datos, inicio, rechazoSemantico,
+                    promptFinal(progreso, true));
             if (estadoEntrada(respuesta) != EstadoEntradaChat.RELEVANTE) {
+                if (permiteCierrePorRecursos(progreso)) return cerrarSinHechosClinicos(chat, progreso);
                 throw new ProveedorIaException(new IllegalStateException(
                         "La clasificación final contradice el preflight de alcance de la entrevista de voz"));
             }
-            return registrarRespuestaBot(chat, idPaciente, respuesta, "GEMINI");
+            return registrarRespuestaBot(chat, idPaciente, respuesta, "GEMINI", progreso, null);
         } catch (RuntimeException error) {
             if (!(error instanceof ProveedorIaException)) throw error;
             marcarClasificacionFallida(chat);
@@ -325,10 +358,27 @@ public class ChatService {
         chat.setResultadoTriageJson(null);
     }
 
-    private ChatTurnResponse registrarRespuestaDeAlcance(Chat chat, EstadoEntradaChat estado) {
+    private ChatTurnResponse cerrarSinHechosClinicos(Chat chat, ProgresoEntrevista progreso) {
+        chat.setFinalizado(true);
+        chat.setEstadoClasificacion(EstadoClasificacionChat.NO_SOLICITADA);
+        chat.setResultadoTriageJson(null);
+        log.info("Chat closed without classification chatId={} reason={} clasificacion=false",
+                chat.getId(), progreso.motivoCierre().name());
+        Mensaje respuesta = new Mensaje(
+                "No pude completar una entrevista de salud con la información disponible. Si necesitás ayuda, podés iniciar una nueva consulta y contarme qué te está pasando.",
+                AutorMensaje.BOT, null);
+        chat.agregarMensaje(respuesta);
+        repoChat.save(chat);
+        return new ChatTurnResponse(MapperMensaje.toDTO(respuesta), null, "CIERRE_SIN_DATOS");
+    }
+
+    private ChatTurnResponse registrarRespuestaDeAlcance(Chat chat, EstadoEntradaChat estado,
+                                                         TriageAiResponse propuesta) {
         String mensaje = estado == EstadoEntradaChat.FUERA_DE_CONTEXTO
                 ? "Puedo ayudarte con una consulta de salud. ¿Qué te está pasando?"
-                : "No entendí bien tu consulta. ¿Podés contarme con tus palabras qué sentís?";
+                : propuesta != null && propuesta.mensaje() != null && !propuesta.mensaje().isBlank()
+                    ? propuesta.mensaje().trim()
+                    : "No entendí bien tu consulta. ¿Podés contarme con tus palabras qué sentís?";
         Mensaje respuesta = new Mensaje(mensaje, AutorMensaje.BOT, null);
         chat.agregarMensaje(respuesta);
         repoChat.save(chat);
@@ -370,12 +420,20 @@ public class ChatService {
 
     private TriageAiResponse corregirClasificacionSiHaceFalta(Chat chat, TriageAiResponse respuesta,
                                                              String datos, long inicio) {
-        return corregirClasificacionSiHaceFalta(chat, respuesta, datos, inicio, java.util.Optional.empty());
+        return corregirClasificacionSiHaceFalta(chat, respuesta, datos, inicio, java.util.Optional.empty(),
+                FINAL_SYSTEM_PROMPT);
     }
 
     private TriageAiResponse corregirClasificacionSiHaceFalta(Chat chat, TriageAiResponse respuesta,
                                                              String datos, long inicio,
                                                              java.util.Optional<TriageIaClient.MotivoRechazoSemantico> rechazoSemantico) {
+        return corregirClasificacionSiHaceFalta(chat, respuesta, datos, inicio, rechazoSemantico, FINAL_SYSTEM_PROMPT);
+    }
+
+    private TriageAiResponse corregirClasificacionSiHaceFalta(Chat chat, TriageAiResponse respuesta,
+                                                             String datos, long inicio,
+                                                             java.util.Optional<TriageIaClient.MotivoRechazoSemantico> rechazoSemantico,
+                                                             String promptFinal) {
         String motivo = errorClasificacionFinal(chat, respuesta);
         if (motivo == null && rechazoSemantico.isEmpty()) return respuesta;
         var restante = java.time.Duration.ofSeconds(45).minusNanos(System.nanoTime() - inicio);
@@ -389,7 +447,7 @@ public class ChatService {
                 : "La entrevista termino: devolve una clasificacion final completa y valida con todos los campos requeridos.");
         TriageAiResponse corregida;
         try {
-            corregida = triageIaClient.consultarCorreccionFinal(FINAL_SYSTEM_PROMPT
+            corregida = triageIaClient.consultarCorreccionFinal(promptFinal
                     + "\nCorreccion solicitada por el backend: " + regla, datos, restante);
         } catch (RuntimeException error) {
             throw error instanceof ProveedorIaException ? error : new ProveedorIaException(error);
@@ -422,21 +480,25 @@ public class ChatService {
         long inicio = System.nanoTime();
         try {
             String datos = construirDatosParaClasificacion(chat);
+            ProgresoEntrevista progreso = progresoEntrevista(chat);
+            String promptFinal = promptFinal(progreso, false);
             TriageAiResponse respuesta;
             java.util.Optional<TriageIaClient.MotivoRechazoSemantico> rechazoSemantico = java.util.Optional.empty();
             try {
-                respuesta = triageIaClient.consultar(FINAL_SYSTEM_PROMPT, datos, true);
+                respuesta = triageIaClient.consultar(promptFinal, datos, true);
             } catch (ProveedorIaException error) {
                 rechazoSemantico = TriageIaClient.motivoRechazo(error);
                 if (rechazoSemantico.isEmpty() && !TriageIaClient.esErrorDeRespuesta(error)) throw error;
                 respuesta = null;
             }
-            respuesta = corregirClasificacionSiHaceFalta(chat, respuesta, datos, inicio, rechazoSemantico);
+            respuesta = corregirClasificacionSiHaceFalta(chat, respuesta, datos, inicio, rechazoSemantico, promptFinal);
             if (estadoEntrada(respuesta) != EstadoEntradaChat.RELEVANTE) {
                 marcarClasificacionFallida(chat);
                 throw new ProveedorIaException(new IllegalStateException("Entrada no clinica en clasificacion fallida"));
             }
-            return registrarRespuestaBot(chat, idPaciente, respuesta, "GEMINI");
+            String motivoCierre = progreso.motivoCierre() == ProgresoEntrevista.MotivoCierre.EN_CURSO
+                    ? "CIERRE_PREVIO" : null;
+            return registrarRespuestaBot(chat, idPaciente, respuesta, "GEMINI", progreso, motivoCierre);
         } catch (ProveedorIaException error) {
             marcarClasificacionFallida(chat);
             throw new ProveedorIaException(error);
@@ -451,7 +513,9 @@ public class ChatService {
     private ChatTurnResponse registrarRespuestaBot(Chat chat,
                                                    String idPaciente,
                                                    TriageAiResponse respuestaIa,
-                                                   String origenRespuesta) {
+                                                   String origenRespuesta,
+                                                   ProgresoEntrevista progreso,
+                                                   String motivoCierreOverride) {
         TriageResultDTO resultadoConPrioridad = respuestaIa.finalizado()
                 ? LenguajeClinicoChat.normalizarResultado(respuestaIa.resultado())
                 : null;
@@ -469,7 +533,8 @@ public class ChatService {
         TiempoEstimadoAtencionResponse atencionEstimada = null;
         if (respuestaIa.finalizado()) {
             chat.setFinalizado(true);
-            String resultadoJson = escribirResultado(resultadoConPrioridad, origenRespuesta);
+            String resultadoJson = escribirResultado(resultadoConPrioridad, origenRespuesta, progreso,
+                    motivoCierreOverride);
             chat.setResultadoTriageJson(resultadoJson);
             atencionEstimada = atencionHospitalService.finalizarTriageEIngresarACola(
                     idPaciente,
@@ -486,10 +551,10 @@ public class ChatService {
                 origenRespuesta);
     }
 
-    private RespuestaClasificacionInicial consultarClasificacionFinal(Chat chat, String datos) {
+    private RespuestaClasificacionInicial consultarClasificacionFinal(Chat chat, String datos, String promptFinal) {
         try {
             return new RespuestaClasificacionInicial(
-                    triageIaClient.consultar(FINAL_SYSTEM_PROMPT, datos, true), java.util.Optional.empty());
+                    triageIaClient.consultar(promptFinal, datos, true), java.util.Optional.empty());
         } catch (ProveedorIaException error) {
             var rechazo = TriageIaClient.motivoRechazo(error);
             if (rechazo.isPresent()) return new RespuestaClasificacionInicial(null, rechazo);
@@ -514,7 +579,7 @@ public class ChatService {
             }
             try {
                 TriageAiResponse respuesta = triageIaClient.consultarContinuacion(
-                        promptPregunta(chat, correccion, motivoCorreccion), construirConversacion(chat), restante);
+                        promptPregunta(chat, correccion, motivoCorreccion), construirDatosParaPregunta(chat), restante);
                 if (estadoEntrada(respuesta) != EstadoEntradaChat.RELEVANTE) return respuesta;
                 String error = errorPregunta(chat, respuesta);
                 if (error == null) return respuesta;
@@ -543,8 +608,8 @@ public class ChatService {
 
     private String promptPregunta(Chat chat, String correccion,
                                   java.util.Optional<TriageIaClient.MotivoRechazoSemantico> motivoSemantico) {
-        List<TurnoVoz> turnos = turnosLiteralesVoz(chat);
-        String tarea = ValidadorCierreEntrevistaVoz.instruccionDatosPendientes(turnos);
+        ProgresoEntrevista progreso = progresoEntrevista(chat);
+        String tarea = progreso.instruccionSiguientePaso();
         String correccionTexto = motivoSemantico.map(motivo -> " La pregunta anterior no fue aceptable. "
                 + reglaCorreccionPregunta(motivo)
                 + " Reescribila como una unica pregunta breve, pertinente al relato, sin repetir la pregunta anterior.")
@@ -630,11 +695,78 @@ public class ChatService {
         return construirDatosParaClasificacion(turnosLiteralesVoz(chat));
     }
 
-    private long cantidadMensajesPaciente(Chat chat) {
+    /** The question path intentionally receives only clinical, non-excluded turns. */
+    private String construirDatosParaPregunta(Chat chat) {
+        return construirDatosParaClasificacion(turnosLiteralesVoz(chat));
+    }
+
+    private ProgresoEntrevista progresoEntrevista(Chat chat) {
+        List<ProgresoEntrevista.Turno> historial = chat.getMensajes().stream()
+                .map(m -> new ProgresoEntrevista.Turno(m.getAutor(), m.getContenido(),
+                        Boolean.TRUE.equals(m.getExcluidoDelTriage())))
+                .toList();
+        return ProgresoEntrevista.evaluarConContexto(historial);
+    }
+
+    private ProgresoEntrevista progresoEntrevista(Chat chat, List<TurnoVoz> adicionales) {
+        return ProgresoEntrevista.evaluarConContexto(turnosParaProgresoVoz(chat, adicionales));
+    }
+
+    private List<ProgresoEntrevista.Turno> turnosParaProgresoVoz(Chat chat, List<TurnoVoz> adicionales) {
+        List<ProgresoEntrevista.Turno> historial = new ArrayList<>();
+        for (Mensaje mensaje : chat.getMensajes()) {
+            historial.add(new ProgresoEntrevista.Turno(mensaje.getAutor(), mensaje.getContenido(),
+                    Boolean.TRUE.equals(mensaje.getExcluidoDelTriage())));
+        }
+        if (adicionales != null) {
+            for (TurnoVoz turno : adicionales) {
+                if (turno != null) historial.add(new ProgresoEntrevista.Turno(turno.autor(), turno.contenido(), false));
+            }
+        }
+        return historial;
+    }
+
+    private boolean permiteCierreAdministrativo(ProgresoEntrevista progreso) {
+        return switch (progreso.motivoCierre()) {
+            case LIMITE_RECURSOS, SIN_AVANCE, SOLICITUD_PACIENTE -> true;
+            default -> false;
+        };
+    }
+
+    private boolean permiteCierrePorRecursos(ProgresoEntrevista progreso) {
+        return switch (progreso.motivoCierre()) {
+            case LIMITE_RECURSOS, SIN_AVANCE -> true;
+            default -> false;
+        };
+    }
+
+    private boolean hayTurnoPacienteIncluido(Chat chat) {
         return chat.getMensajes().stream()
-                .filter(mensaje -> mensaje.getAutor() == AutorMensaje.PACIENTE)
-                .filter(mensaje -> !Boolean.TRUE.equals(mensaje.getExcluidoDelTriage()))
-                .count();
+                .anyMatch(m -> m.getAutor() == AutorMensaje.PACIENTE
+                        && !Boolean.TRUE.equals(m.getExcluidoDelTriage()));
+    }
+
+    private boolean requiereAclaracionDeDato(ProgresoEntrevista progreso) {
+        return progreso.requiereAclaracion() && progreso.datos().stream()
+                .anyMatch(dato -> dato.dimension() == ProgresoEntrevista.Dimension.TEMPERATURA
+                        && dato.estado() == ProgresoEntrevista.Estado.PENDIENTE && dato.intentos() > 0);
+    }
+
+    private boolean esRespuestaPuraConUnidadIncompatible(String contenido) {
+        String normalizado = normalizarTexto(contenido).strip();
+        return normalizado.matches("\\d{2,3}(?:[.,]\\d+)?\\s*(?:kg|kilogramos?|cm|mm|metros?|libras?)(?:\\s*(?:celsius|grados?))?[.!]?");
+    }
+
+    private String promptFinal(ProgresoEntrevista progreso, boolean voz) {
+        String base = voz ? FINAL_SYSTEM_PROMPT_VOZ : FINAL_SYSTEM_PROMPT;
+        return base + "\nEstado de cierre de entrevista: " + motivoCierrePersistido(progreso) + ". "
+                + "La entrevista ya está cerrada. Realiza únicamente la clasificación final con los datos disponibles; no hagas nuevas preguntas. "
+                + "Registra en campos clínicos solo lo afirmado por el paciente; los datos pendientes, desconocidos, rechazados o agotados siguen sin informar.";
+    }
+
+    private String motivoCierrePersistido(ProgresoEntrevista progreso) {
+        return progreso.motivoCierre() == ProgresoEntrevista.MotivoCierre.EN_CURSO
+                ? "CIERRE_PREVIO" : progreso.motivoCierre().name();
     }
 
     private boolean esResultadoFinalValido(TriageResultDTO resultado) {
@@ -656,15 +788,12 @@ public class ChatService {
                 && !resultado.recomendacionSeguridad().isBlank();
     }
 
-    private boolean puedeAceptarCierreIa(Chat chat, TriageAiResponse respuestaIa) {
+    private boolean puedeAceptarCierreIa(Chat chat, TriageAiResponse respuestaIa,
+                                         ProgresoEntrevista progreso) {
         if (errorClasificacionFinal(chat, respuestaIa) != null) {
             return false;
         }
-        boolean requiereAtencionInmediata = respuestaIa.resultado().requiereAtencionInmediata()
-                && respuestaIa.resultado().nivelPrioridad() >= 4;
-        return requiereAtencionInmediata
-                || cantidadMensajesPaciente(chat) >= MAX_MENSAJES_PACIENTE
-                || tieneDatosSuficientesParaCerrar(chat);
+        return progreso.puedeCerrar();
     }
 
     private boolean repitePregunta(Chat chat, TriageAiResponse respuestaIa) {
@@ -673,20 +802,44 @@ public class ChatService {
         }
 
         String respuestaNormalizada = normalizarPregunta(respuestaIa.mensaje());
-        return chat.getMensajes().stream()
+        List<String> preguntasPrevias = chat.getMensajes().stream()
                 .filter(mensaje -> mensaje.getAutor() == AutorMensaje.BOT)
                 .map(Mensaje::getContenido)
                 .map(this::normalizarPregunta)
-                .anyMatch(respuestaNormalizada::equals);
+                .toList();
+        if (preguntasPrevias.isEmpty()) return false;
+        String ultimaPregunta = preguntasPrevias.get(preguntasPrevias.size() - 1);
+        if (respuestaNormalizada.equals(ultimaPregunta)) {
+            return !puedeRepetirPreguntaPendiente(chat, ultimaPregunta);
+        }
+        return preguntasPrevias.stream().anyMatch(respuestaNormalizada::equals);
+    }
+
+    private boolean puedeRepetirPreguntaPendiente(Chat chat, String ultimaPregunta) {
+        ProgresoEntrevista progreso = progresoEntrevista(chat);
+        return progreso.requiereAclaracion() && progreso.datos().stream()
+                .anyMatch(dato -> dato.estado() == ProgresoEntrevista.Estado.PENDIENTE
+                        && dato.intentos() > 0
+                        && dato.intentos() < ProgresoEntrevista.MAX_INTENTOS_POR_DATO
+                        && preguntaCorrespondeAlDato(ultimaPregunta, dato.dimension()));
+    }
+
+    private boolean preguntaCorrespondeAlDato(String pregunta, ProgresoEntrevista.Dimension dimension) {
+        return switch (dimension) {
+            case INICIO -> pregunta.contains("desde cuando") || pregunta.contains("cuando empezo")
+                    || pregunta.contains("cuando comenzo") || pregunta.contains("hace cuanto");
+            case INTENSIDAD -> pregunta.contains("intensidad") || pregunta.contains("cuanto te duele")
+                    || pregunta.contains("0 al 10") || pregunta.contains("1 al 10") || pregunta.contains("escala");
+            case IMPACTO -> pregunta.contains("impacto") || pregunta.contains("afecta") || pregunta.contains("limita")
+                    || pregunta.contains("te impide") || pregunta.contains("actividades") || pregunta.contains("hacer tus cosas")
+                    || pregunta.contains("0 al 10") || pregunta.contains("1 al 10") || pregunta.contains("escala");
+            case TEMPERATURA -> pregunta.contains("temperatura") || pregunta.contains("grados");
+        };
     }
 
     private String normalizarPregunta(String texto) {
         return normalizarTexto(texto).replaceAll("[¿?¡!.,;:]+", " ")
                 .replaceAll("\\s+", " ").strip();
-    }
-
-    private boolean tieneDatosSuficientesParaCerrar(Chat chat) {
-        return ValidadorCierreEntrevistaVoz.tieneDatosSuficientes(turnosLiteralesVoz(chat));
     }
 
     private NivelDeGravedad nivelDeGravedadDesdePrioridad(Integer nivelPrioridad) {
@@ -718,13 +871,25 @@ public class ChatService {
         }
     }
 
-    private String escribirResultado(TriageResultDTO resultado, String origenClasificacion) {
+    private String escribirResultado(TriageResultDTO resultado, String origenClasificacion,
+                                    ProgresoEntrevista progreso, String motivoCierreOverride) {
         if (resultado == null) {
             throw new ProveedorIaException(new IllegalStateException("La IA finalizo sin resultado estructurado"));
         }
         try {
             ObjectNode resultadoConOrigen = objectMapper.valueToTree(resultado);
             resultadoConOrigen.put("origenClasificacion", origenClasificacion);
+            ObjectNode seguimiento = resultadoConOrigen.putObject("seguimientoEntrevista");
+            seguimiento.put("motivoCierre", motivoCierreOverride == null
+                    ? motivoCierrePersistido(progreso) : motivoCierreOverride);
+            var datos = seguimiento.putArray("datos");
+            for (ProgresoEntrevista.Dato dato : progreso.datos()) {
+                ObjectNode resumen = datos.addObject();
+                resumen.put("sintomaId", dato.sintomaId());
+                resumen.put("dimension", dato.dimension().name());
+                resumen.put("estado", dato.estado().name());
+                resumen.put("intentos", dato.intentos());
+            }
             return objectMapper.writeValueAsString(resultadoConOrigen);
         } catch (JacksonException exception) {
             throw new IllegalStateException("No se pudo guardar el resultado del triage", exception);

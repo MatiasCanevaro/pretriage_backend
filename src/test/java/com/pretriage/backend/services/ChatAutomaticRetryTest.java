@@ -147,6 +147,64 @@ class ChatAutomaticRetryTest {
         verifyNoInteractions(queue);
     }
 
+    @Test
+    void aclaracionPuedeRepetirLaUltimaPreguntaPendiente() throws Exception {
+        chat.agregarMensaje(new com.pretriage.backend.model.chat.Mensaje(
+                "¿Cuál es el motivo?", AutorMensaje.BOT, null));
+        chat.agregarMensaje(new com.pretriage.backend.model.chat.Mensaje(
+                "Tengo fiebre", AutorMensaje.PACIENTE, chat.getPaciente()));
+        String pendingQuestion = "¿Qué temperatura te tomaste?";
+        chat.agregarMensaje(new com.pretriage.backend.model.chat.Mensaje(
+                pendingQuestion, AutorMensaje.BOT, null));
+        var response = envelope(mapper.writeValueAsString(Map.of(
+                "mensaje", pendingQuestion, "estadoEntrada", "RELEVANTE")));
+        var requests = responderConCaptura(List.of(response(200, response),
+                response(200, envelope("{\"valido\":true}"))));
+
+        var result = service().enviarMensaje("7", "patient", "38 kg celsius");
+
+        assertEquals(pendingQuestion, result.respuesta().contenido());
+        assertTrue(chat.getMensajes().stream().filter(m -> "38 kg celsius".equals(m.getContenido()))
+                .findFirst().orElseThrow().getExcluidoDelTriage());
+        assertEquals(2, requests.size());
+        assertTrue(requestSystemInstruction(requests.get(0)).contains("temperatura"));
+        verify(chats, times(1)).save(chat);
+        verifyNoInteractions(queue);
+    }
+
+    @Test
+    void soloLaUltimaPreguntaPuedeRepetirseDuranteUnaAclaracionPendiente() throws Exception {
+        chat.agregarMensaje(new com.pretriage.backend.model.chat.Mensaje(
+                "¿Cuál es el motivo?", AutorMensaje.BOT, null));
+        chat.agregarMensaje(new com.pretriage.backend.model.chat.Mensaje(
+                "Tengo fiebre", AutorMensaje.PACIENTE, chat.getPaciente()));
+        String olderQuestion = "¿Tenés alergias?";
+        chat.agregarMensaje(new com.pretriage.backend.model.chat.Mensaje(
+                olderQuestion, AutorMensaje.BOT, null));
+        chat.agregarMensaje(new com.pretriage.backend.model.chat.Mensaje(
+                "No", AutorMensaje.PACIENTE, chat.getPaciente()));
+        String pendingQuestion = "¿Qué temperatura te tomaste?";
+        chat.agregarMensaje(new com.pretriage.backend.model.chat.Mensaje(
+                pendingQuestion, AutorMensaje.BOT, null));
+        var repeated = envelope(mapper.writeValueAsString(Map.of(
+                "mensaje", olderQuestion, "estadoEntrada", "RELEVANTE")));
+        var corrected = envelope(mapper.writeValueAsString(Map.of(
+                "mensaje", "¿Mediste la temperatura?", "estadoEntrada", "RELEVANTE")));
+        var requests = responderConCaptura(List.of(response(200, repeated),
+                response(200, envelope("{\"valido\":true}")), response(200, corrected),
+                response(200, envelope("{\"valido\":true}"))));
+
+        var result = service().enviarMensaje("7", "patient", "38 cm");
+
+        assertEquals("¿Mediste la temperatura?", result.respuesta().contenido());
+        assertEquals(4, requests.size());
+        assertTrue(requestSystemInstruction(requests.get(2)).contains("repeated_question"));
+        assertEquals(1, chat.getMensajes().stream().filter(m -> m.getAutor() == AutorMensaje.PACIENTE
+                && "38 cm".equals(m.getContenido())).count());
+        verify(chats, times(1)).save(chat);
+        verifyNoInteractions(queue);
+    }
+
     private List<HttpRequest> responderConCaptura(List<HttpResponse<String>> responses) throws Exception {
         var requests = new ArrayList<HttpRequest>();
         when(http.<String>send(any(), any())).thenAnswer(invocation -> {

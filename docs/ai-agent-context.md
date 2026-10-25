@@ -95,9 +95,11 @@ intermediate response or repeated question. Gemini is instructed to ask about on
 and `LenguajeClinicoChat.REGLAS_PREGUNTA_TEXTO` excludes closure instructions from that task.
 Question-mark count and punctuation do not invalidate the response or trigger a
 format correction; preserve Gemini's returned message. Gemini supplies questions
-and the backend applies the shared interview policy. It permits up to four
-quantification questions about symptoms the patient
-already named, one open invitation and eight patient answers in total. Each turn
+and the backend applies shared `ProgresoEntrevista`: objectives per reported symptom
+and datum, one open invitation, and terminal data states (answered, unknown, declined
+or attempts exhausted). Independent budgets are 24 total patient turns, three
+attempts per datum and four replies without progress; budget closure is partial.
+Each turn
 covers one concept; onset/duration and impact are limited to reported symptoms, pain
 may use 0–10 or daily impact, and temperature is requested only when measured.
 Unknown or unmeasured values stay unknown without repetition, and facts are never
@@ -106,6 +108,11 @@ new symptoms but permits bounded quantification of those already reported; «no 
 seguir» ends the interview. Do not repeat the open invitation. A clear alarm closes
 immediately, and unreported alarm signs remain unknown. See
 [interview policy](17-simple-chat-questions.md).
+See [resolved-data closure](21-cierre-por-datos-resueltos.md) for resource accounting
+and `seguimientoEntrevista` stored-result metadata. Excluded messages count locally
+for resource protection but are not resent to Gemini or accepted as clinical facts.
+A terminal `CIERRE_SIN_DATOS` response has no classification or queue update;
+clients synchronize the closed chat and must not infer COMPLETADA from closure.
 Complete interviews request final classification and reject a provider response
 that keeps asking questions. Chat never generates local questions or classification.
 Final model JSON/schema errors can request one bounded correction. Transient REST

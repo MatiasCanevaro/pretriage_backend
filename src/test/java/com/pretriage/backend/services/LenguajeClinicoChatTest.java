@@ -9,8 +9,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class LenguajeClinicoChatTest {
     @Test
-    void reglasDeEntrevistaCuantificanSoloSintomasAfirmadosConUnLimiteBreve() {
-        assertTrue(LenguajeClinicoChat.PREGUNTAS_SENCILLAS.contains("maximo de cuatro preguntas"));
+    void reglasDeEntrevistaCuantificanSoloSintomasAfirmadosQueSiguenPendientes() {
+        assertTrue(LenguajeClinicoChat.PREGUNTAS_SENCILLAS.contains("solo los datos pertinentes que sigan pendientes"));
+        assertTrue(LenguajeClinicoChat.PREGUNTAS_SENCILLAS.contains("unica invitacion abierta"));
+        assertFalse(LenguajeClinicoChat.PREGUNTAS_SENCILLAS.contains("maximo de cuatro preguntas"));
         assertTrue(LenguajeClinicoChat.PREGUNTAS_SENCILLAS.contains("sintomas que ya afirmo"));
         assertTrue(LenguajeClinicoChat.PREGUNTAS_SENCILLAS.contains("temperatura solo si el paciente la midio"));
         assertTrue(LenguajeClinicoChat.PREGUNTAS_SENCILLAS.contains("no quiere seguir respondiendo"));

@@ -271,7 +271,7 @@ class ChatServiceTest {
 
         int mensajesPrevios = chat.getMensajes().size();
         var respuesta = chatService.enviarMensaje("1", "auth0|paciente",
-                "El dolor empezó ayer, viene y va, ahora será un 6 de 10. Caminar me molesta un poco. Me resulta difícil comer por las náuseas. No, no tengo más síntomas.");
+                "El dolor empezó ayer, viene y va, ahora será un 6 de 10. Caminar me molesta un poco por el mareo. Me resulta difícil comer por las náuseas. No, no tengo más síntomas.");
         assertTrue(chat.isFinalizado());
         assertEquals("GEMINI", respuesta.origenRespuesta());
         assertEquals(mensajesPrevios + 2, chat.getMensajes().size());
@@ -417,7 +417,8 @@ class ChatServiceTest {
         when(atencionHospitalService.finalizarTriageEIngresarACola(eq("auth0|paciente"), any(NivelDeGravedad.class), anyString(), any(Chat.class)))
                 .thenReturn(new TiempoEstimadoAtencionResponse());
 
-        var respuesta = chatService.enviarMensaje("1", "auth0|paciente", "No tengo fiebre ni dificultad para respirar. No tengo enfermedades previas, alergias ni medicacion.");
+        var respuesta = chatService.enviarMensaje("1", "auth0|paciente",
+                "No tengo fiebre ni dificultad para respirar. No tengo enfermedades previas, alergias ni medicacion. No, no tengo más síntomas.");
 
         assertTrue(chat.isFinalizado());
         assertEquals("Cierre IA detallado", respuesta.respuesta().contenido());
@@ -469,6 +470,7 @@ class ChatServiceTest {
         Chat chat = prepararChat();
         chat.agregarMensaje(new Mensaje("Tengo dolor de garganta desde ayer.", AutorMensaje.PACIENTE, chat.getPaciente()));
         chat.agregarMensaje(new Mensaje("Es 5 de 10.", AutorMensaje.PACIENTE, chat.getPaciente()));
+        chat.agregarMensaje(new Mensaje("¿Hay algo más que quieras contar sobre lo que te pasa?", AutorMensaje.BOT, null));
         when(triageIaClient.consultar(anyString(), anyString(), anyBoolean()))
                 .thenReturn(new TriageAiResponse(true, "Listo.", resultadoFinal(3, false)));
         when(atencionHospitalService.finalizarTriageEIngresarACola(anyString(), any(), anyString(), any(Chat.class)))
@@ -482,9 +484,9 @@ class ChatServiceTest {
     }
 
     @Test
-    void limiteDeMensajesNoGeneraClasificacionLocalSiGeminiFalla() {
+    void limiteSinAvanceNoGeneraClasificacionLocalSiGeminiFalla() {
         Chat chat = prepararChat();
-        for (int i=1; i<ChatService.MAX_MENSAJES_PACIENTE; i++) {
+        for (int i = 1; i < com.pretriage.backend.services.entrevista.ProgresoEntrevista.MAX_SIN_AVANCE; i++) {
             chat.agregarMensaje(new Mensaje("No se.", AutorMensaje.PACIENTE, chat.getPaciente()));
         }
         when(triageIaClient.consultar(anyString(), anyString(), anyBoolean()))
@@ -493,7 +495,8 @@ class ChatServiceTest {
         assertTrue(chat.isFinalizado());
         assertEquals(com.pretriage.backend.model.chat.EstadoClasificacionChat.FALLIDA, chat.getEstadoClasificacion());
         assertNull(chat.getResultadoTriageJson());
-        assertEquals(ChatService.MAX_MENSAJES_PACIENTE + 1, chat.getMensajes().size());
+        assertEquals(com.pretriage.backend.services.entrevista.ProgresoEntrevista.MAX_SIN_AVANCE + 1,
+                chat.getMensajes().size());
         verify(triageIaClient).consultar(anyString(), anyString(), eq(true));
         verify(repoChat).save(chat);
         verifyNoInteractions(atencionHospitalService);
@@ -873,8 +876,7 @@ class ChatServiceTest {
                 new TurnoVoz(AutorMensaje.PACIENTE, "El dolor de cabeza empezó hace 12 horas; la fiebre empezó hace 12 horas y no medí la temperatura."),
                 new TurnoVoz(AutorMensaje.BOT, "Del 0 al 10, cuanto te duele?"),
                 new TurnoVoz(AutorMensaje.PACIENTE, "8/10."),
-                new TurnoVoz(AutorMensaje.BOT, "¿Hay algo más que quieras contar sobre lo que te pasa?"),
-                new TurnoVoz(AutorMensaje.PACIENTE, "No, no tengo más síntomas. No tengo dificultad para respirar, dolor de pecho o confusion ni antecedentes, alergias o medicacion."));
+                new TurnoVoz(AutorMensaje.BOT, "¿Hay algo más que quieras contar sobre lo que te pasa?"));
         turnos.forEach(turno -> chat.agregarMensaje(new Mensaje(turno.contenido(), turno.autor(), chat.getPaciente())));
         when(triageIaClient.consultar(anyString(), anyString(), eq(true)))
                 .thenReturn(new TriageAiResponse(true, "Listo.", resultadoFinal(3, false)));
@@ -882,7 +884,8 @@ class ChatServiceTest {
                 .thenReturn(new TiempoEstimadoAtencionResponse());
 
         int mensajesPrevios = chat.getMensajes().size();
-        var respuesta = chatService.enviarMensaje("1", "auth0|paciente", "Ninguna");
+        var respuesta = chatService.enviarMensaje("1", "auth0|paciente",
+                "No, no tengo más síntomas. No tengo dificultad para respirar, dolor de pecho o confusion ni antecedentes, alergias o medicacion.");
         assertTrue(chat.isFinalizado());
         assertEquals(com.pretriage.backend.model.chat.EstadoClasificacionChat.COMPLETADA, chat.getEstadoClasificacion());
         assertNotNull(chat.getResultadoTriageJson());

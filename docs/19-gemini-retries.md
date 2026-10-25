@@ -13,7 +13,7 @@ La política sigue la recomendación de Gemini para errores que permiten reinten
 ## Verificación
 
 Desde el endurecimiento del chat, la clasificación final y las continuaciones de
-texto marcadas relevantes hacen una petición de verificación semántica antes de
+texto marcadas relevantes o ambiguas hacen una petición de verificación semántica antes de
 publicar o guardar la respuesta. Generación, verificación y eventual corrección
 comparten el presupuesto restante de 45 segundos. Las respuestas fijas de alcance
 no requieren una segunda verificación. El cierre de voz tiene además una comprobación previa de alcance,
@@ -35,6 +35,11 @@ vuelve a fallar la verificación, el turno se rechaza y no se persiste una respu
 bot ni se crea una entrada de cola. La generación y su verificación, más esa corrección
 y su verificación, comparten el presupuesto de 45 segundos.
 
+Una aclaración necesaria puede repetir la última pregunta si el dato sigue
+pendiente y conserva intentos disponibles. Esto no permite repetir preguntas
+antiguas ni reinicia los presupuestos de
+[cierre por datos resueltos](21-cierre-por-datos-resueltos.md).
+
 El 21 de octubre de 2026 pasaron las **435 pruebas Java** completas con
 `python scripts/test_backend_isolated.py`, contra una base temporal aleatoria,
 y las **12 pruebas Python** de los helpers E2E. Las regresiones controlan 503 y
@@ -45,6 +50,8 @@ que un reintento exitoso guarda un único turno y actualiza la cola una sola vez
 Las pruebas transaccionales comprueban que fallar la clasificación conserva un
 chat cerrado en `FALLIDA`, sin resultado inventado.
 
-No requiere cambios en el APK: mobile mantiene su petición original y su indicador
-de espera mientras el backend resuelve los intentos. Para cargar las clases nuevas
-en el proceso local es necesario reiniciar el backend.
+Los reintentos mantienen la petición original y el indicador de espera de mobile.
+La política de cierre por datos añade el origen `CIERRE_SIN_DATOS`: el cliente
+actualizado sincroniza GET y muestra una entrevista cerrada sin fingir una
+clasificación completada. Para cargar las clases nuevas en el proceso local es
+necesario reiniciar el backend.

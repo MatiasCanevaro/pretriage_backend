@@ -56,12 +56,13 @@ sin una afirmación clara de una sensación física.
 ## Contratos y persistencia
 
 La continuación de texto devuelve internamente `mensaje` y `estadoEntrada`.
-En `AMBIGUO` o `FUERA_DE_CONTEXTO`, el backend descarta el texto generado y elige
-una aclaración o redirección fija. Esta respuesta administrativa no asigna síntomas,
+En `AMBIGUO`, una aclaración de Gemini se verifica antes de mostrarla y se dirige al
+dato pendiente cuando el motivo ya se entiende. En `FUERA_DE_CONTEXTO`, el backend
+descarta el texto generado y elige una redirección fija. Esta respuesta administrativa no asigna síntomas,
 prioridad ni diagnóstico y no constituye un fallback clínico. Se identifica con
 `origenRespuesta=CONTROL_CONTEXTO`. Puede repetirse si
 la persona insiste en cambiar de tema, sin activar la corrección por pregunta repetida.
-Una continuación `RELEVANTE` pasa por un verificador independiente que rechaza
+Una continuación `RELEVANTE` o `AMBIGUO` pasa por un verificador independiente que rechaza
 despedidas y mensajes de cierre, incluidos los anuncios de que las respuestas quedaron
 registradas. Solo el cierre orquestado por el backend puede confirmar el registro.
 El verificador interpreta la última respuesta del paciente con los turnos previos como
@@ -81,6 +82,13 @@ de texto rechazado; `null` en registros anteriores equivale a no excluido. El te
 original sigue en el historial visible. La columna se añade con `ddl-auto=update`;
 en instalaciones con migraciones administradas debe añadirse una columna boolean
 nullable equivalente antes de desplegar. No se alteran los DTO públicos de mensajes.
+
+La proyección local usa los turnos excluidos para medir intentos y recursos, sin
+convertirlos en hechos ni reenviar su texto a Gemini. Las aclaraciones reciben el
+historial admitido y la instrucción del dato pendiente. Al agotarse un presupuesto,
+el cierre parcial conserva los datos no obtenidos; sin hechos clínicos comprensibles
+se cierra sin resultado ni actualización de cola. Véase
+[cierre por datos resueltos](21-cierre-por-datos-resueltos.md).
 
 La entrada REST de clasificación es JSON con `turnos` de `autor` y `contenido`;
 voz puede añadir `resumenNoVerificado`. Las citas solo pueden proceder de turnos

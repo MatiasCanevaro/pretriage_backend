@@ -37,22 +37,25 @@ class HardeningIaClientTest {
     }
 
     @Test
-    void continuacionExponeEstadoYElGuardAmbiguoNoInvocaElVerificador() {
+    void continuacionVerificaLaAclaracionAmbiguaAntesDeExponerla() {
         when(gemini.generar(anyString(), anyString(), any(), any()))
-                .thenReturn("{\"mensaje\":\"¿Qué querés decir con harina de trigo?\",\"estadoEntrada\":\"AMBIGUO\"}");
+                .thenReturn("{\"mensaje\":\"¿Qué querés decir con harina de trigo?\",\"estadoEntrada\":\"AMBIGUO\"}",
+                        "{\"valido\":true}");
 
-        var result = client.consultarContinuacion("reglas", "PACIENTE: me duele la harina de trigo", java.time.Duration.ofSeconds(2));
+        var result = client.consultarContinuacion("reglas",
+                "{\"turnos\":[{\"autor\":\"PACIENTE\",\"contenido\":\"me duele la harina de trigo\"}]}",
+                java.time.Duration.ofSeconds(2));
 
         assertFalse(result.finalizado());
         assertNull(result.resultado());
         assertEquals(EstadoEntradaChat.AMBIGUO, result.estadoEntrada());
         ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
         @SuppressWarnings("rawtypes") ArgumentCaptor<Map> schema = ArgumentCaptor.forClass(Map.class);
-        verify(gemini).generar(prompt.capture(), anyString(), schema.capture(), any());
-        assertTrue(prompt.getValue().contains("recetas"));
-        assertTrue(prompt.getValue().contains("me duele la harina de trigo"));
-        assertEquals(java.util.Set.of("mensaje", "estadoEntrada"), ((Map<?, ?>) schema.getValue().get("properties")).keySet());
-        assertEquals(2, ((Map<?, ?>) schema.getValue().get("properties")).size());
+        verify(gemini, times(2)).generar(prompt.capture(), anyString(), schema.capture(), any());
+        assertTrue(prompt.getAllValues().get(0).contains("recetas"));
+        assertEquals(java.util.Set.of("mensaje", "estadoEntrada"),
+                ((Map<?, ?>) schema.getAllValues().get(0).get("properties")).keySet());
+        assertEquals(2, ((Map<?, ?>) schema.getAllValues().get(0).get("properties")).size());
     }
 
     @Test

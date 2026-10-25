@@ -2,8 +2,10 @@
 
 Texto y voz comparten la [política de preguntas sencillas](17-simple-chat-questions.md):
 una pregunta por turno, sin agrupar temas ni leer listas largas. Las correcciones
-del backend mantienen ese estilo. Se permiten hasta cuatro preguntas para cuantificar
-síntomas físicos que el paciente ya enumeró, una invitación abierta y ocho respuestas en total.
+del backend mantienen ese estilo. El progreso por síntoma y dato decide el cierre,
+con una invitación abierta y límites independientes de recursos: 24 turnos totales,
+tres intentos por dato y cuatro respuestas seguidas sin avance. Véase
+[cierre por datos resueltos](21-cierre-por-datos-resueltos.md).
 «No tengo otros síntomas» detiene la búsqueda de síntomas nuevos, pero deja completar
 la cuantificación permitida de los ya nombrados; «no quiero seguir» termina la
 entrevista. El alcance también incluye malestar emocional; si el relato es emocional,
@@ -126,7 +128,7 @@ sequenceDiagram
 
 La consulta mantiene el requisito de selección previa de especialidad y hospital para completar el triage y actualizar la cola. Crear un chat o abrir su canal de voz no realiza esa selección. Ver [flujo del paciente](02-patient-flow.md).
 
-En un chat nuevo, Gemini recibe el saludo inicial como contexto del mensaje que el paciente ya ve. Se le indica no repetirlo: dice «Te escucho» y espera la respuesta. La transcripción de ese primer turno no se envía a mobile ni se agrega otra vez al historial cuando ya existe el saludo, aunque el audio sigue llegando. Si ya hay respuestas, recibe el historial y retoma la siguiente pregunta pendiente sin otro saludo. Durante la conversación el backend no consulta Gemini REST por cada intervención ni persiste cada fragmento: reúne turnos `TurnoVoz` en memoria. Al llegar a ocho respuestas le pide a Gemini que cierre; es una instrucción al modelo, no un cierre obligatorio del servidor.
+En un chat nuevo, Gemini recibe el saludo inicial como contexto del mensaje que el paciente ya ve. Se le indica no repetirlo: dice «Te escucho» y espera la respuesta. La transcripción de ese primer turno no se envía a mobile ni se agrega otra vez al historial cuando ya existe el saludo, aunque el audio sigue llegando. Si ya hay respuestas, recibe el historial y retoma la siguiente pregunta pendiente sin otro saludo. Durante la conversación el backend no consulta Gemini REST por cada intervención ni persiste cada fragmento: reúne turnos `TurnoVoz` en memoria. `ProgresoEntrevista` evalúa historial previo y turnos pendientes; cuando permite cerrar, la sesión envía un único aviso a Gemini para usar la herramienta. No envía una instrucción adicional en cada turno ni fuerza el cierre por llegar a ocho mensajes.
 
 Los textos dirigidos al paciente no anuncian la preclasificación ni prometen resultados
 en pantalla: la despedida es «Gracias. Ya registré tus respuestas para el equipo médico».
@@ -141,7 +143,7 @@ Verificación del 13 de octubre de 2026: 64 pruebas del backend pasaron con
 incluida la supresión del saludo fragmentado sin perder las preguntas siguientes.
 La recompilación de mobile se realiza desde IntelliJ según la preferencia del usuario.
 
-`finalizar_entrevista` recibe motivo, síntomas, inicio, evolución, dolor, alarmas, antecedentes, medicación, alergias, embarazo y observaciones mediante `ResumenEntrevistaVoz`. No recibe prioridad. El validador compartido exige estructura válida y al menos una respuesta del paciente. La entrevista puede incluir como máximo cuatro preguntas de cuantificación y una invitación abierta, con ocho respuestas como límite total. Las preguntas de inicio/duración, impacto, dolor de 0 a 10 o temperatura medida solo se refieren a síntomas ya aportados. Un dato que el paciente no conoce o no midió queda desconocido, sin insistencia; un dato de un síntoma no se extrapola a otro. «No tengo otros síntomas» impide introducir síntomas nuevos y aún permite cuantificar los reportados; «no quiero seguir» detiene la entrevista. La invitación no se repite y una alarma clara cierra de inmediato. Ante cierre prematuro rechazado por el validador, la función devuelve un error y conserva la conversación para continuar. `ChatService` repite la validación antes de modificar el chat o consultar Gemini REST.
+`finalizar_entrevista` recibe motivo, síntomas, inicio, evolución, dolor, alarmas, antecedentes, medicación, alergias, embarazo y observaciones mediante `ResumenEntrevistaVoz`. No recibe prioridad. El validador compartido exige estructura válida y al menos una respuesta del paciente, y delega la decisión de cierre a `ProgresoEntrevista`. Los datos se vinculan a cada síntoma, con estados respondido, desconocido, rechazado o agotado; las preguntas solo se refieren a síntomas aportados. Agotar un dato no completa otro ni obliga a inventar su valor. «No tengo otros síntomas» impide introducir síntomas nuevos y aún permite completar los reportados; «no quiero seguir» detiene la entrevista. La invitación no se repite y una alarma clara cierra de inmediato. Los presupuestos de 24 turnos, tres intentos por dato y cuatro respuestas sin avance conservan un motivo de cierre parcial. Ante cierre prematuro, la función devuelve el dato pendiente y permite continuar. `ChatService` repite la validación antes de modificar el chat o consultar Gemini REST.
 
 Una vez aceptado el cierre, la sesión detiene el envío de audio del micrófono y envía `audioStreamEnd`. Espera audio o transcripción de la despedida, su `turnComplete` y una ventana de un segundo sin nuevos fragmentos de entrada. Cada fragmento tardío reinicia esa ventana. Después solicita el cierre de Gemini y sigue recibiendo transcripciones hasta la confirmación normal del transporte (`1000`); recién entonces toma la instantánea y clasifica una sola vez. Un cierre normal iniciado por el proveedor también permite completar este paso.
 

@@ -18,10 +18,13 @@ entenderla, pero no autoriza a renombrarla como dolor. Una intensidad de una sen
 no dolorosa no se copia en `intensidadDolor`. Una emoción negada, por sí sola, no activa
 la entrevista emocional.
 
-Se permite un máximo de cuatro preguntas de cuantificación en toda la entrevista,
-más una única invitación abierta para que el paciente agregue información útil. El
-tope general sigue siendo de ocho respuestas del paciente. Cada turno trata un solo
-concepto o dato por turno, según las reglas que se indican al modelo. El bot aprovecha
+El cierre normal depende del progreso por síntoma y dato: respondido, desconocido
+o rechazado. Se mantiene una única invitación abierta para que el paciente agregue
+información útil. Ya no se cierra por contar cuatro preguntas u ocho respuestas.
+Hay presupuestos técnicos independientes de 24 turnos totales, tres intentos por
+dato y cuatro respuestas consecutivas sin avance. Al agotarse un dato se continúa
+con los restantes; el agotamiento se distingue de una respuesta clínica conocida.
+Cada turno trata un solo concepto o dato, según las reglas que se indican al modelo. El bot aprovecha
 la información espontánea y no vuelve a preguntar lo que
 ya quedó respondido. Para dolor puede preguntar intensidad de 0 a 10 o el impacto en
 las actividades cotidianas; para fiebre puede pedir la temperatura solo si el
@@ -32,16 +35,17 @@ unidad en los síntomas u observaciones y el impacto en observaciones.
 
 Una respuesta como «no tengo otros síntomas» detiene la búsqueda de síntomas nuevos,
 pero permite completar la cuantificación de los síntomas que el paciente ya nombró,
-dentro de los límites anteriores. «No quiero seguir» detiene la entrevista de
+dentro de los presupuestos de aclaración. «No quiero seguir» detiene la entrevista de
 inmediato. La invitación abierta se hace como máximo una vez y nunca se repite. Un
-relato que ya incluye espontáneamente la cuantificación puede cerrarse sin esa
-invitación. Después de completar preguntas de cuantificación, se ofrece una vez si
+relato que ya incluye espontáneamente la cuantificación evita preguntas redundantes.
+Después de resolver los datos, se ofrece la invitación una vez si
 todavía no se hizo ni el paciente dijo que no tenía más síntomas. Si responde que no
 a esa invitación, la entrevista se cierra con los datos disponibles; no se agregan
 preguntas no solicitadas sobre antecedentes, medicamentos o alergias. Un
 signo de alarma claro cierra la entrevista de inmediato para la clasificación urgente
-y la validación de prioridad existentes. El tope de respuestas es un límite de
-seguridad, no una cantidad mínima.
+y la validación de prioridad existentes. Los límites son resguardos de recursos,
+no una cantidad mínima ni una prueba de suficiencia clínica. Los cierres por límite
+o estancamiento conservan los datos desconocidos y el motivo de cierre parcial.
 
 Una negativa se interpreta según la pregunta anterior. Un «no» a una pregunta de
 medición no equivale a una cifra ni a ausencia del síntoma; un «no» a la invitación
@@ -52,16 +56,19 @@ desconocidos en la clasificación.
 ## Implementación
 
 - `LenguajeClinicoChat` agrupa las instrucciones de entrevista y comunicación;
-  `ValidadorCierreEntrevistaVoz` comparte el criterio de cierre entre texto y voz.
+  `ProgresoEntrevista` reconstruye los objetivos por síntoma y dato;
+  `ValidadorCierreEntrevistaVoz` comparte ese criterio entre texto y voz.
 - `LenguajeClinicoChat.REGLAS_PREGUNTA_TEXTO` redacta el próximo turno sin instrucciones
   contradictorias para cerrar la entrevista. El formato no exige exactamente un signo `?` ASCII:
   la puntuación y la presencia o ausencia de signos de interrogación no invalidan ni
   alteran el mensaje que devuelve Gemini.
 - Las respuestas intermedias de texto contienen `mensaje` y `estadoEntrada`; Gemini genera
   cada pregunta y el backend decide si continúa o solicita la clasificación final.
-- Las entradas ambiguas o ajenas al triage reciben una aclaración o redirección breve
-  del backend, quedan excluidas del contexto clínico y no consumen el límite de ocho
-  respuestas clínicas. Se conserva su texto original en el historial. Véase
+- Las entradas ambiguas reciben una aclaración verificada y pertinente al dato
+  pendiente; las ajenas al triage mantienen una redirección breve. Ambas quedan
+  excluidas como evidencia clínica, pero cuentan para los resguardos de recursos.
+  Su texto original queda guardado localmente; las aclaraciones usan el estado del
+  dato pendiente, sin reenviar ese texto al proveedor. Véase
   [alcance y validación semántica](20-chat-hardening.md).
 - Una respuesta intermedia incompatible con el contrato o una pregunta repetida admite como máximo
   una corrección remota por turno dentro del presupuesto total de 45 segundos. La
@@ -73,10 +80,13 @@ desconocidos en la clasificación.
 - El validador permite cerrar relatos emocionales tras una invitación abierta y su
   respuesta, sin forzar cuantificación física; el preflight semántico conserva la
   validación de alcance antes de aceptar el cierre.
-- Las alarmas cierran inmediatamente; el resto de los cierres respeta la invitación
-  única, el máximo de cuatro preguntas de cuantificación y el tope de ocho respuestas.
+- Las alarmas cierran inmediatamente; el resto de los cierres usa objetivos resueltos
+  e invitación única, o un motivo explícito de agotamiento o falta de avance.
 - La clasificación final conserva los datos desconocidos como no informados y aplica
   las validaciones compartidas de estructura y alarmas.
+
+El detalle de estados, límites y metadata de auditoría está en
+[cierre por datos resueltos](21-cierre-por-datos-resueltos.md).
 
 ## Verificación
 

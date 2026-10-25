@@ -3,13 +3,13 @@ package com.pretriage.backend.services.voz;
 import com.pretriage.backend.controllers.dtos.ResumenEntrevistaVoz;
 import com.pretriage.backend.controllers.dtos.TurnoVoz;
 import com.pretriage.backend.model.chat.AutorMensaje;
+import com.pretriage.backend.services.entrevista.ProgresoEntrevista;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -101,7 +101,8 @@ class ValidadorCierreEntrevistaVozTest {
     void contextoUtilPermiteCerrarSinCompletarUnaListaDeAlarmas() {
         var historial = List.of(paciente("Tengo dolor de cabeza desde ayer, leve"),
                 bot("Tenes alguna enfermedad?"), paciente("No"),
-                bot("Sentis debilidad repentina?"), paciente("No sé"));
+                bot("Sentis debilidad repentina?"), paciente("No sé"),
+                bot("¿Hay algo más que quieras contar?"), paciente("No"));
         assertTrue(ValidadorCierreEntrevistaVoz.tieneDatosSuficientes(historial));
         assertFalse(ValidadorCierreEntrevistaVoz.contieneAlarmaLiteral(historial));
     }
@@ -111,6 +112,8 @@ class ValidadorCierreEntrevistaVozTest {
         var historial = new ArrayList<>(completa().subList(0, 2));
         historial.add(bot("Tomas medicacion o tenes antecedentes?"));
         historial.add(paciente("No tengo antecedentes ni alergias y no tomo medicamentos"));
+        historial.add(bot("¿Hay algo más que quieras contar?"));
+        historial.add(paciente("No"));
         assertTrue(ValidadorCierreEntrevistaVoz.validar(historial, resumen()).isEmpty());
     }
 
@@ -196,14 +199,15 @@ class ValidadorCierreEntrevistaVozTest {
     }
 
     @Test
-    void limiteCompartidoPermiteResumenEscasoPeroNuncaMalformado() {
-        var turnos = IntStream.range(0, com.pretriage.backend.services.ChatService.MAX_MENSAJES_PACIENTE)
+    void cuatroTurnosSinAvancePermitenCierreParcialPeroNoUnResumenMalformado() {
+        var turnos = java.util.stream.IntStream.range(0, ProgresoEntrevista.MAX_SIN_AVANCE)
                 .mapToObj(i -> paciente("No se")).toList();
         var escaso = new ResumenEntrevistaVoz("no informado", List.of(), "no informado", "no informado", null,
                 List.of(), List.of(), List.of(), List.of(), "no informado", "no informado");
         assertTrue(ValidadorCierreEntrevistaVoz.validar(turnos, escaso).isEmpty());
         assertTrue(ValidadorCierreEntrevistaVoz.validar(turnos, null).isPresent());
-        assertTrue(ValidadorCierreEntrevistaVoz.validar(turnos.subList(0, turnos.size() - 1), escaso).isPresent());
+        assertTrue(ValidadorCierreEntrevistaVoz.validar(turnos.subList(0, turnos.size() - 1), escaso).isPresent(),
+                "Tres respuestas sin avance aún requieren continuar la entrevista.");
     }
 
     @Test
@@ -252,7 +256,8 @@ class ValidadorCierreEntrevistaVozTest {
             assertTrue(ValidadorCierreEntrevistaVoz.tieneDatosSuficientes(turnos), inicio);
         }
         var desconocido = List.of(paciente("Fiebre de 39 grados"), paciente("No recuerdo si fue anoche"),
-                paciente("No tengo dificultad para respirar ni dolor de pecho. No tengo antecedentes ni alergias"));
+                paciente("No tengo dificultad para respirar ni dolor de pecho. No tengo antecedentes ni alergias"),
+                bot("¿Hay algo más que quieras contar?"), paciente("No"));
         assertTrue(ValidadorCierreEntrevistaVoz.tieneDatosSuficientes(desconocido));
     }
 
@@ -264,7 +269,8 @@ class ValidadorCierreEntrevistaVozTest {
                 bot("Antecedentes relevantes?"), paciente("no ninguno"),
                 bot("Dificultad para respirar o dolor de pecho?"), paciente("No"));
         assertFalse(ValidadorCierreEntrevistaVoz.tieneDatosSuficientes(turnos));
-        assertTrue(ValidadorCierreEntrevistaVoz.instruccionDatosPendientes(turnos).contains("intensidad del dolor"));
+        assertTrue(ValidadorCierreEntrevistaVoz.instruccionDatosPendientes(turnos).contains("impacto funcional"),
+                "Un moretón y un golpe no autorizan a inventar que la persona también informó dolor.");
     }
 
     @Test
@@ -336,7 +342,7 @@ class ValidadorCierreEntrevistaVozTest {
         var turnos = List.of(paciente("Me siento mal"));
 
         assertFalse(ValidadorCierreEntrevistaVoz.tieneMotivoConcreto(turnos));
-        assertTrue(ValidadorCierreEntrevistaVoz.instruccionDatosPendientes(turnos).contains("motivo aun no se entiende"));
+        assertTrue(ValidadorCierreEntrevistaVoz.instruccionDatosPendientes(turnos).contains("aclaración abierta"));
     }
 
     @Test
@@ -398,7 +404,8 @@ class ValidadorCierreEntrevistaVozTest {
 
     @Test
     void temperaturaEspontaneaYDesconocidoSatisfacenLaCuantificacionSinInsistir() {
-        var espontaneo = List.of(paciente("Tengo fiebre de 38 grados desde ayer"));
+        var espontaneo = List.of(paciente("Tengo fiebre de 38 grados desde ayer"),
+                bot("¿Hay algo más que quieras contar?"), paciente("No"));
         assertTrue(ValidadorCierreEntrevistaVoz.tieneDatosSuficientes(espontaneo));
         var turnos = List.of(paciente("Tengo fiebre y dolor de cabeza"),
                 bot("¿Desde cuándo empezaron ambos síntomas?"), paciente("Los dos desde ayer"),
@@ -410,10 +417,9 @@ class ValidadorCierreEntrevistaVozTest {
     }
 
     @Test
-    void detieneCuantificacionAlLlegarAlTopeDeCuatroPreguntas() {
-        var turnos = List.of(paciente("Me duele la cabeza"), bot("¿Desde cuándo?"), paciente("No sé"),
-                bot("¿Cuánto te duele?"), paciente("No sé"), bot("¿Te impide hacer tus actividades?"),
-                paciente("No quiero decir"), bot("¿Desde cuándo empezó?"), paciente("No recuerdo"),
+    void desconocidosYRechazoTerminalesNoRequierenUnTopeDePreguntas() {
+        var turnos = List.of(paciente("Me duele la cabeza"), bot("¿Desde cuándo empezó?"), paciente("No sé"),
+                bot("¿Cuánto te duele?"), paciente("No quiero decir"),
                 bot("¿Hay algo más que quieras contar?"), paciente("No"));
         assertTrue(ValidadorCierreEntrevistaVoz.tieneDatosSuficientes(turnos));
     }
@@ -443,15 +449,18 @@ class ValidadorCierreEntrevistaVozTest {
     void empeoramientoNoSustituyeIntensidadNiImpactoFuncional() {
         var turnos = List.of(paciente("Me duele la cabeza desde ayer y está empeorando"));
         assertTrue(ValidadorCierreEntrevistaVoz.instruccionDatosPendientes(turnos).contains("intensidad del dolor"));
-        var impacto = List.of(paciente("Me duele la cabeza desde ayer y no puedo hacer mis tareas"));
+        var impacto = List.of(paciente("Me duele la cabeza desde ayer y no puedo hacer mis tareas"),
+                bot("¿Hay algo más que quieras contar?"), paciente("No"));
         assertTrue(ValidadorCierreEntrevistaVoz.tieneDatosSuficientes(impacto));
     }
 
     @Test
     void desconocidosEspontaneosNoVuelvenAPreguntarse() {
-        var inicioDesconocido = List.of(paciente("Me duele la cabeza, no sé desde cuándo empezó, intensidad 6 de 10"));
+        var inicioDesconocido = List.of(paciente("Me duele la cabeza, no sé desde cuándo empezó, intensidad 6 de 10"),
+                bot("¿Hay algo más que quieras contar?"), paciente("No"));
         assertTrue(ValidadorCierreEntrevistaVoz.tieneDatosSuficientes(inicioDesconocido));
-        var temperaturaDesconocida = List.of(paciente("Tengo fiebre desde ayer, no me medí la temperatura"));
+        var temperaturaDesconocida = List.of(paciente("Tengo fiebre desde ayer, no me medí la temperatura"),
+                bot("¿Hay algo más que quieras contar?"), paciente("No"));
         assertTrue(ValidadorCierreEntrevistaVoz.tieneDatosSuficientes(temperaturaDesconocida));
     }
 
@@ -464,8 +473,15 @@ class ValidadorCierreEntrevistaVozTest {
     @Test
     void gravedadDeFiebreNoSeAtribuyeAlDolorYSeAceptanDecimalesDeTemperatura() {
         var turnos = List.of(paciente("Tengo fiebre fuerte desde ayer y dolor de cabeza desde ayer"));
+        var intensidadDolor = com.pretriage.backend.services.entrevista.ProgresoEntrevista.evaluar(turnos).datos().stream()
+                .filter(d -> d.sintomaId().equals("dolor:cabeza")
+                        && d.dimension() == com.pretriage.backend.services.entrevista.ProgresoEntrevista.Dimension.INTENSIDAD)
+                .findFirst().orElseThrow();
+        assertEquals(com.pretriage.backend.services.entrevista.ProgresoEntrevista.Estado.PENDIENTE,
+                intensidadDolor.estado());
         assertTrue(ValidadorCierreEntrevistaVoz.instruccionDatosPendientes(turnos).contains("intensidad del dolor"));
-        var temperaturaDecimal = List.of(paciente("Tengo fiebre de 38.5 grados desde ayer"));
+        var temperaturaDecimal = List.of(paciente("Tengo fiebre de 38.5 grados desde ayer"),
+                bot("¿Hay algo más que quieras contar?"), paciente("No"));
         assertTrue(ValidadorCierreEntrevistaVoz.tieneDatosSuficientes(temperaturaDecimal));
     }
 
@@ -493,7 +509,7 @@ class ValidadorCierreEntrevistaVozTest {
 
         String siguientePaso = ValidadorCierreEntrevistaVoz.instruccionDatosPendientes(turnos);
 
-        assertTrue(siguientePaso.contains("invitacion"), siguientePaso);
+        assertTrue(siguientePaso.contains("invitación"), siguientePaso);
         assertFalse(siguientePaso.contains("intensidad del dolor"), siguientePaso);
         assertFalse(siguientePaso.contains("temperatura"), siguientePaso);
 
@@ -515,7 +531,7 @@ class ValidadorCierreEntrevistaVozTest {
 
         assertTrue(ValidadorCierreEntrevistaVoz.tieneMotivoConcreto(turnos));
         assertTrue(ValidadorCierreEntrevistaVoz.tieneDatosSuficientes(turnos));
-        assertTrue(ValidadorCierreEntrevistaVoz.instruccionDatosPendientes(turnos).contains("datos suficientes"));
+        assertTrue(ValidadorCierreEntrevistaVoz.instruccionDatosPendientes(turnos).contains("objetivos de entrevista"));
         assertFalse(ValidadorCierreEntrevistaVoz.contieneAlarmaLiteral(turnos));
         assertNull(ValidadorCierreEntrevistaVoz.ultimaIntensidadLiteral(turnos),
                 "Una intensidad de sensación no dolorosa no es intensidad de dolor.");
@@ -525,7 +541,7 @@ class ValidadorCierreEntrevistaVozTest {
     void vacioMetaforicoSinAclaracionFisicaSigueSiendoUnMotivoEmocional() {
         var turnos = List.of(paciente("La extraño"), paciente("Siento un vacío en el pecho"));
         assertFalse(ValidadorCierreEntrevistaVoz.tieneMotivoConcreto(turnos));
-        assertTrue(ValidadorCierreEntrevistaVoz.instruccionDatosPendientes(turnos).contains("invitacion"));
+        assertTrue(ValidadorCierreEntrevistaVoz.instruccionDatosPendientes(turnos).contains("invitación"));
     }
 
     @Test
@@ -540,7 +556,7 @@ class ValidadorCierreEntrevistaVozTest {
 
         assertFalse(ValidadorCierreEntrevistaVoz.tieneDatosSuficientes(turnos));
         assertTrue(ValidadorCierreEntrevistaVoz.instruccionDatosPendientes(turnos)
-                .contains("el otro síntoma relatado"));
+                .contains("desde cuándo empezó la sensación de vacío"));
     }
 
     @Test
@@ -580,7 +596,7 @@ class ValidadorCierreEntrevistaVozTest {
     void atajoEmocionalNoSeActivaPorAdjetivoNegacionNiSiHaySintomasFisicosAfirmados() {
         var dolorExtrano = List.of(paciente("Tengo un dolor extraño"));
         String preguntaSobreDolor = ValidadorCierreEntrevistaVoz.instruccionDatosPendientes(dolorExtrano);
-        assertTrue(preguntaSobreDolor.contains("desde cuándo"), preguntaSobreDolor);
+        assertTrue(preguntaSobreDolor.contains("desde cuándo empezó"), preguntaSobreDolor);
         assertFalse(preguntaSobreDolor.contains("invitacion"), preguntaSobreDolor);
 
         var ansiedadNegadaConFiebre = List.of(paciente("No tengo ansiedad, tengo fiebre"));
@@ -597,7 +613,8 @@ class ValidadorCierreEntrevistaVozTest {
     private static List<TurnoVoz> completa() {
         return List.of(paciente("Dolor de cabeza desde ayer, intensidad 5/10"),
                 paciente("No tengo dificultad para respirar ni dolor de pecho"),
-                paciente("No tengo antecedentes ni alergias y no tomo medicamentos"));
+                paciente("No tengo antecedentes ni alergias y no tomo medicamentos"),
+                bot("¿Hay algo más que quieras contar?"), paciente("No"));
     }
     private static TurnoVoz paciente(String contenido) { return new TurnoVoz(AutorMensaje.PACIENTE, contenido); }
     private static TurnoVoz bot(String contenido) { return new TurnoVoz(AutorMensaje.BOT, contenido); }

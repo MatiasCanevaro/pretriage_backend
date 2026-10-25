@@ -3,9 +3,10 @@
 Text, Live voice and continuation corrections share the
 [interview and symptom-quantification policy](17-simple-chat-questions.md): one
 short question about one datum or concept per turn, as instructed to Gemini, in everyday language, with no long symptom
-lists. The interview allows at most four quantification questions about symptoms the
-patient has already named, plus one open invitation, and at most eight patient
-answers. It can ask about onset or duration and how a reported symptom affects the
+lists. Interview progress tracks resolved data for each reported symptom, with one
+open invitation. Separate technical budgets allow 24 total patient turns, three
+attempts per datum and four consecutive replies without progress; reaching a budget
+is recorded as partial closure, not complete data. It can ask about onset or duration and how a reported symptom affects the
 patient. Pain may be quantified on a 0–10 scale or by its effect on daily activities;
 temperature is requested only when the patient measured it. Unknown or unmeasured
 values stay unknown without repeated prompts. Information about one symptom is never
@@ -28,7 +29,8 @@ AI triage collects initial symptoms and produces a structured result. It does no
 The [chat hardening policy](20-chat-hardening.md) handles off-topic and incoherent
 input before accepting clinical facts. Rejected text remains visible in history
 with an internal `Mensaje.excluidoDelTriage` marker and is excluded from clinical
-context, closure heuristics and the eight-answer cap. The final chat classification
+evidence. Excluded turns still count locally toward attempts and resource budgets;
+their text is not resent to the provider. The final chat classification
 requires patient citations and an independent semantic check within the remaining
 operation budget; this does not change reception's existing fallback.
 
@@ -110,11 +112,13 @@ documented in [local development](07-local-development.md#chat-history-schema-mi
 The chat preserves a valid final model classification. It does not replace that
 result with a locally generated summary just because the conversation contains
 enough information. Follow-up questions fill gaps that matter to classification;
-alarm evidence, patient context and the eight-answer cap inform backend closure.
+alarm evidence, per-datum progress and independent resource budgets inform backend closure.
 
 `ChatTurnResponse.origenRespuesta` identifies the source of each response:
-`GEMINI` for successful model responses; `CONTROL_CONTEXTO` for a fixed scope
-clarification/redirection selected after Gemini's scope decision. The final JSON additionally contains
+`GEMINI` for successful clinical model turns; `CONTROL_CONTEXTO` for scope handling
+(a verified Gemini clarification for ambiguity, or fixed off-topic redirection).
+`CIERRE_SIN_DATOS` identifies a neutral terminal response without a classification.
+The final JSON additionally contains
 `origenClasificacion=GEMINI` for completed classifications; a scope guard produces
 no final result. A successful HTTP response alone does
 not prove that Gemini REST supplied the classification. These fields are additive;
@@ -231,21 +235,24 @@ patient; Gemini REST produces the final preclassification:
    If the chat already has text answers, Gemini receives that conversation and
    continues without repeating questions.
 3. The backend accumulates Gemini's input/output transcriptions as patient/bot
-   turns. At most eight patient answers are accepted for one interview; the backend
-   decides closure based on accumulated evidence and the same policy used for text.
+   turns. The backend reconstructs per-datum progress from the prior and pending
+   transcript, with the same resource budgets used for text.
 4. When Gemini has enough data it calls `finalizar_entrevista` with a structured
     summary (`ResumenEntrevistaVoz`). `ValidadorCierreEntrevistaVoz` checks required
     text/list fields, pain range and patient evidence in saved and pending turns. There
     is no minimum response count and no checklist of mandatory topics;
     meaningful spontaneous context is retained. Closure follows the shared text and
-    voice policy: one open invitation, at most four questions about reported symptoms,
-    a total cap of eight patient answers, and immediate closure for a clear alarm or
-    an explicit wish to stop. The validator still requires a structurally valid
+    voice policy: one open invitation, resolved or explicitly unknown/declined data
+    for reported symptoms, bounded clarification attempts and total resources, and
+    immediate closure for a clear alarm or an explicit wish to stop.
+    The validator still requires a structurally valid
     summary and patient evidence. Rejected calls return a corrective tool error and
     keep the interview open.
    `ChatService.validarAlcanceCierreVoz` also performs a read-only REST scope check
    before closure is accepted. Ambiguous/off-topic cases return a corrective tool
-   response and keep the voice interview open. If new patient input arrives during
+   response and keep the voice interview open, unless an independent resource limit
+   or explicit stop requires administrative closure without a clinical result.
+   If new patient input arrives during
    the check, the old snapshot cannot authorize closure. The final classification
    still waits for late transcriptions and normal transport close.
 5. The backend stops sending microphone audio and signals `audioStreamEnd`.
@@ -312,8 +319,13 @@ to 5 and meaningful clinical content. Invalid provider output is handled as a
 provider failure; the chat never substitutes a local clinical result. Fixed scope
 redirections are documented in [chat hardening](20-chat-hardening.md). The final schema is used
 only after the backend decides that the interview can close: the reported symptoms
-have been quantified or their bounded questions attempted, the patient explicitly
-asks to stop, an alarm requires closure, or the eight-answer cap is reached.
+have resolved objectives (answered, explicitly unknown or declined), the patient
+explicitly asks to stop, an alarm requires closure, or an independent resource
+budget is exhausted. `ProgresoEntrevista` replaces the eight-answer/four-question
+closure conditions with per-symptom data states, up to three attempts per datum,
+24 total patient turns and four consecutive replies without progress. Budget
+exhaustion is a partial-closure reason, not evidence that the missing data are known.
+See [closure by resolved data](21-cierre-por-datos-resueltos.md).
 Saying there are no other symptoms stops discovery of new symptoms; it does not
 replace duration or impact for the symptoms already reported.
 The final instruction explicitly derives `motivoConsulta` from reported symptoms

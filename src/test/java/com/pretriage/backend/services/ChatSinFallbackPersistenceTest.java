@@ -62,7 +62,9 @@ class ChatSinFallbackPersistenceTest {
         when(proveedor.consultar(anyString(), anyString(), eq(true))).thenThrow(new ProveedorIaException(null));
         var turnos = List.of(new TurnoVoz(AutorMensaje.PACIENTE, "Dolor de cabeza desde ayer, 8 de 10"),
                 new TurnoVoz(AutorMensaje.PACIENTE, "No tengo dificultad para respirar ni dolor de pecho"),
-                new TurnoVoz(AutorMensaje.PACIENTE, "No tengo enfermedades, alergias ni medicacion"));
+                new TurnoVoz(AutorMensaje.PACIENTE, "No tengo enfermedades, alergias ni medicacion"),
+                new TurnoVoz(AutorMensaje.BOT, "¿Hay algo más que quieras contar sobre lo que te pasa?"),
+                new TurnoVoz(AutorMensaje.PACIENTE, "No, no tengo más síntomas."));
         var resumen = new ResumenEntrevistaVoz("dolor de cabeza", List.of("dolor de cabeza"), "ayer", "igual", 8,
                 List.of(), List.of(), List.of(), List.of(), "no informado", "Caso sintetico");
         assertThrows(ProveedorIaException.class, () -> chatService.finalizarEntrevistaVoz(chatId, pacienteAuth, turnos, resumen));
@@ -70,7 +72,12 @@ class ChatSinFallbackPersistenceTest {
         assertEquals(com.pretriage.backend.model.chat.EstadoClasificacionChat.FALLIDA,
                 chatService.obtenerChat(chatId, pacienteAuth).estadoClasificacion());
         chatService.registrarCierreVozFallido(chatId, pacienteAuth, turnos);
-        assertEquals(4, chatService.obtenerChat(chatId, pacienteAuth).mensajes().size());
+        var historial = chatService.obtenerChat(chatId, pacienteAuth).mensajes();
+        assertEquals(6, historial.size()); // greeting + three clinical turns + invitation + its answer
+        assertEquals(1, historial.stream().filter(m -> m.contenido()
+                .equals("¿Hay algo más que quieras contar sobre lo que te pasa?")).count());
+        assertEquals(1, historial.stream().filter(m -> m.contenido()
+                .equals("No, no tengo más síntomas.")).count());
         assertNull(db.queryForObject("SELECT resultado_triage_json FROM chat WHERE id=?", String.class, Long.valueOf(chatId)));
         verifyNoInteractions(cola);
     }
