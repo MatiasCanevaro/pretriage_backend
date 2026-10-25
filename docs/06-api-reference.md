@@ -2,6 +2,18 @@
 
 This is a practical reference for the main flows. It is not a full OpenAPI replacement.
 
+## HTTP errors
+
+Errors handled by the API use a JSON body with an `error` field unless an
+endpoint documents a validation field map. For requests that reach MVC, a
+missing resource returns a JSON `404` with `{"error":"Recurso no encontrado."}`,
+including when the client requested an SSE response; authentication can reject
+a request before MVC. A request whose `Content-Type`
+is not accepted by the endpoint returns `415` with
+`{"error":"Tipo de contenido no soportado."}`. These generic responses do
+not include request paths or internal exception details. Other endpoint-specific
+status codes and error bodies are documented with their respective flows.
+
 ## Auth
 
 ### Register
