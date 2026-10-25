@@ -60,7 +60,9 @@ public class ChatService {
             Si los inicios son distintos, vincula cada tiempo con su sintoma en observaciones y no los combines
             en un unico inicio.
             Si informa dolor X de 10 o X/10, intensidadDolor es X; solo usa null si no lo informo.
-            intensidadDolor solo representa dolor, nunca temperatura. Si midio la temperatura por fiebre,
+            intensidadDolor solo representa una intensidad que el paciente atribuyo explicitamente al dolor;
+            una escala para otra sensacion no dolorosa no es intensidadDolor. Nunca uses este campo para
+            temperatura. Si midio la temperatura por fiebre,
             conserva el valor y su unidad ligado a la fiebre en sintomas u observaciones. Conserva en
             observaciones el impacto funcional afirmado cuando no tenga un campo propio.
             En antecedentesRelevantes, medicamentos y alergias incluye solo datos afirmados;
@@ -88,6 +90,9 @@ public class ChatService {
 
     private static final Set<EstadoEntradaCola> ESTADOS_ENTRADA_TERMINALES =
             EnumSet.of(EstadoEntradaCola.FINALIZADA, EstadoEntradaCola.CANCELADA);
+
+    private record RespuestaClasificacionInicial(TriageAiResponse respuesta,
+                                                  java.util.Optional<TriageIaClient.MotivoRechazoSemantico> rechazoSemantico) { }
 
     private final RepoChat repoChat;
     private final RepoPacientes repoPacientes;
@@ -185,9 +190,13 @@ public class ChatService {
             if (cierreRequerido) iniciarClasificacion(chat);
             long inicioConsulta = System.nanoTime();
             TriageAiResponse respuesta;
+            java.util.Optional<TriageIaClient.MotivoRechazoSemantico> rechazoSemantico = java.util.Optional.empty();
             if (cierreRequerido) {
-                respuesta = consultarClasificacionFinal(chat);
-                respuesta = corregirClasificacionSiHaceFalta(chat, respuesta, construirDatosParaClasificacion(chat), inicioConsulta);
+                String datos = construirDatosParaClasificacion(chat);
+                var clasificacion = consultarClasificacionFinal(chat, datos);
+                respuesta = clasificacion.respuesta();
+                rechazoSemantico = clasificacion.rechazoSemantico();
+                respuesta = corregirClasificacionSiHaceFalta(chat, respuesta, datos, inicioConsulta, rechazoSemantico);
             } else {
                 respuesta = consultarPregunta(chat, inicioConsulta);
             }
@@ -273,15 +282,17 @@ public class ChatService {
         try {
             String datos = construirDatosVozParaClasificacion(entrevistaCompleta, resumen);
             TriageAiResponse respuesta;
+            java.util.Optional<TriageIaClient.MotivoRechazoSemantico> rechazoSemantico = java.util.Optional.empty();
             try {
                 respuesta = triageIaClient.consultar(FINAL_SYSTEM_PROMPT_VOZ, datos, true);
             } catch (ProveedorIaException error) {
-                if (!TriageIaClient.esErrorDeRespuesta(error)) throw error;
+                rechazoSemantico = TriageIaClient.motivoRechazo(error);
+                if (rechazoSemantico.isEmpty() && !TriageIaClient.esErrorDeRespuesta(error)) throw error;
                 respuesta = null;
             } catch (RuntimeException error) {
                 throw error instanceof ProveedorIaException ? error : new ProveedorIaException(error);
             }
-            respuesta = corregirClasificacionSiHaceFalta(chat, respuesta, datos, inicio);
+            respuesta = corregirClasificacionSiHaceFalta(chat, respuesta, datos, inicio, rechazoSemantico);
             if (estadoEntrada(respuesta) != EstadoEntradaChat.RELEVANTE) {
                 throw new ProveedorIaException(new IllegalStateException(
                         "La clasificación final contradice el preflight de alcance de la entrevista de voz"));
@@ -359,16 +370,23 @@ public class ChatService {
 
     private TriageAiResponse corregirClasificacionSiHaceFalta(Chat chat, TriageAiResponse respuesta,
                                                              String datos, long inicio) {
+        return corregirClasificacionSiHaceFalta(chat, respuesta, datos, inicio, java.util.Optional.empty());
+    }
+
+    private TriageAiResponse corregirClasificacionSiHaceFalta(Chat chat, TriageAiResponse respuesta,
+                                                             String datos, long inicio,
+                                                             java.util.Optional<TriageIaClient.MotivoRechazoSemantico> rechazoSemantico) {
         String motivo = errorClasificacionFinal(chat, respuesta);
-        if (motivo == null) return respuesta;
+        if (motivo == null && rechazoSemantico.isEmpty()) return respuesta;
         var restante = java.time.Duration.ofSeconds(45).minusNanos(System.nanoTime() - inicio);
         if (restante.isNegative() || restante.isZero()) throw respuestaIaInvalida(chat, "correction_deadline_exceeded");
-        log.info("Chat IA correction chatId={} reason={}", chat.getId(), motivo);
-        String regla = "negation_in_affirmative_list".equals(motivo)
+        String motivoLog = rechazoSemantico.map(TriageIaClient.MotivoRechazoSemantico::name).orElse(motivo);
+        log.info("Chat IA correction chatId={} reason={}", chat.getId(), motivoLog);
+        String regla = rechazoSemantico.map(this::reglaCorreccionSemantica).orElseGet(() -> "negation_in_affirmative_list".equals(motivo)
                 ? "Las negaciones como Ninguna no son alergias, medicamentos ni antecedentes: usa listas vacias y registra la negacion en observaciones."
                 : "alarm_classification_inconsistent".equals(motivo)
                 ? "Tu resultado anterior contenia una alarma o contradecia una alarma literal del paciente. Revisa la evidencia completa. Si hay alarma, requiereAtencionInmediata debe ser true y nivelPrioridad al menos 4. No inventes alarmas ni las elimines para evitar la validacion."
-                : "La entrevista termino: devolve una clasificacion final completa y valida con todos los campos requeridos.";
+                : "La entrevista termino: devolve una clasificacion final completa y valida con todos los campos requeridos.");
         TriageAiResponse corregida;
         try {
             corregida = triageIaClient.consultarCorreccionFinal(FINAL_SYSTEM_PROMPT
@@ -380,6 +398,16 @@ public class ChatService {
         String error = errorClasificacionFinal(chat, corregida);
         if (error != null) throw respuestaIaInvalida(chat, error);
         return corregida;
+    }
+
+    private String reglaCorreccionSemantica(TriageIaClient.MotivoRechazoSemantico motivo) {
+        return switch (motivo) {
+            case SIN_RESPALDO -> "Revisa sintomas, signos de alarma, antecedentes, medicamentos y alergias. Conserva un dato solo si un turno del PACIENTE lo afirma claramente; los turnos BOT son contexto, no evidencia. Omite lo que no tenga respaldo.";
+            case NEGACION -> "Revisa el alcance de cada negacion. No incluyas como afirmados los sintomas o antecedentes que el paciente nego; conserva la negacion solo en observaciones.";
+            case INFERENCIA -> "Quita diagnosticos, causas y sintomas inferidos. Conserva solo lo que el paciente dijo y usa lenguaje descriptivo sin atribuir una causa.";
+            case COMUNICACION -> "Corrige el mensaje dirigido al paciente: agradece y confirma el registro, sin mencionar triage, clasificacion, prioridad ni resultados internos.";
+            case INTENSIDAD_NO_DOLOR -> "intensidadDolor solo puede contener una escala de dolor que el paciente atribuyo explicitamente al dolor. Una intensidad de otra sensacion no es dolor; usa null si no informo dolor cuantificado.";
+        };
     }
 
     /** Retry processing a closed interview without adding another patient message. */
@@ -395,13 +423,15 @@ public class ChatService {
         try {
             String datos = construirDatosParaClasificacion(chat);
             TriageAiResponse respuesta;
+            java.util.Optional<TriageIaClient.MotivoRechazoSemantico> rechazoSemantico = java.util.Optional.empty();
             try {
                 respuesta = triageIaClient.consultar(FINAL_SYSTEM_PROMPT, datos, true);
             } catch (ProveedorIaException error) {
-                if (!TriageIaClient.esErrorDeRespuesta(error)) throw error;
+                rechazoSemantico = TriageIaClient.motivoRechazo(error);
+                if (rechazoSemantico.isEmpty() && !TriageIaClient.esErrorDeRespuesta(error)) throw error;
                 respuesta = null;
             }
-            respuesta = corregirClasificacionSiHaceFalta(chat, respuesta, datos, inicio);
+            respuesta = corregirClasificacionSiHaceFalta(chat, respuesta, datos, inicio, rechazoSemantico);
             if (estadoEntrada(respuesta) != EstadoEntradaChat.RELEVANTE) {
                 marcarClasificacionFallida(chat);
                 throw new ProveedorIaException(new IllegalStateException("Entrada no clinica en clasificacion fallida"));
@@ -456,11 +486,14 @@ public class ChatService {
                 origenRespuesta);
     }
 
-    private TriageAiResponse consultarClasificacionFinal(Chat chat) {
+    private RespuestaClasificacionInicial consultarClasificacionFinal(Chat chat, String datos) {
         try {
-            return triageIaClient.consultar(FINAL_SYSTEM_PROMPT, construirDatosParaClasificacion(chat), true);
+            return new RespuestaClasificacionInicial(
+                    triageIaClient.consultar(FINAL_SYSTEM_PROMPT, datos, true), java.util.Optional.empty());
         } catch (ProveedorIaException error) {
-            if (TriageIaClient.esErrorDeRespuesta(error)) return null;
+            var rechazo = TriageIaClient.motivoRechazo(error);
+            if (rechazo.isPresent()) return new RespuestaClasificacionInicial(null, rechazo);
+            if (TriageIaClient.esErrorDeRespuesta(error)) return new RespuestaClasificacionInicial(null, java.util.Optional.empty());
             throw error;
         } catch (Exception exception) {
             if (exception instanceof ProveedorIaException proveedorIaException) {

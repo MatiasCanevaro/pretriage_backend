@@ -123,7 +123,7 @@ public final class ValidadorCierreEntrevistaVoz {
         boolean inicioDolor = false, inicioFiebre = false, inicioOtro = false, dolorDato = false, otroDato = false, tempDato = false;
         boolean inicioDolorIntentado = false, inicioFiebreIntentado = false, inicioOtroIntentado = false;
         boolean dolorIntentado = false, otroIntentado = false, tempIntentada = false;
-        boolean hayFiebre = false, hayDolor = false, hayOtro = false, pendiente = false;
+        boolean hayFiebre = false, hayDolor = false, hayOtro = tieneVacioFisicoConfirmado(turnos), pendiente = false;
         int preguntas = 0;
         boolean preguntaInicio = false, preguntaGravedad = false, preguntaImpacto = false, preguntaTemperatura = false;
         boolean destinoDolor = false, destinoFiebre = false, destinoOtro = false;
@@ -167,7 +167,9 @@ public final class ValidadorCierreEntrevistaVoz {
                 for (String segmento : segmentos) {
                     boolean mencionaDolor = sintomaAfirmado(segmento, "dolor|duele|duelen|cefalea");
                     boolean mencionaFiebre = sintomaAfirmado(segmento, "fiebre|febril");
-                    boolean mencionaOtro = sintomaAfirmado(segmento, OTROS_SINTOMAS);
+                    boolean mencionaOtro = sintomaAfirmado(segmento, OTROS_SINTOMAS)
+                            || (hayOtro && sintomaAfirmado(segmento, "vacio|vacia|vacios|vacias")
+                            && contiene(segmento, "pecho|cuerpo"));
                     hayDolor |= mencionaDolor;
                     hayFiebre |= mencionaFiebre;
                     hayOtro |= mencionaOtro;
@@ -208,6 +210,7 @@ public final class ValidadorCierreEntrevistaVoz {
                         }
                     }
                     if (preguntaGravedad && destinoDolor && extraerIntensidad(segmento, textoPregunta) != null) dolorDato = true;
+                    if (preguntaGravedad && destinoOtro && respuestaIntensidadNoDolor(segmento, textoPregunta)) otroDato = true;
                     if (preguntaImpacto && respuestaImpactoFuncional(segmento)) {
                         dolorDato |= destinoDolor;
                         otroDato |= destinoOtro;
@@ -294,13 +297,50 @@ public final class ValidadorCierreEntrevistaVoz {
     public static boolean tieneMotivoConcreto(List<TurnoVoz> turnos) {
         if (turnos == null) return false;
         for (TurnoVoz turno : turnos) {
-            if (!esRespuesta(turno)) continue;
+            if (turno == null || turno.contenido() == null) continue;
             String texto = normalizar(turno.contenido());
+            if (!esRespuesta(turno)) continue;
             for (String segmento : texto.split("[,;.!?\\n]|\\bpero\\b|\\bsin embargo\\b|\\baunque\\b")) {
                 if (tieneSintomaAfirmado(segmento)) return true;
             }
         }
-        return false;
+        return tieneVacioFisicoConfirmado(turnos);
+    }
+
+    /**
+     * A patient's explicit physical clarification can disambiguate a vacuum sensation
+     * they already described. BOT language alone never creates that symptom.
+     */
+    private static boolean tieneVacioFisicoConfirmado(List<TurnoVoz> turnos) {
+        if (turnos == null) return false;
+        boolean aclaracionPendiente = false;
+        boolean tieneAclaracion = false;
+        boolean fisico = false;
+        boolean relatoVacioAfirmado = false;
+        for (TurnoVoz turno : turnos) {
+            if (turno == null || turno.contenido() == null) continue;
+            String texto = normalizar(turno.contenido());
+            if (turno.autor() == AutorMensaje.BOT) {
+                aclaracionPendiente = contiene(texto, "fisic[oa]|corporal")
+                        && contiene(texto, "emocional|sentis|sientes|sensacion");
+                continue;
+            }
+            if (!esRespuesta(turno)) continue;
+            if (aclaracionPendiente) {
+                tieneAclaracion = true;
+                fisico = respuestaAclaraFisico(texto);
+                aclaracionPendiente = false;
+            }
+            for (String segmento : texto.split("[,;.!?\\n]|\\bpero\\b|\\bsin embargo\\b|\\baunque\\b")) {
+                relatoVacioAfirmado |= tieneSintomaAfirmado(segmento, "vacio|vacia|vacios|vacias")
+                        && contiene(segmento, "pecho|cuerpo");
+            }
+        }
+        return tieneAclaracion && fisico && relatoVacioAfirmado;
+    }
+
+    private static boolean respuestaAclaraFisico(String respuesta) {
+        return sintomaAfirmado(respuesta, "fisic[oa]|corporal|en el cuerpo|del cuerpo");
     }
 
     private static boolean tieneMotivoEmocional(List<TurnoVoz> turnos) {
@@ -323,7 +363,11 @@ public final class ValidadorCierreEntrevistaVoz {
     }
 
     private static boolean tieneSintomaAfirmado(String segmento) {
-        var sintoma = Pattern.compile("\\b(?:" + SINTOMAS + ")\\b").matcher(segmento);
+        return tieneSintomaAfirmado(segmento, SINTOMAS);
+    }
+
+    private static boolean tieneSintomaAfirmado(String segmento, String sintomas) {
+        var sintoma = Pattern.compile("\\b(?:" + sintomas + ")\\b").matcher(segmento);
         while (sintoma.find()) {
             String prefijo = segmento.substring(0, sintoma.start());
             var negacion = NEGACION.matcher(prefijo);
@@ -374,7 +418,7 @@ public final class ValidadorCierreEntrevistaVoz {
     }
 
     private static boolean esInvitacionAbierta(String texto) {
-        return contiene(texto, "algo mas|otra cosa|algo para agregar|algo que quieras (?:contar|agregar)|queres agregar algo|quieres agregar algo");
+        return contiene(texto, "algo mas|otra cosa|algo para agregar|algo que quieras (?:contar|agregar)|queres agregar algo|quieres agregar algo|(?:tenes|tienes) algun otro sintoma ademas|hay algun otro sintoma ademas");
     }
 
     public static String instruccionDatosPendientes(List<TurnoVoz> turnos) {
@@ -432,9 +476,12 @@ public final class ValidadorCierreEntrevistaVoz {
         var matcher = INTENSIDAD.matcher(texto);
         Integer ultima = null;
         while (matcher.find()) ultima = Integer.parseInt(matcher.group(1));
-        if (ultima != null) return ultima;
+        if (ultima != null) {
+            return contiene(pregunta + " " + texto, "dolor|duele|duelen|cefalea") ? ultima : null;
+        }
         String respuesta = texto.replaceFirst("^(?:un|una)\\s+", "").replaceAll("[.!]$", "").strip();
-        if (contiene(pregunta, "intensidad|(?:0|1|cero|uno) (?:al|a) (?:10|diez)")) {
+        if (contiene(pregunta, "dolor|duele|duelen|cefalea")
+                && contiene(pregunta, "intensidad|cuanto te duele|(?:0|1|cero|uno) (?:al|a) (?:10|diez)")) {
             if (respuesta.matches("10|[0-9]")) return Integer.parseInt(respuesta);
             List<String> numeros = List.of("cero", "uno", "dos", "tres", "cuatro", "cinco",
                     "seis", "siete", "ocho", "nueve", "diez");
@@ -442,6 +489,15 @@ public final class ValidadorCierreEntrevistaVoz {
             if (indice >= 0) return indice;
         }
         return null;
+    }
+
+    private static boolean respuestaIntensidadNoDolor(String respuesta, String pregunta) {
+        if (contiene(pregunta, "dolor|duele|duelen|cefalea")
+                || !contiene(pregunta, "intensidad|escala|(?:0|cero|1|uno) (?:al|a) (?:10|diez)")) {
+            return false;
+        }
+        String valor = respuesta.replaceFirst("^(?:un|una)\\s+", "").replaceAll("[.!]$", "").strip();
+        return valor.matches("10|[0-9]|cero|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez");
     }
 
     private static boolean esRespuesta(TurnoVoz turno) {
@@ -462,7 +518,7 @@ public final class ValidadorCierreEntrevistaVoz {
     private static boolean inicioInformado(String texto) {
         for (String segmento : texto.split("[.!?;]")) {
             if (!contiene(segmento, "no se|no recuerdo|desconozco|no informado|no informada")
-                    && contiene(segmento, "ayer|hoy|anteayer|anoche|esta (?:manana|tarde|noche)|hace \\S+ (?:minutos?|horas?|dias?|semanas?|meses?)|empezo|comenzo")) return true;
+                    && contiene(segmento, "ayer|hoy|anteayer|anoche|esta (?:manana|tarde|noche)|hace \\S+ (?:minutos?|horas?|dias?|semanas?|meses?)|desde que (?:me dejo|me abandono|nos separamos)|empezo|comenzo")) return true;
         }
         return false;
     }

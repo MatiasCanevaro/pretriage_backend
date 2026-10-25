@@ -166,6 +166,10 @@ client may retry eligible transient transport/status failures up to two attempts
 request; quota 429 requires a valid `Retry-After`, and safety, authentication,
 invalid JSON and semantic failures are not HTTP retries. Processing retry uses
 `POST /api/chat/{id}/clasificacion`, not another patient message.
+If the final-result verifier supplies a safe rejection category, one correction request
+can use that category as feedback; the original rejection text and any provider citations
+are never copied into the correction prompt or logs. No queue entry is created when that
+correction fails.
 
 When transport errors coexist with `invalid_response`, `repeated_question` or
 `premature_or_unsafe_closure`, do not attribute all delays to the provider. A

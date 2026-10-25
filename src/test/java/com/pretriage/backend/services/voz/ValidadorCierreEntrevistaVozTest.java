@@ -488,7 +488,7 @@ class ValidadorCierreEntrevistaVozTest {
 
     @Test
     void motivoEmocionalNoExigeUnaCuantificacionDeSintomasFisicos() {
-        var turnos = List.of(paciente("Siento un vacío en el pecho"),
+        var turnos = List.of(paciente("La extraño"), paciente("Siento un vacío en el pecho"),
                 bot("¿Desde cuándo sentís ese vacío?"), paciente("Desde que me dejó."));
 
         String siguientePaso = ValidadorCierreEntrevistaVoz.instruccionDatosPendientes(turnos);
@@ -503,6 +503,77 @@ class ValidadorCierreEntrevistaVozTest {
         assertTrue(ValidadorCierreEntrevistaVoz.tieneDatosSuficientes(entrevistaCompleta));
         assertFalse(ValidadorCierreEntrevistaVoz.contieneAlarmaLiteral(entrevistaCompleta),
                 "Una metáfora en el pecho no debe convertirse en alarma cardíaca.");
+    }
+
+    @Test
+    void aclaracionFisicaDelVacioPermiteCuantificarYCerrarTrasUnNoALaInvitacion() {
+        var turnos = List.of(paciente("Siento un vacío en el pecho"),
+                bot("¿Sentís algo físico o es emocional?"), paciente("Física"),
+                bot("¿Desde cuándo lo sentís?"), paciente("Desde que me dejó"),
+                bot("Del 1 al 10, ¿qué intensidad tiene ese vacío físico?"), paciente("8"),
+                bot("¿Tenés algún otro síntoma además del vacío físico?"), paciente("No"));
+
+        assertTrue(ValidadorCierreEntrevistaVoz.tieneMotivoConcreto(turnos));
+        assertTrue(ValidadorCierreEntrevistaVoz.tieneDatosSuficientes(turnos));
+        assertTrue(ValidadorCierreEntrevistaVoz.instruccionDatosPendientes(turnos).contains("datos suficientes"));
+        assertFalse(ValidadorCierreEntrevistaVoz.contieneAlarmaLiteral(turnos));
+        assertNull(ValidadorCierreEntrevistaVoz.ultimaIntensidadLiteral(turnos),
+                "Una intensidad de sensación no dolorosa no es intensidad de dolor.");
+    }
+
+    @Test
+    void vacioMetaforicoSinAclaracionFisicaSigueSiendoUnMotivoEmocional() {
+        var turnos = List.of(paciente("La extraño"), paciente("Siento un vacío en el pecho"));
+        assertFalse(ValidadorCierreEntrevistaVoz.tieneMotivoConcreto(turnos));
+        assertTrue(ValidadorCierreEntrevistaVoz.instruccionDatosPendientes(turnos).contains("invitacion"));
+    }
+
+    @Test
+    void inicioDeFiebreNoCompletaInicioDelVacioFisicoCuantificadoDespues() {
+        var turnos = List.of(paciente("La extraño"),
+                paciente("Siento un vacío en el pecho y tengo fiebre"),
+                bot("¿Sentís algo físico o es emocional?"), paciente("Física"),
+                bot("¿Desde cuándo empezó la fiebre?"), paciente("Desde que me dejó"),
+                bot("Del 1 al 10, ¿qué intensidad tiene ese vacío físico?"), paciente("8"),
+                bot("¿Te mediste la temperatura?"), paciente("No la medí"),
+                bot("¿Tenés algún otro síntoma además del vacío físico?"), paciente("No"));
+
+        assertFalse(ValidadorCierreEntrevistaVoz.tieneDatosSuficientes(turnos));
+        assertTrue(ValidadorCierreEntrevistaVoz.instruccionDatosPendientes(turnos)
+                .contains("el otro síntoma relatado"));
+    }
+
+    @Test
+    void contextoFisicoNoSeInfiereDelTurnoBotNiDeUnaAclaracionNegativa() {
+        var soloBot = List.of(paciente("Siento un vacío en el pecho"),
+                bot("¿Sentís algo físico o es emocional?"),
+                bot("La sensación física en tu pecho, ¿desde cuándo está?"));
+        assertFalse(ValidadorCierreEntrevistaVoz.tieneMotivoConcreto(soloBot));
+
+        var niegaFisico = List.of(paciente("Siento un vacío en el pecho"),
+                bot("¿Sentís algo físico o es emocional?"), paciente("No, no es física; es emocional"));
+        assertFalse(ValidadorCierreEntrevistaVoz.tieneMotivoConcreto(niegaFisico));
+
+        var niegaFisicoBreve = List.of(paciente("Siento un vacío en el pecho"),
+                bot("¿Sentís algo físico o es emocional?"), paciente("No física, emocional"));
+        assertFalse(ValidadorCierreEntrevistaVoz.tieneMotivoConcreto(niegaFisicoBreve));
+
+        var niegaEmocional = List.of(paciente("Siento un vacío en el pecho"),
+                bot("¿Sentís algo físico o es emocional?"), paciente("No es emocional, es física"));
+        assertTrue(ValidadorCierreEntrevistaVoz.tieneMotivoConcreto(niegaEmocional));
+
+        var aclaraEmocional = List.of(paciente("Siento un vacío en el pecho"),
+                bot("¿Sentís algo físico o es emocional?"), paciente("Emocional"));
+        assertFalse(ValidadorCierreEntrevistaVoz.tieneMotivoConcreto(aclaraEmocional));
+
+        var ultimaAclaracionEmocional = List.of(paciente("Siento un vacío en el pecho"),
+                bot("¿Sentís algo físico o es emocional?"), paciente("Física"),
+                bot("¿Al final es una sensación física o emocional?"), paciente("Emocional"));
+        assertFalse(ValidadorCierreEntrevistaVoz.tieneMotivoConcreto(ultimaAclaracionEmocional));
+
+        var sintomaNegado = List.of(paciente("No siento un vacío en el pecho"),
+                bot("¿Sentís algo físico o es emocional?"), paciente("Física"));
+        assertFalse(ValidadorCierreEntrevistaVoz.tieneMotivoConcreto(sintomaNegado));
     }
 
     @Test

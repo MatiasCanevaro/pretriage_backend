@@ -84,15 +84,27 @@ Una cita existente por sí sola no prueba que respalde el síntoma. La segunda
 comprobación final evalúa coherencia, afirmación frente a negación, correspondencia
 con el relato y alcance del texto dirigido al paciente. También revisa el origen de
 los demás hechos atribuidos al paciente, como alergias, medicamentos y antecedentes.
+La respuesta de verificación requiere `valido` y admite el código opcional acotado
+`SIN_RESPALDO`, `NEGACION`, `INFERENCIA`, `COMUNICACION` o `INTENSIDAD_NO_DOLOR`,
+o bien `null`; también puede omitirse. La forma antigua que contiene solo `valido`
+sigue aceptándose. El código puede
+orientar el único intento de corrección del cierre; no se usa texto libre del proveedor,
+no se guarda en el resultado clínico y un código no nulo junto a `valido=true` se
+considera incoherente. Las negaciones de síntomas adicionales no niegan síntomas ya descritos;
+una negación de un síntoma concreto sigue siendo una negación. Una intensidad referida
+a un "vacío" no se interpreta como intensidad del dolor sin una afirmación explícita
+de dolor, y una sensación confirmada como física conserva su descripción literal sin
+atribuirse automáticamente a dolor torácico o a un estado emocional.
 Comparte el tiempo restante
 de la operación con la generación y su eventual corrección; no abre otro presupuesto
 de 45 segundos. Las continuaciones relevantes también requieren una comprobación
 antes de mostrar el texto: esto agrega una solicitud y algo de latencia. Las respuestas
 fijas de alcance no la necesitan. Cada operación mantiene su límite total y una sola
 corrección semántica; los reintentos de transporte conservan sus límites previos.
-El rechazo semántico mantiene su campo y motivo en el log; la capa exterior no debe
-volver a registrarlo como JSON ilegible. Los logs de rechazo no incluyen el texto clínico
-ni el cuerpo de la respuesta del proveedor.
+El rechazo semántico mantiene su campo y razón técnica en una sola entrada de log; si
+el verificador aportó un código allowlisted, se registra además ese enum para diagnóstico.
+La capa exterior no debe volver a registrarlo como JSON ilegible. Los logs no incluyen
+texto clínico, citas ni el cuerpo de la respuesta del proveedor.
 
 Si no hay hechos clínicos comprensibles, el modelo puede devolver estado no relevante,
 `finalizado=false`, `resultado=null` y evidencia vacía, incluso ante una solicitud

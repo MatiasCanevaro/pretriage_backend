@@ -465,6 +465,10 @@ Returns `200 ChatTurnResponse` on success; only a valid Gemini result updates th
 queue. Completed/open/historical chats are rejected with `ChatFinalizadoException`
 (`400`); another patient's chat is not accessible. Concurrent retries are serialized
 by a database row lock. Provider failure retains a closed `FALLIDA` interview.
+The backend may make one bounded correction request after an invalid final classification;
+if the correction also fails, the response remains `FALLIDA` and no triage result or queue
+entry is created. A verified semantic rejection may provide only a safe category to guide
+that correction; arbitrary verifier text is not exposed.
 
 `GET /api/chat/{id}` and chat creation now include additive `estadoClasificacion`:
 `NO_SOLICITADA`, `PENDIENTE`, `COMPLETADA` or `FALLIDA`. `finalizado=true` means the

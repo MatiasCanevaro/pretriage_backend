@@ -77,7 +77,7 @@ class HardeningIaClientTest {
         assertTrue(payload.getAllValues().get(1).contains("La receta es"));
         assertTrue(budget.getAllValues().get(1).compareTo(budget.getAllValues().get(0)) <= 0);
         assertTrue(budget.getAllValues().get(1).compareTo(java.time.Duration.ZERO) > 0);
-        assertEquals(java.util.Set.of("valido"),
+        assertEquals(java.util.Set.of("valido", "motivo"),
                 ((Map<?, ?>) schema.getAllValues().get(1).get("properties")).keySet());
     }
 
@@ -99,7 +99,7 @@ class HardeningIaClientTest {
     @Test
     void rechazoSemanticoSeRegistraUnaVezConClasificacionCorrectaYSinTextoDelPaciente() {
         String patientText = "Me duele la garganta. CONFIDENCIAL: no puedo comer desde que me dejó";
-        stubChatResponse(finalResponse("Me duele la garganta."), "{\"valido\":false}");
+        stubChatResponse(finalResponse("Me duele la garganta."), "{\"valido\":false,\"motivo\":\"INFERENCIA\"}");
         Logger logger = (Logger) LoggerFactory.getLogger(TriageIaClient.class);
         Level previousLevel = logger.getLevel();
         ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> appender = new ListAppender<>();
@@ -117,6 +117,7 @@ class HardeningIaClientTest {
         assertEquals(1, appender.list.size());
         String logged = appender.list.get(0).getFormattedMessage();
         assertTrue(logged.contains("category=invalid_response field=semantic_verification reason=rejected"));
+        assertTrue(logged.contains("motivo=INFERENCIA"));
         assertFalse(logged.contains("malformed_or_unreadable"));
         assertFalse(logged.contains("CONFIDENCIAL"));
         assertFalse(logged.contains("no puedo comer"));
@@ -229,12 +230,56 @@ class HardeningIaClientTest {
         @SuppressWarnings("rawtypes") ArgumentCaptor<Map> schema = ArgumentCaptor.forClass(Map.class);
         verify(gemini, times(2)).generar(prompt.capture(), payload.capture(), schema.capture(), any());
         assertTrue(prompt.getAllValues().get(1).contains("negación"));
+        assertTrue(prompt.getAllValues().get(1).contains("negación funcional"));
+        assertTrue(prompt.getAllValues().get(1).contains("escala referida a \"vacío\""));
+        assertTrue(prompt.getAllValues().get(1).contains("no la atribuyas a un estado emocional"));
         assertTrue(prompt.getAllValues().get(1).contains("me duele la harina de trigo"));
         assertTrue(payload.getAllValues().get(1).contains("entradaOriginal"));
         assertTrue(payload.getAllValues().get(1).contains("clasificacionPropuesta"));
         assertTrue(payload.getAllValues().get(1).contains("turnos"));
-        assertEquals(java.util.Set.of("valido"), ((Map<?, ?>) schema.getAllValues().get(1).get("properties")).keySet());
+        assertEquals(java.util.Set.of("valido", "motivo"), ((Map<?, ?>) schema.getAllValues().get(1).get("properties")).keySet());
+        Map<?, ?> verifierProperties = (Map<?, ?>) schema.getAllValues().get(1).get("properties");
+        List<?> reasonOptions = (List<?>) ((Map<?, ?>) verifierProperties.get("motivo")).get("anyOf");
+        assertEquals("null", ((Map<?, ?>) reasonOptions.get(1)).get("type"));
         verify(gemini, times(2)).generar(anyString(), anyString(), any(), any());
+    }
+
+    @Test
+    void razonSemanticaEsEnumAcotadoYLaFormaLegacySigueSiendoAceptada() {
+        stubChatResponse(finalResponse("Me duele la garganta."), "{\"valido\":false,\"motivo\":\"NEGACION\"}");
+        var rejected = assertThrows(ProveedorIaException.class,
+                () -> client.consultar("reglas", input("No me duele la garganta."), true));
+        assertEquals(java.util.Optional.of(TriageIaClient.MotivoRechazoSemantico.NEGACION),
+                TriageIaClient.motivoRechazo(rejected));
+
+        stubChatResponse(finalResponse("Me duele la garganta."), "{\"valido\":false}");
+        var legacy = assertThrows(ProveedorIaException.class,
+                () -> client.consultar("reglas", input("Me duele la garganta."), true));
+        assertTrue(TriageIaClient.motivoRechazo(legacy).isEmpty());
+    }
+
+    @Test
+    void motivoNuloEsCompatibleTantoEnVeredictoValidoComoEnRechazoGenerico() {
+        stubChatResponse(finalResponse("Me duele la garganta."), "{\"valido\":true,\"motivo\":null}");
+        var accepted = client.consultar("reglas", input("Me duele la garganta."), true);
+        assertTrue(accepted.finalizado());
+
+        stubChatResponse(finalResponse("Me duele la garganta."), "{\"valido\":false,\"motivo\":null}");
+        var genericRejection = assertThrows(ProveedorIaException.class,
+                () -> client.consultar("reglas", input("Me duele la garganta."), true));
+        assertTrue(TriageIaClient.motivoRechazo(genericRejection).isEmpty());
+    }
+
+    @Test
+    void verificacionRechazaRazonDesconocidaYVeredictoVerdaderoConRazon() {
+        for (String verdict : List.of(
+                "{\"valido\":false,\"motivo\":\"dato-clinico-secreto\"}",
+                "{\"valido\":true,\"motivo\":\"INFERENCIA\"}")) {
+            stubChatResponse(finalResponse("Me duele la garganta."), verdict);
+            var error = assertThrows(ProveedorIaException.class,
+                    () -> client.consultar("reglas", input("Me duele la garganta."), true));
+            assertTrue(TriageIaClient.motivoRechazo(error).isEmpty());
+        }
     }
 
     @Test

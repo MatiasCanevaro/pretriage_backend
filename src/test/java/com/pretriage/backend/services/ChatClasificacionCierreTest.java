@@ -147,6 +147,89 @@ class ChatClasificacionCierreTest {
         verify(cola, times(1)).finalizarTriageEIngresarACola(anyString(), any(), anyString(), same(chat));
     }
 
+    @Test void rechazoSemanticoRealGuiaUnaCorreccionConMotivoSeguroYPlazoRestante() throws Exception {
+        prepararChatConInvitacionRespondida();
+        var rechazo = rechazoSemanticoReal();
+        doThrow(rechazo).when(ia).consultar(anyString(), anyString(), eq(true));
+        when(ia.consultarCorreccionFinal(anyString(), anyString(), any()))
+                .thenReturn(result(2, false, List.of(), List.of()));
+
+        service.enviarMensaje("1", "patient", "No");
+
+        assertTrue(chat.isFinalizado());
+        assertEquals(EstadoClasificacionChat.COMPLETADA, chat.getEstadoClasificacion());
+        assertNotNull(chat.getResultadoTriageJson());
+        assertEquals(1, chat.getMensajes().stream().filter(m -> m.getAutor() == AutorMensaje.PACIENTE
+                && m.getContenido().equals("No")).count());
+        verify(ia, times(1)).consultarCorreccionFinal(
+                contains("Una intensidad de otra sensacion no es dolor"), anyString(),
+                argThat(plazo -> !plazo.isZero() && !plazo.isNegative() && plazo.compareTo(java.time.Duration.ofSeconds(45)) <= 0));
+        verify(cola, times(1)).finalizarTriageEIngresarACola(eq("patient"), any(), anyString(), same(chat));
+    }
+
+    @Test void segundoRechazoSemanticoConservaEntrevistaCerradaFallidaYSinEfectosDeCola() throws Exception {
+        prepararChatConInvitacionRespondida();
+        var rechazo = rechazoSemanticoReal();
+        doThrow(rechazo).when(ia).consultar(anyString(), anyString(), eq(true));
+        doThrow(rechazo).when(ia).consultarCorreccionFinal(anyString(), anyString(), any());
+
+        assertThrows(ProveedorIaException.class, () -> service.enviarMensaje("1", "patient", "No"));
+
+        assertTrue(chat.isFinalizado());
+        assertEquals(EstadoClasificacionChat.FALLIDA, chat.getEstadoClasificacion());
+        assertNull(chat.getResultadoTriageJson());
+        assertEquals(1, chat.getMensajes().stream().filter(m -> m.getAutor() == AutorMensaje.PACIENTE
+                && m.getContenido().equals("No")).count());
+        verify(ia, times(1)).consultarCorreccionFinal(
+                contains("Una intensidad de otra sensacion no es dolor"), anyString(),
+                argThat(plazo -> !plazo.isZero() && !plazo.isNegative() && plazo.compareTo(java.time.Duration.ofSeconds(45)) <= 0));
+        verifyNoInteractions(cola);
+    }
+
+    private void prepararChatConInvitacionRespondida() {
+        chat.setFinalizado(false);
+        chat.setEstadoClasificacion(EstadoClasificacionChat.NO_SOLICITADA);
+        chat.setResultadoTriageJson(null);
+        chat.getMensajes().clear();
+        for (var turno : List.of(
+                new TurnoVoz(AutorMensaje.PACIENTE, "La extraño"),
+                new TurnoVoz(AutorMensaje.PACIENTE, "Siento un vacío en el pecho"),
+                new TurnoVoz(AutorMensaje.BOT, "¿Sentís algo físico o es emocional?"),
+                new TurnoVoz(AutorMensaje.PACIENTE, "Física"),
+                new TurnoVoz(AutorMensaje.BOT, "¿Desde cuándo lo sentís?"),
+                new TurnoVoz(AutorMensaje.PACIENTE, "Desde que me dejó"),
+                new TurnoVoz(AutorMensaje.BOT, "Del 1 al 10, ¿qué intensidad tiene ese vacío físico?"),
+                new TurnoVoz(AutorMensaje.PACIENTE, "8"),
+                new TurnoVoz(AutorMensaje.BOT, "¿Tenés algún otro síntoma además del vacío físico?"))) {
+            chat.agregarMensaje(new Mensaje(turno.contenido(), turno.autor(),
+                    turno.autor() == AutorMensaje.PACIENTE ? chat.getPaciente() : null));
+        }
+    }
+
+    private ProveedorIaException rechazoSemanticoReal() throws Exception {
+        var mapper = new ObjectMapper();
+        var raw = mock(GeminiJsonClient.class);
+        var boundary = new TriageIaClient(raw, mapper);
+        var result = new TriageAiResponse(true, "Gracias", new TriageResultDTO(
+                "vacío físico en el pecho", List.of("vacío físico en el pecho"), "desde ayer", "igual", 8,
+                List.of(), List.of(), List.of(), List.of(), "no informado", "no informado",
+                2, false, "Consulta con un profesional de salud."));
+        var proposed = (tools.jackson.databind.node.ObjectNode) mapper.valueToTree(result);
+        proposed.put("estadoEntrada", "RELEVANTE");
+        proposed.putArray("evidenciaClinica").addObject()
+                .put("campo", "sintomas").put("valor", "vacío físico en el pecho")
+                .put("cita", "Siento un vacío físico en el pecho");
+        when(raw.generar(anyString(), anyString(), any(), any()))
+                .thenReturn(mapper.writeValueAsString(proposed), "{\"valido\":false,\"motivo\":\"INTENSIDAD_NO_DOLOR\"}");
+
+        var input = mapper.createObjectNode();
+        input.putArray("turnos").addObject().put("autor", "PACIENTE")
+                .put("contenido", "Siento un vacío físico en el pecho");
+
+        return assertThrows(ProveedorIaException.class,
+                () -> boundary.consultar("Clasifica el caso", mapper.writeValueAsString(input), true));
+    }
+
     @Test void falloDeTransporteNoSeConfundeConUnErrorDeEsquema() {
         var raw = mock(GeminiJsonClient.class);
         var boundary = new TriageIaClient(raw, new ObjectMapper());

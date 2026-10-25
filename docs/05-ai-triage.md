@@ -322,6 +322,16 @@ reported onset, and separates current alarm symptoms from medical history.
 Validation failures log fixed `field` and `reason` identifiers without logging
 the patient's text or raw model response.
 
+Final semantic verification accepts the required boolean `valido` and an optional
+allowlisted rejection code (`SIN_RESPALDO`, `NEGACION`, `INFERENCIA`, `COMUNICACION`,
+or `INTENSIDAD_NO_DOLOR`); `motivo` may also be null or omitted. Existing verifier
+responses containing only `valido` remain valid. The code can guide one bounded repair request, but is never copied
+from free-form provider text or stored in the clinical result. A true verdict with
+a non-null rejection code is inconsistent and is rejected. A reported scale for a physical
+"vacío" does not become `intensidadDolor` unless the patient explicitly reports pain;
+the literal sensation is not normalized into chest pain or presumed emotional after
+the patient clarifies it is physical.
+
 Final structured responses require nonblank `motivoConsulta`, `inicio`,
 `evolucion` and `posibilidadEmbarazo` strings, using `no informado` for unavailable
 information as instructed by the final prompt. `observaciones` may be blank when

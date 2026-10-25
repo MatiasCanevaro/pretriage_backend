@@ -44,7 +44,7 @@ class TriageIaClientTest {
         verify(geminiClient, times(2)).generar(anyString(), anyString(), schema.capture(), any());
         var properties = (Map<?, ?>) schema.getAllValues().get(0).get("properties");
         assertEquals(java.util.Set.of("mensaje", "estadoEntrada"), properties.keySet());
-        assertEquals(java.util.Set.of("valido"),
+        assertEquals(java.util.Set.of("valido", "motivo"),
                 ((Map<?, ?>) schema.getAllValues().get(1).get("properties")).keySet());
         clearInvocations(geminiClient);
         when(geminiClient.generar(anyString(), anyString(), any(), any()))
@@ -249,7 +249,7 @@ class TriageIaClientTest {
         verify(geminiClient).generar(anyString(), anyString(), verifierSchema.capture(), any());
         assertEquals(java.util.Set.of("finalizado", "resultado", "mensaje", "estadoEntrada", "evidenciaClinica"),
                 ((Map<?, ?>) responseSchema.getValue().get("properties")).keySet());
-        assertEquals(java.util.Set.of("valido"),
+        assertEquals(java.util.Set.of("valido", "motivo"),
                 ((Map<?, ?>) verifierSchema.getValue().get("properties")).keySet());
     }
 
@@ -384,7 +384,8 @@ class TriageIaClientTest {
             assertEquals(1, ((Map<?, ?>) resultProperties.get(campo)).get("minLength"), campo);
         }
         assertEquals(0, ((Map<?, ?>) resultProperties.get("observaciones")).get("minLength"));
-        assertEquals(List.of("valido"), List.copyOf(((Map<?, ?>) schema.getAllValues().get(1).get("properties")).keySet()));
+        assertEquals(java.util.Set.of("valido", "motivo"),
+                ((Map<?, ?>) schema.getAllValues().get(1).get("properties")).keySet());
     }
 
     @Test
@@ -448,7 +449,7 @@ class TriageIaClientTest {
             @SuppressWarnings("unchecked") Map<String, Object> schema = invocation.getArgument(2);
             @SuppressWarnings("unchecked") Map<String, Object> properties =
                     schema == null ? null : (Map<String, Object>) schema.get("properties");
-            return properties != null && properties.keySet().equals(java.util.Set.of("valido"))
+            return properties != null && properties.keySet().equals(java.util.Set.of("valido", "motivo"))
                     ? "{\"valido\":true}" : response;
         }).when(geminiClient).generar(anyString(), anyString(), any(), any());
     }

@@ -13,7 +13,10 @@ invitación abierta para entender qué siente o cómo le afecta; no le exige int
 del dolor, temperatura ni un cuestionario de síntomas físicos. Una metáfora como
 «vacío en el pecho» no se interpreta como dolor torácico o alarma sin afirmación literal.
 Si también afirma un síntoma físico, se mantiene la cuantificación pertinente para ese
-síntoma. Una emoción negada, por sí sola, no activa la entrevista emocional.
+síntoma. Si aclara que una sensación es física, esa aclaración sirve de contexto para
+entenderla, pero no autoriza a renombrarla como dolor. Una intensidad de una sensación
+no dolorosa no se copia en `intensidadDolor`. Una emoción negada, por sí sola, no activa
+la entrevista emocional.
 
 Se permite un máximo de cuatro preguntas de cuantificación en toda la entrevista,
 más una única invitación abierta para que el paciente agregue información útil. El
@@ -33,7 +36,9 @@ dentro de los límites anteriores. «No quiero seguir» detiene la entrevista de
 inmediato. La invitación abierta se hace como máximo una vez y nunca se repite. Un
 relato que ya incluye espontáneamente la cuantificación puede cerrarse sin esa
 invitación. Después de completar preguntas de cuantificación, se ofrece una vez si
-todavía no se hizo ni el paciente dijo que no tenía más síntomas. Un
+todavía no se hizo ni el paciente dijo que no tenía más síntomas. Si responde que no
+a esa invitación, la entrevista se cierra con los datos disponibles; no se agregan
+preguntas no solicitadas sobre antecedentes, medicamentos o alergias. Un
 signo de alarma claro cierra la entrevista de inmediato para la clasificación urgente
 y la validación de prioridad existentes. El tope de respuestas es un límite de
 seguridad, no una cantidad mínima.

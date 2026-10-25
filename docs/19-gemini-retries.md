@@ -20,6 +20,13 @@ no requieren una segunda verificación. El cierre de voz tiene además una compr
 antes de aceptar el cierre y drenar las transcripciones; no escribe datos clínicos.
 Véase [alcance y validación semántica](20-chat-hardening.md).
 
+Si el verificador rechaza semánticamente una clasificación final y proporciona un motivo
+seguro de la lista cerrada, el orquestador puede incluir ese motivo como orientación en
+una sola solicitud de corrección. Si el verificador no proporciona motivo, se usa una
+orientación genérica. El sistema no copia texto de rechazo ni citas del proveedor al
+prompt correctivo o a los logs; la corrección comparte el mismo presupuesto de 45 segundos.
+Un segundo rechazo conserva el chat cerrado en `FALLIDA` para procesamiento manual.
+
 El 21 de octubre de 2026 pasaron las **435 pruebas Java** completas con
 `python scripts/test_backend_isolated.py`, contra una base temporal aleatoria,
 y las **12 pruebas Python** de los helpers E2E. Las regresiones controlan 503 y

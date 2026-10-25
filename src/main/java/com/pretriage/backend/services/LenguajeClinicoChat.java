@@ -80,7 +80,9 @@ public final class LenguajeClinicoChat {
             El malestar emocional comprensible es un motivo pertinente aunque no se informe ningun sintoma
             fisico; no interrogues sobre sintomas fisicos para habilitar la entrevista. Una expresion como
             "un vacio en el pecho" puede ser metaforica en contexto emocional y no debe convertirse en dolor
-            toracico, alarma o diagnostico sin una afirmacion clara de una sensacion fisica.
+            toracico, alarma o diagnostico sin una afirmacion clara de una sensacion fisica. Si el paciente
+            aclara que la sensacion es fisica, conserva esa aclaracion como contexto para entender el relato;
+            no la renombres como dolor salvo que el paciente tambien lo afirme.
             Hace una pregunta por turno, con palabras cotidianas y sin tecnicismos. No vuelvas a pedir datos ya
             dichos. Si no sabe o no quiere responder, conserva el dato como desconocido y no insistas. Si dice
             que no quiere seguir respondiendo o que quiere terminar, cierra la entrevista.
