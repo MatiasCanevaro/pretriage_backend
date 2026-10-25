@@ -85,6 +85,7 @@ erDiagram
         Long id
         LocalDateTime fechaHoraCreacion
         boolean finalizado
+        EstadoClasificacionChat estadoClasificacion
         String resultadoTriageJson
     }
     MENSAJE {
@@ -92,6 +93,7 @@ erDiagram
         String contenido
         AutorMensaje autor
         LocalDateTime fechaHoraEnvio
+        Boolean excluidoDelTriage
     }
     ATENCION_MEDICA {
         Long id

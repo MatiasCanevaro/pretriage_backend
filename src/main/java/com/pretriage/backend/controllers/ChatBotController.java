@@ -36,4 +36,9 @@ public class ChatBotController {
             @AuthenticationPrincipal Jwt jwt) {
         return chatService.enviarMensaje(id, jwt.getSubject(), request.contenido());
     }
+
+    @PostMapping("/{id}/clasificacion")
+    public ChatTurnResponse reintentarClasificacion(@PathVariable String id, @AuthenticationPrincipal Jwt jwt) {
+        return chatService.reintentarClasificacion(id, jwt.getSubject());
+    }
 }

@@ -20,26 +20,46 @@ def quote(value):
 def build_sql(hospital_name, place_id=None, active_doctors=False):
     name = quote(hospital_name)
     values = ',\n'.join(f'({quote(code)}, {quote(label)})' for code, label in SPECIALTIES)
+    place = quote(place_id) if place_id else None
+    place_match_sql = f"SELECT id FROM hospital WHERE place_id = {place}" if place else "SELECT id FROM hospital WHERE FALSE"
+    identity_predicate = f"nombre = {name} OR place_id = {place}" if place else f"nombre = {name}"
     sql = f"""
 BEGIN;
 SELECT pg_advisory_xact_lock(735192610);
+CREATE TEMP TABLE seed_name_match (id bigint) ON COMMIT DROP;
+INSERT INTO seed_name_match SELECT id FROM hospital WHERE nombre = {name};
+CREATE TEMP TABLE seed_place_match (id bigint) ON COMMIT DROP;
+INSERT INTO seed_place_match {place_match_sql};
+DO $$ BEGIN
+    IF (SELECT count(*) FROM seed_name_match) > 1 THEN
+        RAISE EXCEPTION 'Hospital name is ambiguous; use a unique --hospital-name';
+    END IF;
+    IF (SELECT count(*) FROM seed_place_match) > 1 THEN
+        RAISE EXCEPTION 'Place ID is ambiguous in hospital data';
+    END IF;
+    IF (SELECT count(*) FROM seed_name_match) = 1
+       AND (SELECT count(*) FROM seed_place_match) = 1
+       AND (SELECT id FROM seed_name_match) <> (SELECT id FROM seed_place_match) THEN
+        RAISE EXCEPTION 'Hospital name and Place ID refer to different hospitals';
+    END IF;
+END $$;
+INSERT INTO hospital (nombre)
+SELECT {name}
+WHERE NOT EXISTS (SELECT 1 FROM seed_name_match)
+  AND NOT EXISTS (SELECT 1 FROM seed_place_match);
+CREATE TEMP TABLE seed_hospital ON COMMIT DROP AS
+SELECT id FROM hospital WHERE {identity_predicate};
+DO $$ BEGIN
+    IF (SELECT count(*) FROM seed_hospital) <> 1 THEN
+        RAISE EXCEPTION 'Could not resolve exactly one seed hospital';
+    END IF;
+END $$;
 CREATE TEMP TABLE seed_specialties (codigo text, nombre text) ON COMMIT DROP;
 INSERT INTO seed_specialties VALUES {values};
 INSERT INTO especialidad_medica (codigo, nombre)
 SELECT codigo, nombre FROM seed_specialties ON CONFLICT (codigo) DO NOTHING;
-
-INSERT INTO hospital (nombre) SELECT {name}
-WHERE NOT EXISTS (SELECT 1 FROM hospital WHERE nombre = {name});
-CREATE TEMP TABLE seed_hospital ON COMMIT DROP AS
-SELECT id FROM hospital WHERE nombre = {name};
-DO $$ BEGIN
-    IF (SELECT count(*) FROM seed_hospital) <> 1 THEN
-        RAISE EXCEPTION 'Hospital name is ambiguous; use a unique --hospital-name';
-    END IF;
-END $$;
 """
     if place_id:
-        place = quote(place_id)
         sql += f"""
 DO $$ BEGIN
     IF EXISTS (SELECT 1 FROM hospital h JOIN seed_hospital sh ON sh.id=h.id

@@ -1,6 +1,7 @@
 package com.pretriage.backend.services.voz;
 
 import com.pretriage.backend.controllers.dtos.*;
+import com.pretriage.backend.exceptions.ProveedorIaException;
 import com.pretriage.backend.model.chat.*;
 import com.pretriage.backend.model.personas.Paciente;
 import com.pretriage.backend.repositories.RepoChat;
@@ -49,26 +50,32 @@ class SesionVozIntegracionTest {
 
         assertTrue(flujo.chat.isFinalizado());
         assertTrue(flujo.canal.contiene("triage_finalizado"));
-        assertEquals(4, flujo.chat.getMensajes().stream()
+        assertEquals(3, flujo.chat.getMensajes().stream()
                 .filter(mensaje -> mensaje.getAutor() == AutorMensaje.PACIENTE).count());
         verify(flujo.ia, times(1)).consultar(anyString(), anyString(), eq(true));
         verify(flujo.repo, times(1)).save(flujo.chat);
     }
 
     @Test
-    void correccionDeDolorTardiaLlegaAlFallbackAntesDeActualizarLaColaUnaSolaVez() throws Exception {
+    void correccionDeDolorTardiaLlegaAGeminiAntesDeActualizarLaColaUnaSolaVez() throws Exception {
         Flujo flujo = new Flujo();
         flujo.entrada("Me duele la cabeza desde ayer.");
         flujo.completarEntrevista();
         flujo.finalizar(resumen());
+        flujo.esperarRespuestaFuncion();
+        assertTrue(flujo.canal.contiene("entrevista_finalizada"), "No se aceptó el preflight. eventos="
+                + flujo.canal.eventos + "; mensajes=" + flujo.conexion.mensajes);
         flujo.transcripcion("outputTranscription", SesionVozChat.MENSAJE_DESPEDIDA);
         flujo.sesion.alRecibir("{\"serverContent\":{\"turnComplete\":true}}");
 
         assertFalse(flujo.chat.isFinalizado());
-        verifyNoInteractions(flujo.ia);
+        verify(flujo.ia, never()).consultar(anyString(), anyString(), anyBoolean());
+        when(flujo.ia.consultar(anyString(), contains("ahora es 8/10"), eq(true)))
+                .thenReturn(new TriageAiResponse(true, "Listo", clasificacion(8, 4)));
         flujo.entrada("El dolor ahora es 8/10.");
-        assertTrue(flujo.conexion.cierreSolicitado.await(5, TimeUnit.SECONDS));
-        verifyNoInteractions(flujo.ia);
+        assertTrue(flujo.conexion.cierreSolicitado.await(5, TimeUnit.SECONDS), "No se cerró tras el drenaje. eventos="
+                + flujo.canal.eventos + "; mensajes=" + flujo.conexion.mensajes);
+        verify(flujo.ia, never()).consultar(anyString(), anyString(), anyBoolean());
 
         flujo.sesion.alCerrar(1000, "fin");
         assertTrue(flujo.canal.cerrado.await(3, TimeUnit.SECONDS));
@@ -78,11 +85,56 @@ class SesionVozIntegracionTest {
         assertEquals(8, resultado.path("intensidadDolor").intValue());
         assertTrue(resultado.path("inicio").asText().contains("ayer"));
         assertEquals(4, resultado.path("nivelPrioridad").intValue());
-        assertEquals("FALLBACK_LOCAL", resultado.path("origenClasificacion").asText());
+        assertEquals("GEMINI", resultado.path("origenClasificacion").asText());
         assertTrue(flujo.chat.getMensajes().stream().anyMatch(m -> m.getContenido().contains("ahora es 8/10")));
         verify(flujo.ia, times(1)).consultar(anyString(), anyString(), eq(true));
         verify(flujo.cola, times(1)).finalizarTriageEIngresarACola(eq("auth0|voz"), any(), anyString(), any(Chat.class));
         verify(flujo.repo, times(1)).save(flujo.chat);
+    }
+
+    @Test
+    void falloDeGeminiCierraLaEntrevistaYGuardaTranscripcionUnaVezSinActualizarCola() throws Exception {
+        Flujo flujo = new Flujo();
+        when(flujo.ia.consultar(anyString(), anyString(), anyBoolean()))
+                .thenThrow(new IllegalStateException("sin cuota"));
+        flujo.entrada("Me duele la cabeza desde ayer.");
+        flujo.completarEntrevista();
+        flujo.finalizar(resumen());
+        flujo.terminarGemini();
+        assertTrue(flujo.chat.isFinalizado());
+        assertEquals(EstadoClasificacionChat.FALLIDA, flujo.chat.getEstadoClasificacion());
+        assertNull(flujo.chat.getResultadoTriageJson());
+        assertTrue(flujo.canal.contiene("error"));
+        assertFalse(flujo.canal.contiene("triage_finalizado"));
+        assertEquals(3, flujo.chat.getMensajes().stream().filter(m -> m.getAutor() == AutorMensaje.PACIENTE).count());
+        verifyNoInteractions(flujo.cola);
+        verify(flujo.repo, times(1)).save(flujo.chat);
+    }
+
+    @Test
+    void falloTecnicoEnPreflightPersisteElSnapshotComoFallidoSinClasificar() throws Exception {
+        Flujo flujo = new Flujo();
+        when(flujo.ia.consultarAlcance(anyString(), any()))
+                .thenThrow(new ProveedorIaException(new IllegalStateException("sin cuota")));
+        flujo.entrada("Me duele la cabeza desde ayer.");
+        flujo.completarEntrevista();
+        flujo.finalizar(resumen());
+        flujo.terminarGemini();
+
+        assertTrue(flujo.chat.isFinalizado());
+        assertEquals(EstadoClasificacionChat.FALLIDA, flujo.chat.getEstadoClasificacion());
+        assertNull(flujo.chat.getResultadoTriageJson());
+        assertEquals(3, flujo.chat.getMensajes().stream()
+                .filter(mensaje -> mensaje.getAutor() == AutorMensaje.PACIENTE).count());
+        verify(flujo.ia, never()).consultar(anyString(), anyString(), anyBoolean());
+        verify(flujo.repo, times(1)).save(flujo.chat);
+        verifyNoInteractions(flujo.cola);
+    }
+
+    private TriageResultDTO clasificacion(int dolor, int prioridad) {
+        return new TriageResultDTO("dolor de cabeza", List.of("dolor de cabeza"), "desde ayer", "se mantiene",
+                dolor, List.of(), List.of(), List.of(), List.of(), "no informado", "Caso de prueba", prioridad,
+                false, "Consultar si empeora");
     }
 
     private ResumenEntrevistaVoz resumen() {
@@ -99,6 +151,8 @@ class SesionVozIntegracionTest {
         final Conexion conexion = new Conexion();
         final Canal canal = new Canal();
         final SesionVozChat sesion;
+        private int numeroLlamadaFinalizar;
+        private String ultimaLlamadaFinalizar;
 
         Flujo() {
             chat.setId(7L);
@@ -106,7 +160,8 @@ class SesionVozIntegracionTest {
             when(repo.findByIdAndPacienteUsuarioAuthId(7L, "auth0|voz")).thenReturn(Optional.of(chat));
             when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(ia.consultar(anyString(), anyString(), anyBoolean()))
-                    .thenThrow(new IllegalStateException("Gemini no disponible en este escenario"));
+                    .thenReturn(new TriageAiResponse(true, "Listo", clasificacion(2, 3)));
+            when(ia.consultarAlcance(anyString(), any())).thenReturn(EstadoEntradaChat.RELEVANTE);
             when(cola.finalizarTriageEIngresarACola(anyString(), any(), anyString(), any(Chat.class)))
                     .thenReturn(new TiempoEstimadoAtencionResponse());
             ChatService service = new ChatService(repo, mock(RepoPacientes.class), mock(RepoConsultasMedicas.class),
@@ -134,24 +189,41 @@ class SesionVozIntegracionTest {
         void completarEntrevista() {
             transcripcion("outputTranscription", "Cuanto te duele?");
             entrada("El dolor es 2/10 y se mantiene.");
-            transcripcion("outputTranscription", "Hay signos de alarma?");
-            entrada("No tengo dificultad para respirar, dolor de pecho, desmayos ni confusion.");
-            transcripcion("outputTranscription", "Antecedentes, medicacion o alergias?");
-            entrada("No tengo antecedentes, no tomo medicamentos y no tengo alergias.");
+            transcripcion("outputTranscription", "¿Hay algo más que quieras contar sobre lo que te pasa?");
+            entrada("No, no tengo más síntomas.");
         }
 
         void finalizar(Object resumen) {
             var evento = mapper.createObjectNode();
             var call = evento.putObject("toolCall").putArray("functionCalls").addObject();
-            call.put("id", "fin-voz").put("name", "finalizar_entrevista");
+            ultimaLlamadaFinalizar = "fin-voz-" + (++numeroLlamadaFinalizar);
+            call.put("id", ultimaLlamadaFinalizar).put("name", "finalizar_entrevista");
             call.set("args", mapper.valueToTree(resumen));
             sesion.alRecibir(evento.toString());
         }
 
+        void esperarRespuestaFuncion() throws InterruptedException {
+            long limite = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            String respuesta = null;
+            while (System.nanoTime() < limite) {
+                respuesta = conexion.mensajes.stream()
+                        .filter(mensaje -> mensaje.contains("toolResponse")
+                                && mensaje.contains("\"id\":\"" + ultimaLlamadaFinalizar + "\""))
+                        .findFirst().orElse(null);
+                if (respuesta != null) break;
+                Thread.sleep(10);
+            }
+            assertNotNull(respuesta, "No llegó toolResponse. mensajes=" + conexion.mensajes
+                    + "; eventos=" + canal.eventos);
+            assertFalse(respuesta.contains("\"error\""), "El cierre fue rechazado: " + respuesta);
+        }
+
         void terminarGemini() throws Exception {
+            esperarRespuestaFuncion();
             transcripcion("outputTranscription", SesionVozChat.MENSAJE_DESPEDIDA);
             sesion.alRecibir("{\"serverContent\":{\"turnComplete\":true}}");
-            assertTrue(conexion.cierreSolicitado.await(5, TimeUnit.SECONDS));
+            assertTrue(conexion.cierreSolicitado.await(5, TimeUnit.SECONDS), "No se cerró tras despedida. eventos="
+                    + canal.eventos + "; mensajes=" + conexion.mensajes);
             sesion.alCerrar(1000, "fin");
             assertTrue(canal.cerrado.await(3, TimeUnit.SECONDS));
         }
@@ -159,7 +231,8 @@ class SesionVozIntegracionTest {
 
     private static final class Conexion implements GeminiLiveConexion {
         final CountDownLatch cierreSolicitado = new CountDownLatch(1);
-        public void enviar(String mensajeJson) { }
+        final List<String> mensajes = new CopyOnWriteArrayList<>();
+        public void enviar(String mensajeJson) { mensajes.add(mensajeJson); }
         public void cerrar() { cierreSolicitado.countDown(); }
     }
 

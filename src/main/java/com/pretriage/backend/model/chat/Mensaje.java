@@ -31,6 +31,10 @@ public class Mensaje {
     @Column(nullable = false)
     private LocalDateTime fechaHoraEnvio;
 
+    /** Null/false for legacy and ordinary messages; true means it is retained for display but excluded from triage. */
+    @Column(name = "excluido_del_triage", nullable = true)
+    private Boolean excluidoDelTriage;
+
     public Mensaje(String contenido, AutorMensaje autor, Paciente pacienteAutor) {
         this.contenido = contenido;
         this.autor = autor;

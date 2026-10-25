@@ -33,6 +33,16 @@ public class Chat {
 
     private boolean finalizado;
 
+    @Enumerated(EnumType.STRING)
+    private EstadoClasificacionChat estadoClasificacion = EstadoClasificacionChat.NO_SOLICITADA;
+
+    /** Legacy rows have no state column value; infer only an existing completed result. */
+    public EstadoClasificacionChat getEstadoClasificacion() {
+        return estadoClasificacion != null ? estadoClasificacion
+                : resultadoTriageJson != null ? EstadoClasificacionChat.COMPLETADA
+                : EstadoClasificacionChat.NO_SOLICITADA;
+    }
+
     @Column(columnDefinition = "TEXT")
     private String resultadoTriageJson;
 

@@ -105,6 +105,48 @@ class AdmisionRecepcionServiceTest {
     }
 
     @Test
+    void falloGeminiEnRecepcionConservaFallbackYFinalizaLaAdmision() throws Exception {
+        Paciente paciente = new Paciente(); paciente.setId(2L);
+        Hospital hospital = new Hospital(); hospital.setId(3L);
+        EspecialidadMedica especialidad = new EspecialidadMedica(); especialidad.setId(4L);
+        Sector sector = new Sector(); sector.setId(10L); sector.setNombre("Pediatria");
+        ConsultaMedica consulta = new ConsultaMedica(); consulta.setId(5L); consulta.setPaciente(paciente);
+        consulta.setHospital(hospital); consulta.setEspecialidad(especialidad); consulta.setSector(sector);
+        consulta.setCodigoLlamado("R-ABC123");
+        Recepcionista recepcionista = new Recepcionista(); recepcionista.setId(1L);
+        SesionRecepcion sesion = new SesionRecepcion(); sesion.setId(6L); sesion.setRecepcionista(recepcionista);
+        sesion.setHospital(hospital); sesion.setEstado(EstadoSesionRecepcion.ACTIVA);
+        AdmisionRecepcion admision = new AdmisionRecepcion(); admision.setId(7L); admision.setConsultaMedica(consulta);
+        admision.setSesionRecepcion(sesion); admision.setEstado(EstadoAdmisionRecepcion.INICIADA);
+        FormularioTriageRecepcionRequest formulario = new FormularioTriageRecepcionRequest(
+                "dolor abdominal", List.of(), "hace dos horas", "empeora",
+                List.of(new DolorReportadoRequest("abdomen", 7)), false,
+                List.of(), List.of(), List.of(), List.of(), "no aplica", "");
+        TriageResultDTO resultado = new TriageResultDTO("dolor abdominal", List.of("dolor"), "dos horas",
+                "empeora", 7, List.of(), List.of(), List.of(), List.of(), "no aplica", "", 3, false, "evaluar");
+        when(repoAdmisionesRecepcion.findByIdAndSesionRecepcionRecepcionistaUsuarioAuthId(7L, "auth"))
+                .thenReturn(Optional.of(admision));
+        when(repoAdmisionesRecepcion.existsById(7L)).thenReturn(true);
+        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
+        when(triageFormularioService.clasificar(formulario))
+                .thenThrow(new com.pretriage.backend.exceptions.ProveedorIaException(null));
+        when(triageFormularioService.resultadoFallback(formulario)).thenReturn(resultado);
+        when(ingresoColaService.ingresar(consulta, NivelDeGravedad.URGENTE)).thenAnswer(inv -> {
+            consulta.setNivelDeGravedadBot(NivelDeGravedad.URGENTE); consulta.setEstadoConsulta(EstadoConsulta.EN_COLA);
+            return new TiempoEstimadoAtencionResponse();
+        });
+
+        var dto = service.finalizar("auth", 7L, formulario);
+
+        assertEquals(EstadoAdmisionRecepcion.FINALIZADA, admision.getEstado());
+        assertEquals(NivelDeGravedad.URGENTE, dto.prioridad());
+        assertEquals(10L, dto.sectorId());
+        assertEquals("Pediatria", dto.nombreSector());
+        verify(triageFormularioService).resultadoFallback(formulario);
+        verify(ingresoColaService).ingresar(consulta, NivelDeGravedad.URGENTE);
+    }
+
+    @Test
     void cancelaAdmisionYConsultaSinIngresarALaCola() {
         AdmisionRecepcion admision = admisionAbierta();
         when(repoAdmisionesRecepcion.existsById(7L)).thenReturn(true);

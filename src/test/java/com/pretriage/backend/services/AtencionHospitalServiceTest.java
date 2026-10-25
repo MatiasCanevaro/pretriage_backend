@@ -271,9 +271,8 @@ public class AtencionHospitalServiceTest {
                 HospitalCercanoDTO hospital2 = crearHospitalCercano("hospital2");
 
                 when(repoEspecialidadesMedicas.findByCodigo(codigoEspecialidad)).thenReturn(Optional.of(especialidad));
-                when(googlePlacesService.buscarHospitales(-34.6, -58.4)).thenReturn(List.of(hospital1, hospital2));
-                when(repoHospitales.findByPlaceIdInAndEspecialidadesCodigo(List.of("hospital1", "hospital2"),
-                                codigoEspecialidad))
+                when(googlePlacesService.buscarHospitalesRegistrados(eq(-34.6), eq(-58.4), anyList())).thenReturn(List.of(hospital1, hospital2));
+                when(repoHospitales.findDistinctByEspecialidadesCodigo(codigoEspecialidad))
                                 .thenReturn(List.of(hospitalDisponible));
 
                 when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0idPaciente))
@@ -302,8 +301,8 @@ public class AtencionHospitalServiceTest {
                 LocalTime tiempoEsperado = LocalTime.of(0, 25, 0);
 
                 when(repoEspecialidadesMedicas.findByCodigo(codigoEspecialidad)).thenReturn(Optional.of(especialidad));
-                when(googlePlacesService.buscarHospitales(-34.6, -58.4)).thenReturn(List.of(hospital2));
-                when(repoHospitales.findByPlaceIdInAndEspecialidadesCodigo(List.of("hospital2"), codigoEspecialidad))
+                when(googlePlacesService.buscarHospitalesRegistrados(eq(-34.6), eq(-58.4), anyList())).thenReturn(List.of(hospital2));
+                when(repoHospitales.findDistinctByEspecialidadesCodigo(codigoEspecialidad))
                                 .thenReturn(List.of(hospitalDisponible));
                 when(googlePlacesService.calcularTiempoEstimadoArriboMejorRuta(hospitalDisponible, transporte, -34.6,
                                 -58.4))
@@ -335,8 +334,8 @@ public class AtencionHospitalServiceTest {
                 HospitalCercanoDTO hospital2 = crearHospitalCercano("hospital2");
 
                 when(repoEspecialidadesMedicas.findByCodigo(codigoEspecialidad)).thenReturn(Optional.of(especialidad));
-                when(googlePlacesService.buscarHospitales(-34.6, -58.4)).thenReturn(List.of(hospital2));
-                when(repoHospitales.findByPlaceIdInAndEspecialidadesCodigo(List.of("hospital2"), codigoEspecialidad))
+                when(googlePlacesService.buscarHospitalesRegistrados(eq(-34.6), eq(-58.4), anyList())).thenReturn(List.of(hospital2));
+                when(repoHospitales.findDistinctByEspecialidadesCodigo(codigoEspecialidad))
                                 .thenReturn(List.of(hospitalDisponible));
                 when(googlePlacesService.calcularTiempoEstimadoArriboMejorRuta(hospitalDisponible, "transporte-publico",
                                 -34.6,
@@ -364,8 +363,8 @@ public class AtencionHospitalServiceTest {
                 HospitalCercanoDTO hospital2 = crearHospitalCercano("hospital2");
 
                 when(repoEspecialidadesMedicas.findByCodigo(codigoEspecialidad)).thenReturn(Optional.of(especialidad));
-                when(googlePlacesService.buscarHospitales(-34.6, -58.4)).thenReturn(List.of(hospital2));
-                when(repoHospitales.findByPlaceIdInAndEspecialidadesCodigo(List.of("hospital2"), codigoEspecialidad))
+                when(googlePlacesService.buscarHospitalesRegistrados(eq(-34.6), eq(-58.4), anyList())).thenReturn(List.of(hospital2));
+                when(repoHospitales.findDistinctByEspecialidadesCodigo(codigoEspecialidad))
                                 .thenReturn(List.of(hospitalDisponible));
                 when(googlePlacesService.calcularTiempoEstimadoArriboMejorRuta(hospitalDisponible, "transporte-publico",
                                 -34.6,
@@ -589,9 +588,8 @@ public class AtencionHospitalServiceTest {
                 HospitalCercanoDTO dto2 = crearHospitalCercano("hospital2");
 
                 when(repoEspecialidadesMedicas.findByCodigo(codigoEspecialidad)).thenReturn(Optional.of(especialidad));
-                when(googlePlacesService.buscarHospitales(-34.6, -58.4)).thenReturn(List.of(dto1, dto2));
-                when(repoHospitales.findByPlaceIdInAndEspecialidadesCodigo(List.of("hospital1", "hospital2"),
-                                codigoEspecialidad))
+                when(googlePlacesService.buscarHospitalesRegistrados(eq(-34.6), eq(-58.4), anyList())).thenReturn(List.of(dto1, dto2));
+                when(repoHospitales.findDistinctByEspecialidadesCodigo(codigoEspecialidad))
                                 .thenReturn(List.of(hospital1, hospital2));
                 when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0idPaciente))
                                 .thenReturn(Optional.of(new Paciente()));
@@ -625,9 +623,8 @@ public class AtencionHospitalServiceTest {
                 HospitalCercanoDTO dto2 = crearHospitalCercano("hospital2");
 
                 when(repoEspecialidadesMedicas.findByCodigo(codigoEspecialidad)).thenReturn(Optional.of(especialidad));
-                when(googlePlacesService.buscarHospitales(-34.6, -58.4)).thenReturn(List.of(dto1, dto2));
-                when(repoHospitales.findByPlaceIdInAndEspecialidadesCodigo(List.of("hospital1", "hospital2"),
-                                codigoEspecialidad))
+                when(googlePlacesService.buscarHospitalesRegistrados(eq(-34.6), eq(-58.4), anyList())).thenReturn(List.of(dto1, dto2));
+                when(repoHospitales.findDistinctByEspecialidadesCodigo(codigoEspecialidad))
                                 .thenReturn(List.of(hospital1, hospital2));
                 when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0idPaciente))
                                 .thenReturn(Optional.of(new Paciente()));
@@ -658,8 +655,8 @@ public class AtencionHospitalServiceTest {
                 HospitalCercanoDTO dto1 = crearHospitalCercano("hospital1");
 
                 when(repoEspecialidadesMedicas.findByCodigo(codigoEspecialidad)).thenReturn(Optional.of(especialidad));
-                when(googlePlacesService.buscarHospitales(-34.6, -58.4)).thenReturn(List.of(dto1));
-                when(repoHospitales.findByPlaceIdInAndEspecialidadesCodigo(List.of("hospital1"), codigoEspecialidad))
+                when(googlePlacesService.buscarHospitalesRegistrados(eq(-34.6), eq(-58.4), anyList())).thenReturn(List.of(dto1));
+                when(repoHospitales.findDistinctByEspecialidadesCodigo(codigoEspecialidad))
                                 .thenReturn(List.of(hospital1));
                 when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0idPaciente))
                                 .thenReturn(Optional.of(new Paciente()));
@@ -698,8 +695,8 @@ public class AtencionHospitalServiceTest {
                 LocalDateTime fechaEsperada = LocalDateTime.of(2026, 8, 24, 12, 0);
 
                 when(repoEspecialidadesMedicas.findByCodigo(codigoEspecialidad)).thenReturn(Optional.of(especialidad));
-                when(googlePlacesService.buscarHospitales(-34.6, -58.4)).thenReturn(List.of(dto1));
-                when(repoHospitales.findByPlaceIdInAndEspecialidadesCodigo(List.of("hospital1"), codigoEspecialidad))
+                when(googlePlacesService.buscarHospitalesRegistrados(eq(-34.6), eq(-58.4), anyList())).thenReturn(List.of(dto1));
+                when(repoHospitales.findDistinctByEspecialidadesCodigo(codigoEspecialidad))
                                 .thenReturn(List.of(hospital1));
                 when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0idPaciente))
                                 .thenReturn(Optional.of(new Paciente()));
@@ -734,9 +731,8 @@ public class AtencionHospitalServiceTest {
                 HospitalCercanoDTO dtoC = crearHospitalCercano("hospitalC");
 
                 when(repoEspecialidadesMedicas.findByCodigo(codigoEspecialidad)).thenReturn(Optional.of(especialidad));
-                when(googlePlacesService.buscarHospitales(-34.6, -58.4)).thenReturn(List.of(dtoA, dtoB, dtoC));
-                when(repoHospitales.findByPlaceIdInAndEspecialidadesCodigo(
-                                List.of("hospitalA", "hospitalB", "hospitalC"), codigoEspecialidad))
+                when(googlePlacesService.buscarHospitalesRegistrados(eq(-34.6), eq(-58.4), anyList())).thenReturn(List.of(dtoA, dtoB, dtoC));
+                when(repoHospitales.findDistinctByEspecialidadesCodigo(codigoEspecialidad))
                                 .thenReturn(List.of(hospitalA, hospitalB, hospitalC));
                 when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0idPaciente))
                                 .thenReturn(Optional.of(new Paciente()));
@@ -801,9 +797,8 @@ public class AtencionHospitalServiceTest {
                 dtoC.setCantidadValoraciones(10);
 
                 when(repoEspecialidadesMedicas.findByCodigo(codigoEspecialidad)).thenReturn(Optional.of(especialidad));
-                when(googlePlacesService.buscarHospitales(-34.6, -58.4)).thenReturn(List.of(dtoA, dtoB, dtoC));
-                when(repoHospitales.findByPlaceIdInAndEspecialidadesCodigo(
-                                List.of("hospitalA", "hospitalB", "hospitalC"), codigoEspecialidad))
+                when(googlePlacesService.buscarHospitalesRegistrados(eq(-34.6), eq(-58.4), anyList())).thenReturn(List.of(dtoA, dtoB, dtoC));
+                when(repoHospitales.findDistinctByEspecialidadesCodigo(codigoEspecialidad))
                                 .thenReturn(List.of(hospitalA, hospitalB, hospitalC));
                 when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0idPaciente))
                                 .thenReturn(Optional.of(new Paciente()));
@@ -843,9 +838,8 @@ public class AtencionHospitalServiceTest {
                 dtoB.setCantidadValoraciones(100);
 
                 when(repoEspecialidadesMedicas.findByCodigo(codigoEspecialidad)).thenReturn(Optional.of(especialidad));
-                when(googlePlacesService.buscarHospitales(-34.6, -58.4)).thenReturn(List.of(dtoA, dtoB));
-                when(repoHospitales.findByPlaceIdInAndEspecialidadesCodigo(List.of("hospitalA", "hospitalB"),
-                                codigoEspecialidad))
+                when(googlePlacesService.buscarHospitalesRegistrados(eq(-34.6), eq(-58.4), anyList())).thenReturn(List.of(dtoA, dtoB));
+                when(repoHospitales.findDistinctByEspecialidadesCodigo(codigoEspecialidad))
                                 .thenReturn(List.of(hospitalA, hospitalB));
                 when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0idPaciente))
                                 .thenReturn(Optional.of(new Paciente()));
@@ -878,9 +872,8 @@ public class AtencionHospitalServiceTest {
                 HospitalCercanoDTO dtoB = crearHospitalCercano("hospitalB");
 
                 when(repoEspecialidadesMedicas.findByCodigo(codigoEspecialidad)).thenReturn(Optional.of(especialidad));
-                when(googlePlacesService.buscarHospitales(-34.6, -58.4)).thenReturn(List.of(dtoA, dtoB));
-                when(repoHospitales.findByPlaceIdInAndEspecialidadesCodigo(List.of("hospitalA", "hospitalB"),
-                                codigoEspecialidad))
+                when(googlePlacesService.buscarHospitalesRegistrados(eq(-34.6), eq(-58.4), anyList())).thenReturn(List.of(dtoA, dtoB));
+                when(repoHospitales.findDistinctByEspecialidadesCodigo(codigoEspecialidad))
                                 .thenReturn(List.of(hospitalA, hospitalB));
                 when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0idPaciente))
                                 .thenReturn(Optional.of(new Paciente()));
@@ -965,9 +958,8 @@ public class AtencionHospitalServiceTest {
 
                 // suma: A=0+2=2, B=1+0=1, C=2+1=3 -> B, A, C
                 when(repoEspecialidadesMedicas.findByCodigo(codigoEspecialidad)).thenReturn(Optional.of(especialidad));
-                when(googlePlacesService.buscarHospitales(-34.6, -58.4)).thenReturn(List.of(dtoA, dtoB, dtoC));
-                when(repoHospitales.findByPlaceIdInAndEspecialidadesCodigo(
-                                List.of("hospitalA", "hospitalB", "hospitalC"), codigoEspecialidad))
+                when(googlePlacesService.buscarHospitalesRegistrados(eq(-34.6), eq(-58.4), anyList())).thenReturn(List.of(dtoA, dtoB, dtoC));
+                when(repoHospitales.findDistinctByEspecialidadesCodigo(codigoEspecialidad))
                                 .thenReturn(List.of(hospitalA, hospitalB, hospitalC));
                 when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0idPaciente))
                                 .thenReturn(Optional.of(new Paciente()));
@@ -1011,9 +1003,8 @@ public class AtencionHospitalServiceTest {
 
                 // suma: A=0+2+2=4, B=1+0+0=1, C=2+1+1=4 -> empate A/C -> nombre ASC -> B, A, C
                 when(repoEspecialidadesMedicas.findByCodigo(codigoEspecialidad)).thenReturn(Optional.of(especialidad));
-                when(googlePlacesService.buscarHospitales(-34.6, -58.4)).thenReturn(List.of(dtoA, dtoB, dtoC));
-                when(repoHospitales.findByPlaceIdInAndEspecialidadesCodigo(
-                                List.of("hospitalA", "hospitalB", "hospitalC"), codigoEspecialidad))
+                when(googlePlacesService.buscarHospitalesRegistrados(eq(-34.6), eq(-58.4), anyList())).thenReturn(List.of(dtoA, dtoB, dtoC));
+                when(repoHospitales.findDistinctByEspecialidadesCodigo(codigoEspecialidad))
                                 .thenReturn(List.of(hospitalA, hospitalB, hospitalC));
                 when(pacienteService.obtenerPacienteConUsuarioAuthId(auth0idPaciente))
                                 .thenReturn(Optional.of(new Paciente()));

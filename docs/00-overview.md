@@ -39,3 +39,9 @@ The current focus is first attention only. The system does not model referral, d
 
 The [voice interaction guide](14-chat-voz-gemini-live.md) explains the mobile,
 backend and Gemini Live responsibilities and the complete message sequence.
+The [interview policy](17-simple-chat-questions.md) defines symptom quantification
+and when text and voice stop asking questions. [Gemini REST retries](19-gemini-retries.md) documents
+transient failure recovery, configuration and shared time limits.
+The [chat hardening plan and implementation](20-chat-hardening.md) describes scope
+redirection, clarification of incoherent input, patient evidence checks, voice
+closure controls and reproducible adversarial cases.

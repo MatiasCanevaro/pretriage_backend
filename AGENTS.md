@@ -43,7 +43,7 @@ Use grep/rg only for configs, scripts, literals, or when graph results are insuf
 ## Verification
 - Compile: `./mvnw.cmd test -DskipTests`
 - Focused estimation tests: `./mvnw.cmd "-Dtest=AtencionHospitalServiceTest,EstimacionAtencionServiceTest,AsignacionSectorServiceTest,IngresoColaServiceTest" test`
-- Full suite needs Docker Desktop access: `./mvnw.cmd test`
+- Full suite needs Docker Desktop access: `python scripts/test_backend_isolated.py`. Never run Spring integration tests against the app database. Docker Compose must be disabled because its connection details override an explicit datasource URL.
 - Real chat E2E: `python scripts/e2e_chat.py --backend-url http://localhost:18080 --db-name pretriage_chat_e2e --messages-file scripts/chat_case_example.txt`
 
 ## Documentation Maintenance

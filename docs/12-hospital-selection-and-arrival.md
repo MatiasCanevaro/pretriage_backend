@@ -12,13 +12,16 @@ The hospital selection flow allows patients to choose a hospital and get arrival
 GET /api/hospitales/cercanos?latitud={lat}&longitud={lon}&codigoEspecialidad={codigoEspecialidad}&transporte={transporte}&ordenarPor={ordenarPor}
 ```
 
-- Filters hospitals by selected specialty and distance from patient's location.
+- Starts from hospitals registered in the app, filtered by selected specialty. Google Place Details supplies metadata and coordinates for their registered Place IDs; no global Nearby Search is performed.
+- Filters by geodesic distance within 5 km and sorts by that distance; there is no 20-hospital candidate limit.
+- Uses stored coordinates to exclude distant hospitals before querying Google. If Google details fail, a registered hospital with valid stored coordinates can still appear with local name/address and null ratings. If neither stored nor Google coordinates are usable, it is omitted because its distance cannot be determined. A registered Place ID is required by the selection contract.
+- Place Details is requested once per candidate not already excluded by stored distance; ratings remain live and unpersisted.
 - Returns only hospitals available for attention (`disponible=true` — at least one `SesionAtencionMedica.ACTIVA` for the requested specialty). When no hospital satisfies this, the response is an empty list and the frontend must show "no hay hospitales disponibles".
 - Sorting is controlled by `ordenarPor` (optional, defaults to `distancia` when omitted or empty; valid values in `ORDENES_VALIDOS`: `distancia`, `tiempo-atencion`, `valoracion`, combinados con `|` como `distancia|tiempo-atencion` o `distancia|tiempo-atencion|valoracion`, orden indistinto). Values are case-sensitive: `Valoracion` or any other spelling returns 400, and a combination with any invalid or duplicated criterion returns 400 even when the other criteria are valid:
-  - `distancia` — keeps Google Places proximity order.
+  - `distancia` — keeps geodesic distance order of registered hospitals.
   - `tiempo-atencion` — orders by lower estimated attention wait time (see `docs/04-queue-and-estimation.md#end-of-queue-estimate-for-hospital-ranking`); ties are broken by `tiempoEstimadoArriboMejorRuta` (nulls last) then `nombre`.
-  - `valoracion` — orders by `valoracionPromedio` descending (Google Places rating, 1.0–5.0); hospitals without rating (`null`) are treated as 0 and go last without being excluded; ties break by `cantidadValoraciones` descending (null = 0) then `nombre` (the name returned by Google) ascending, keeping Google's order among equal names.
-  - Combinados (ej. `valoracion|distancia`, `distancia|tiempo-atencion|valoracion`) — orden combinado por suma de rankings: para cada criterio se calcula la posición del hospital en su orden individual (distancia = posición en Google, tiempo = minutos de espera, valoración = puntaje) y se suman; el menor puntaje va primero, los empates se rompen por `nombre` y luego por el orden de Google (extensible agregando nuevos valores a `ORDENES_VALIDOS`).
+  - `valoracion` — orders by `valoracionPromedio` descending (Google Places rating, 1.0–5.0); hospitals without rating (`null`) are treated as 0 and go last without being excluded; ties break by `cantidadValoraciones` descending (null = 0) then `nombre` (the name returned by Google) ascending, keeping geodesic distance order among equal names.
+  - Combinados (ej. `valoracion|distancia`, `distancia|tiempo-atencion|valoracion`) — orden combinado por suma de rankings: para cada criterio se calcula la posición del hospital en su orden individual (distancia = posición por distancia geodésica, tiempo = minutos de espera, valoración = puntaje) y se suman; el menor puntaje va primero, los empates se rompen por `nombre` y luego por el orden por distancia geodésica (extensible agregando nuevos valores a `ORDENES_VALIDOS`).
 - `transporte` is optional and defaults to `transporte-publico`. Valid values:
   - `transporte-publico`: Public transit (buses, trains, etc.)
   - `vehiculo`: Driving/car

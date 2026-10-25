@@ -396,9 +396,8 @@ FROM (
         checks["immediate attention has alarm signs"] = bool(result["signosAlarma"])
         checks["immediate attention has urgent priority"] = result["nivelPrioridad"] in (4, 5)
     origin = result.get("origenClasificacion")
-    checks["classification origin is recognized"] = origin in ("GEMINI", "FALLBACK_LOCAL")
-    if expect_immediate_attention or not args.allow_fallback:
-        checks["classification origin is GEMINI"] = origin == "GEMINI"
+    checks["classification origin is recognized"] = origin == "GEMINI"
+    checks["classification origin is GEMINI"] = origin == "GEMINI"
     failed = [name for name, passed in checks.items() if not passed]
     if failed:
         raise RuntimeError("Persisted state validation failed: " + "; ".join(failed))
@@ -431,7 +430,6 @@ def main():
     parser.add_argument("--expected-symptom", action="append", default=None, help="Expected symptom term; repeat for multiple terms")
     parser.add_argument("--min-turns", type=int, default=None, help="Minimum patient turns before accepting finalization")
     parser.add_argument("--allow-early-finalization", action="store_true", help="Allow the scripted chat to finalize before all messages are sent")
-    parser.add_argument("--allow-fallback", action="store_true", help="Allow FALLBACK_LOCAL in persisted origenClasificacion")
     parser.add_argument("--expected-alarm", action="append", default=None, help="Expected alarm sign term; repeat for multiple terms")
     parser.add_argument("--expect-immediate-attention", action="store_true", help="Require immediate attention and GEMINI provenance")
     args = parser.parse_args()

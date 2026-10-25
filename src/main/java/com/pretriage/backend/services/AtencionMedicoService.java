@@ -184,7 +184,7 @@ public class AtencionMedicoService {
 
     @Transactional
     public SesionAtencionMedicaDTO pausarSesion(String auth0Id, Long sesionId) {
-        SesionAtencionMedica sesion = obtenerSesionDelMedico(auth0Id, sesionId);
+        SesionAtencionMedica sesion = obtenerSesionDelMedicoParaActualizar(auth0Id, sesionId);
         validarSesionNoFinalizada(sesion);
         validarSinConsultaEnCurso(sesion);
         sesion.setEstado(EstadoSesionMedica.PAUSADA);
@@ -194,7 +194,7 @@ public class AtencionMedicoService {
 
     @Transactional
     public SesionAtencionMedicaDTO reanudarSesion(String auth0Id, Long sesionId) {
-        SesionAtencionMedica sesion = obtenerSesionDelMedico(auth0Id, sesionId);
+        SesionAtencionMedica sesion = obtenerSesionDelMedicoParaActualizar(auth0Id, sesionId);
         if (sesion.getEstado() != EstadoSesionMedica.PAUSADA) {
             throw new IllegalStateException("Solo se puede reanudar una sesion pausada");
         }
@@ -205,7 +205,7 @@ public class AtencionMedicoService {
 
     @Transactional
     public SesionAtencionMedicaDTO cerrarSesion(String auth0Id, Long sesionId) {
-        SesionAtencionMedica sesion = obtenerSesionDelMedico(auth0Id, sesionId);
+        SesionAtencionMedica sesion = obtenerSesionDelMedicoParaActualizar(auth0Id, sesionId);
         validarSesionNoFinalizada(sesion);
         validarSinConsultaEnCurso(sesion);
         sesion.setEstado(EstadoSesionMedica.FINALIZADA);
@@ -215,7 +215,7 @@ public class AtencionMedicoService {
 
     @Transactional
     public ConsultaLlamadaDTO llamarProximo(String auth0Id, Long sesionId) {
-        SesionAtencionMedica sesion = obtenerSesionActiva(auth0Id, sesionId);
+        SesionAtencionMedica sesion = obtenerSesionActivaParaActualizar(auth0Id, sesionId);
         validarSinConsultaEnCurso(sesion);
         GestorDeCola gestorDeCola = repoGestoresDeColas
                 .findByHospitalIdAndEspecialidadIdAndSectorId(
@@ -242,7 +242,7 @@ public class AtencionMedicoService {
 
     @Transactional
     public ConsultaLlamadaDTO confirmarPresente(String auth0Id, Long sesionId, Long consultaId) {
-        SesionAtencionMedica sesion = obtenerSesionActiva(auth0Id, sesionId);
+        SesionAtencionMedica sesion = obtenerSesionActivaParaActualizar(auth0Id, sesionId);
         EntradaCola entrada = obtenerEntradaDeConsulta(consultaId);
         validarConsultaTomadaPorSesion(entrada.getConsultaMedica(), sesion);
         validarEstadoEntrada(entrada, EstadoEntradaCola.LLAMADO);
@@ -264,7 +264,7 @@ public class AtencionMedicoService {
 
     @Transactional
     public PretriajeConsultaDTO obtenerPretriaje(String auth0Id, Long sesionId, Long consultaId) {
-        SesionAtencionMedica sesion = obtenerSesionActiva(auth0Id, sesionId);
+        SesionAtencionMedica sesion = obtenerSesionActivaParaActualizar(auth0Id, sesionId);
         EntradaCola entrada = obtenerEntradaDeConsulta(consultaId);
         validarConsultaTomadaPorSesion(entrada.getConsultaMedica(), sesion);
         validarEstadoEntrada(entrada, EstadoEntradaCola.EN_ATENCION);
@@ -274,7 +274,7 @@ public class AtencionMedicoService {
     @Transactional
     public PretriajeConsultaDTO revisarPrioridad(
             String auth0Id, Long sesionId, Long consultaId, RevisionPrioridadRequest request) {
-        SesionAtencionMedica sesion = obtenerSesionActiva(auth0Id, sesionId);
+        SesionAtencionMedica sesion = obtenerSesionActivaParaActualizar(auth0Id, sesionId);
         EntradaCola entrada = obtenerEntradaDeConsulta(consultaId);
         validarConsultaTomadaPorSesion(entrada.getConsultaMedica(), sesion);
         validarEstadoEntrada(entrada, EstadoEntradaCola.EN_ATENCION);
@@ -328,7 +328,7 @@ public class AtencionMedicoService {
 
     @Transactional
     public ConsultaLlamadaDTO marcarAusente(String auth0Id, Long sesionId, Long consultaId) {
-        SesionAtencionMedica sesion = obtenerSesionActiva(auth0Id, sesionId);
+        SesionAtencionMedica sesion = obtenerSesionActivaParaActualizar(auth0Id, sesionId);
         EntradaCola entrada = obtenerEntradaDeConsulta(consultaId);
         validarConsultaTomadaPorSesion(entrada.getConsultaMedica(), sesion);
         validarEstadoEntrada(entrada, EstadoEntradaCola.LLAMADO);
@@ -346,7 +346,7 @@ public class AtencionMedicoService {
 
     @Transactional
     public ConsultaLlamadaDTO finalizarConsulta(String auth0Id, Long sesionId, Long consultaId) {
-        SesionAtencionMedica sesion = obtenerSesionActiva(auth0Id, sesionId);
+        SesionAtencionMedica sesion = obtenerSesionActivaParaActualizar(auth0Id, sesionId);
         EntradaCola entrada = obtenerEntradaDeConsulta(consultaId);
         validarConsultaTomadaPorSesion(entrada.getConsultaMedica(), sesion);
         validarEstadoEntrada(entrada, EstadoEntradaCola.EN_ATENCION);
@@ -398,8 +398,21 @@ public class AtencionMedicoService {
                 .orElseThrow(() -> new AccessDeniedException("No tiene permisos sobre la sesion"));
     }
 
+    private SesionAtencionMedica obtenerSesionDelMedicoParaActualizar(String auth0Id, Long sesionId) {
+        return repoSesionesAtencionMedica.findByIdAndMedicoUsuarioAuthIdForUpdate(sesionId, auth0Id)
+                .orElseThrow(() -> new AccessDeniedException("No tiene permisos sobre la sesion"));
+    }
+
     private SesionAtencionMedica obtenerSesionActiva(String auth0Id, Long sesionId) {
         SesionAtencionMedica sesion = obtenerSesionDelMedico(auth0Id, sesionId);
+        if (sesion.getEstado() != EstadoSesionMedica.ACTIVA) {
+            throw new IllegalStateException("La sesion medica debe estar activa");
+        }
+        return sesion;
+    }
+
+    private SesionAtencionMedica obtenerSesionActivaParaActualizar(String auth0Id, Long sesionId) {
+        SesionAtencionMedica sesion = obtenerSesionDelMedicoParaActualizar(auth0Id, sesionId);
         if (sesion.getEstado() != EstadoSesionMedica.ACTIVA) {
             throw new IllegalStateException("La sesion medica debe estar activa");
         }

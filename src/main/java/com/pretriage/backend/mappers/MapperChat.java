@@ -12,6 +12,6 @@ public final class MapperChat {
                 chat.getId(),
                 chat.getMensajes().stream().map(MapperMensaje::toDTO).toList(),
                 chat.getFechaHoraCreacion(),
-                chat.isFinalizado());
+                chat.isFinalizado(), chat.getEstadoClasificacion());
     }
 }

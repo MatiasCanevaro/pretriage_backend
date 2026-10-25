@@ -1,6 +1,7 @@
 package com.pretriage.backend.controllers;
 
 import com.pretriage.backend.controllers.dtos.ChatDTO;
+import com.pretriage.backend.controllers.dtos.MensajeDTO;
 import com.pretriage.backend.exceptions.ChatNoEncontradoException;
 import com.pretriage.backend.services.ChatService;
 import com.pretriage.backend.services.voz.GeminiLiveProperties;
@@ -12,6 +13,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.server.HandshakeInterceptor;
 
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -65,9 +67,19 @@ public class ChatVozHandshakeInterceptor implements HandshakeInterceptor {
             return false;
         }
 
+        List<MensajeDTO> historialClinico;
+        try {
+            historialClinico = chatService.obtenerHistorialClinicoVoz(idChat, idPaciente);
+        } catch (ChatNoEncontradoException exception) {
+            response.setStatusCode(HttpStatus.NOT_FOUND);
+            return false;
+        }
+
         attributes.put(ChatVozWebSocketHandler.ATRIBUTO_ID_CHAT, idChat);
         attributes.put(ChatVozWebSocketHandler.ATRIBUTO_ID_PACIENTE, idPaciente);
-        attributes.put(ChatVozWebSocketHandler.ATRIBUTO_HISTORIAL, chat.mensajes());
+        // Keep the public chat transcript untouched; voice receives only context
+        // that was accepted for triage (rejected patient turns remain visible in REST).
+        attributes.put(ChatVozWebSocketHandler.ATRIBUTO_HISTORIAL, historialClinico);
         return true;
     }
 

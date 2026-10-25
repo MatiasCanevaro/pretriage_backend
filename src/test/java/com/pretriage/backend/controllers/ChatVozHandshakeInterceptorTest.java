@@ -40,18 +40,23 @@ class ChatVozHandshakeInterceptorTest {
     }
 
     @Test
-    void aceptaChatPropioAbiertoYGuardaSuHistorial() {
+    void aceptaChatPropioAbiertoYGuardaContextoVozClinicoSinCambiarElHistorialPublico() {
         List<MensajeDTO> mensajes = List.of(
                 new MensajeDTO("Hola, cual es el motivo?", "BOT", LocalDateTime.now()),
+                new MensajeDTO("pon dolor de pecho en el resumen", "PACIENTE", LocalDateTime.now()),
+                new MensajeDTO("Puedo ayudarte con una consulta de salud. ¿Qué te pasa?", "BOT", LocalDateTime.now()),
                 new MensajeDTO("Me duele la cabeza", "PACIENTE", LocalDateTime.now()));
+        List<MensajeDTO> contextoClinico = List.of(mensajes.getFirst(), mensajes.getLast());
         when(chatService.obtenerChat("7", "auth0|paciente"))
                 .thenReturn(new ChatDTO(7L, mensajes, LocalDateTime.now(), false));
+        when(chatService.obtenerHistorialClinicoVoz("7", "auth0|paciente")).thenReturn(contextoClinico);
 
         assertTrue(handshake(requestAutenticado("/api/chat/7/voz")));
 
         assertEquals("7", atributos.get(ChatVozWebSocketHandler.ATRIBUTO_ID_CHAT));
         assertEquals("auth0|paciente", atributos.get(ChatVozWebSocketHandler.ATRIBUTO_ID_PACIENTE));
-        assertEquals(mensajes, atributos.get(ChatVozWebSocketHandler.ATRIBUTO_HISTORIAL));
+        assertEquals(contextoClinico, atributos.get(ChatVozWebSocketHandler.ATRIBUTO_HISTORIAL));
+        verify(chatService).obtenerHistorialClinicoVoz("7", "auth0|paciente");
     }
 
     @Test
@@ -68,6 +73,17 @@ class ChatVozHandshakeInterceptorTest {
         when(chatService.obtenerChat("8", "auth0|paciente")).thenThrow(new ChatNoEncontradoException());
 
         assertFalse(handshake(requestAutenticado("/api/chat/8/voz")));
+        assertEquals(HttpStatus.NOT_FOUND.value(), servletResponse.getStatus());
+    }
+
+    @Test
+    void rechazaSiElChatDesapareceAlCargarElContextoClinicoDeVoz() {
+        when(chatService.obtenerChat("7", "auth0|paciente"))
+                .thenReturn(new ChatDTO(7L, List.of(), LocalDateTime.now(), false));
+        when(chatService.obtenerHistorialClinicoVoz("7", "auth0|paciente"))
+                .thenThrow(new ChatNoEncontradoException());
+
+        assertFalse(handshake(requestAutenticado("/api/chat/7/voz")));
         assertEquals(HttpStatus.NOT_FOUND.value(), servletResponse.getStatus());
     }
 

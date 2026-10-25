@@ -27,6 +27,12 @@ public interface RepoConsultasMedicas extends JpaRepository<ConsultaMedica, Long
 
     boolean existsBySalaIdInAndEstadoConsultaNotIn(Collection<Long> salaIds, Collection<EstadoConsulta> estados);
 
+    boolean existsBySectorIdAndEstadoConsultaNotIn(Long sectorId, Collection<EstadoConsulta> estados);
+
+    boolean existsBySectorId(Long sectorId);
+
+    boolean existsBySalaIdIn(Collection<Long> salaIds);
+
     // --- Métricas: todas restringidas a las consultas cuya EntradaCola del hospital ingresó en [desde, hasta) ---
 
     @Query("""

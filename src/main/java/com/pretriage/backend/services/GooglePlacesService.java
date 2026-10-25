@@ -89,6 +89,68 @@ public class GooglePlacesService {
     @Value("${google.api.key}")
     private String apiKey;
 
+    /** Registered hospitals are the candidate set; Google never discovers candidates for this flow. */
+    public List<HospitalCercanoDTO> buscarHospitalesRegistrados(Double latitud, Double longitud,
+                                                               List<Hospital> registrados) {
+        if (!coordenadasValidas(latitud, longitud)) throw new IllegalArgumentException("Coordenadas invalidas");
+        List<HospitalUbicado> cercanos = new ArrayList<>();
+        for (Hospital hospital : registrados) {
+            if (hospital.getPlaceId() == null || hospital.getPlaceId().isBlank()) continue;
+            Coordenada coordenada = hospital.getDireccion() == null ? null : hospital.getDireccion().getCoordenada();
+            Double lat = coordenada == null ? null : coordenada.getLatitud();
+            Double lon = coordenada == null ? null : coordenada.getLongitud();
+            if (coordenadasValidas(lat, lon) && distanciaMetros(latitud, longitud, lat, lon) > RADIO_BUSQUEDA_METROS) continue;
+
+            GooglePlaceDTO detalle = obtenerDetalleCercano(hospital.getPlaceId());
+            if (detalle != null && detalle.getLocation() != null
+                    && coordenadasValidas(detalle.getLocation().getLatitude(), detalle.getLocation().getLongitude())) {
+                lat = detalle.getLocation().getLatitude();
+                lon = detalle.getLocation().getLongitude();
+            }
+            if (!coordenadasValidas(lat, lon)) continue;
+            double distancia = distanciaMetros(latitud, longitud, lat, lon);
+            if (distancia > RADIO_BUSQUEDA_METROS) continue;
+            HospitalCercanoDTO dto = detalle != null ? mapearAHospitalCercanoDTO(detalle) : new HospitalCercanoDTO();
+            dto.setPlaceId(hospital.getPlaceId());
+            dto.setIdHospital(hospital.getId());
+            if (detalle == null) {
+                dto.setNombre(hospital.getNombre());
+                dto.setDireccion(hospital.getDireccion() == null ? null : hospital.getDireccion().formateada());
+            }
+            cercanos.add(new HospitalUbicado(dto, distancia));
+        }
+        return cercanos.stream().sorted(Comparator.comparingDouble(HospitalUbicado::distancia))
+                .map(HospitalUbicado::hospital).toList();
+    }
+
+    private GooglePlaceDTO obtenerDetalleCercano(String placeId) {
+        try {
+            String json = restClient.get().uri(PLACES_BASE_URL + "/{id}", placeId)
+                    .header("X-Goog-Api-Key", apiKey)
+                    .header("X-Goog-FieldMask", "id,displayName,formattedAddress,location,rating,userRatingCount")
+                    .retrieve().body(String.class);
+            return objectMapper.readValue(json, GooglePlaceDTO.class);
+        } catch (Exception error) {
+            log.warn("No se pudieron completar detalles del hospital registrado placeId={} reason={}",
+                    placeId, error.getClass().getSimpleName());
+            return null;
+        }
+    }
+
+    private boolean coordenadasValidas(Double lat, Double lon) {
+        return lat != null && lon != null && Double.isFinite(lat) && Double.isFinite(lon)
+                && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
+    }
+
+    private double distanciaMetros(double lat1, double lon1, double lat2, double lon2) {
+        double a = Math.pow(Math.sin(Math.toRadians(lat2 - lat1) / 2), 2)
+                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
+                * Math.pow(Math.sin(Math.toRadians(lon2 - lon1) / 2), 2);
+        return 6_371_000 * 2 * Math.asin(Math.sqrt(Math.min(1, Math.max(0, a))));
+    }
+
+    private record HospitalUbicado(HospitalCercanoDTO hospital, double distancia) { }
+
     public List<HospitalCercanoDTO> buscarHospitales(Double latitud, Double longitud) {
 
         // Body del POST según la documentación oficial de Nearby Search (New)

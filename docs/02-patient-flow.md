@@ -16,7 +16,7 @@ flowchart TD
 ## Steps
 
 1. Patient selects a medical specialty.
-2. Backend retrieves nearby hospitals from Google Places and filters by specialty stored locally.
+2. Backend queries registered hospitals by specialty, resolves their coordinates and metadata with Google Place Details, and filters by geodesic distance within 5 km.
 3. Patient selects a hospital by `placeId` and `codigoEspecialidad`.
 4. Backend creates or updates the active `ConsultaMedica` with the selected hospital and specialty.
 5. Backend assigns a sector to the consultation (`AsignacionSectorService`: active sector of the hospital+specialty with the fewest `EN_COLA` entries and at least one active room). If no sector is available the selection fails.
@@ -126,4 +126,4 @@ Patients can manage their medical study files (radiology scans, lab reports, etc
 
 ### Doctor Access
 
-During attention, doctors can view patient studies through the medical history endpoints documented in the API reference.
+During attention, doctors can view patient studies through the medical history endpoints documented in the API reference.

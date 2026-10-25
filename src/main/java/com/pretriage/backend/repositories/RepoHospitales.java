@@ -16,4 +16,7 @@ public interface RepoHospitales extends JpaRepository<Hospital, Long> {
     List<Hospital> findByRecepcionistasUsuarioAuthId(String auth0Id);
 
     List<Hospital> findByPlaceIdInAndEspecialidadesCodigo(Collection<String> placeIds, String codigoEspecialidad);
+
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"especialidades", "direccion.coordenada"})
+    List<Hospital> findDistinctByEspecialidadesCodigo(String codigoEspecialidad);
 }
