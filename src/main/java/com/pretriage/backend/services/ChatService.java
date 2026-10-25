@@ -505,6 +505,7 @@ public class ChatService {
 
     private TriageAiResponse consultarPregunta(Chat chat, long inicioConsulta) {
         String correccion = null;
+        java.util.Optional<TriageIaClient.MotivoRechazoSemantico> motivoCorreccion = java.util.Optional.empty();
         for (int intento = 0; intento < 2; intento++) {
             java.time.Duration restante = java.time.Duration.ofSeconds(45)
                     .minusNanos(System.nanoTime() - inicioConsulta);
@@ -513,17 +514,20 @@ public class ChatService {
             }
             try {
                 TriageAiResponse respuesta = triageIaClient.consultarContinuacion(
-                        promptPregunta(chat, correccion), construirConversacion(chat), restante);
+                        promptPregunta(chat, correccion, motivoCorreccion), construirConversacion(chat), restante);
                 if (estadoEntrada(respuesta) != EstadoEntradaChat.RELEVANTE) return respuesta;
                 String error = errorPregunta(chat, respuesta);
                 if (error == null) return respuesta;
                 if (intento == 1) throw respuestaIaInvalida(chat, error);
                 correccion = error;
-                log.info("Chat IA correction chatId={} reason={}", chat.getId(), correccion);
+                motivoCorreccion = java.util.Optional.empty();
+                logCorreccionPregunta(chat, correccion, motivoCorreccion);
             } catch (ProveedorIaException error) {
                 if (intento == 1 || !TriageIaClient.esErrorDeRespuesta(error)) throw error;
-                correccion = "invalid_question_response";
-                log.info("Chat IA correction chatId={} reason={}", chat.getId(), correccion);
+                motivoCorreccion = TriageIaClient.motivoRechazo(error);
+                correccion = motivoCorreccion.isPresent()
+                        ? "question_semantic_verification" : "invalid_question_response";
+                logCorreccionPregunta(chat, correccion, motivoCorreccion);
             } catch (RuntimeException error) {
                 throw new ProveedorIaException(error);
             }
@@ -531,11 +535,21 @@ public class ChatService {
         throw respuestaIaInvalida(chat, "invalid_question_response");
     }
 
-    private String promptPregunta(Chat chat, String correccion) {
+    private void logCorreccionPregunta(Chat chat, String razonTecnica,
+                                       java.util.Optional<TriageIaClient.MotivoRechazoSemantico> motivoSemantico) {
+        log.info("Chat IA correction chatId={} reason={} semanticReason={}", chat.getId(), razonTecnica,
+                motivoSemantico.map(TriageIaClient.MotivoRechazoSemantico::name).orElse("none"));
+    }
+
+    private String promptPregunta(Chat chat, String correccion,
+                                  java.util.Optional<TriageIaClient.MotivoRechazoSemantico> motivoSemantico) {
         List<TurnoVoz> turnos = turnosLiteralesVoz(chat);
         String tarea = ValidadorCierreEntrevistaVoz.instruccionDatosPendientes(turnos);
-        String correccionTexto = correccion == null ? "" : " La respuesta anterior no fue aceptable (" + correccion
-                + "). Reescribila como una unica pregunta breve, pertinente al relato, sin repetir la pregunta anterior.";
+        String correccionTexto = motivoSemantico.map(motivo -> " La pregunta anterior no fue aceptable. "
+                + reglaCorreccionPregunta(motivo)
+                + " Reescribila como una unica pregunta breve, pertinente al relato, sin repetir la pregunta anterior.")
+                .orElseGet(() -> correccion == null ? "" : " La respuesta anterior no fue aceptable (" + correccion
+                        + "). Reescribila como una unica pregunta breve, pertinente al relato, sin repetir la pregunta anterior.");
         return "Sos un asistente de admision para pre-triage. " + LenguajeClinicoChat.REGLAS_ALCANCE_ENTRADA
                 + tarea + correccionTexto
                 + " Devolve estadoEntrada y mensaje segun el contrato. "
@@ -543,6 +557,16 @@ public class ChatService {
                 + "Una respuesta de que no tiene otros sintomas no impide cuantificar los sintomas ya afirmados. "
                 + "Si dice que no sabe o no quiere responder, conserva ese dato como desconocido y no insistas. "
                 + LenguajeClinicoChat.REGLAS_PREGUNTA_TEXTO;
+    }
+
+    private String reglaCorreccionPregunta(TriageIaClient.MotivoRechazoSemantico motivo) {
+        return switch (motivo) {
+            case COMUNICACION -> "Formula una sola pregunta breve para continuar. No menciones registro, despedida, clasificación, triage ni resultados.";
+            case INFERENCIA -> "Pregunta neutralmente solo por el dato pendiente; no asumas causas ni hechos que la persona no informó.";
+            case NEGACION -> "Respeta la negación que ya dio la persona. No la reformules como afirmación y pregunta solo el dato pendiente.";
+            case SIN_RESPALDO -> "No presentes como hecho ningún dato nuevo. Pregunta solo por la dimensión pendiente, sin atribuir síntomas no informados.";
+            case INTENSIDAD_NO_DOLOR -> "No asocies al dolor la intensidad de una sensación no dolorosa. Pregunta solo por la sensación ya mencionada y la dimensión pendiente.";
+        };
     }
 
     private String errorPregunta(Chat chat, TriageAiResponse respuesta) {

@@ -64,6 +64,17 @@ la persona insiste en cambiar de tema, sin activar la corrección por pregunta r
 Una continuación `RELEVANTE` pasa por un verificador independiente que rechaza
 despedidas y mensajes de cierre, incluidos los anuncios de que las respuestas quedaron
 registradas. Solo el cierre orquestado por el backend puede confirmar el registro.
+El verificador interpreta la última respuesta del paciente con los turnos previos como
+contexto. Preguntar neutralmente por un dato pendiente de un síntoma ya afirmado —por
+ejemplo, la temperatura después de informar fiebre o la intensidad después de informar
+cefalea— no equivale a afirmar ese dato. La pregunta aún debe ser breve, pertinente y
+no sugestiva, sin introducir síntomas nuevos. Si una respuesta numérica viene acompañada
+de texto incoherente, puede aclarar el dato concreto que preguntó el turno `BOT` anterior
+sin convertir el texto añadido en un síntoma ni reabrir un motivo ya comprendido.
+El motivo opcional del verificador distingue `COMUNICACION` (fuera de alcance, cierre o
+registro), `INFERENCIA` (asunción no respaldada), `SIN_RESPALDO` (afirmación clínica no
+expresada), `NEGACION` (contradicción de una negación concreta) e `INTENSIDAD_NO_DOLOR`
+(equiparar otra sensación con dolor). El booleano legado sigue siendo válido.
 
 `Mensaje.excluidoDelTriage` es un `Boolean` nullable interno. `true` marca el turno
 de texto rechazado; `null` en registros anteriores equivale a no excluido. El texto
@@ -161,6 +172,15 @@ Consume solicitudes del proveedor. Se encuentra desactivada en la suite habitual
 
 ```powershell
 ./mvnw.cmd "-Dtest=ChatHardeningGeminiSmokeTest" "-Dpretriage.gemini.hardening.live=true" "-Dspring.docker.compose.enabled=false" test
+```
+
+Para evaluar solo el verificador de preguntas, los dos métodos `verificadorReal*`
+usan propuestas fijas y delegan únicamente su verificación a Gemini real: una
+pregunta neutral de temperatura debe aceptarse y un anuncio de registro debe
+rechazarse por validación, no por un error de transporte o cuota.
+
+```powershell
+./mvnw.cmd "-Dtest=ChatHardeningGeminiSmokeTest#verificadorReal*" "-Dpretriage.gemini.hardening.live=true" "-Dspring.docker.compose.enabled=false" test
 ```
 
 Las pruebas del proveedor verifican ejemplos concretos, no inmunidad a todas las

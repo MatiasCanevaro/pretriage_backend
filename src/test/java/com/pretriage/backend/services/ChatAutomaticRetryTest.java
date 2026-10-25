@@ -12,12 +12,20 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.net.http.HttpClient;
 import java.net.http.HttpHeaders;
+import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpTimeoutException;
+import java.io.ByteArrayOutputStream;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Flow;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -86,6 +94,89 @@ class ChatAutomaticRetryTest {
         verify(http, times(4)).send(any(), any());
         verify(chats, times(1)).save(chat);
         verifyNoInteractions(queue);
+    }
+
+    @Test
+    void rechazoSemanticoDePreguntaGuiaUnaCorreccionConUnSoloTurnoYSinEfectosDeCola() throws Exception {
+        var firstQuestion = envelope(mapper.writeValueAsString(Map.of(
+                "mensaje", "Ya registré tus respuestas para el equipo médico.", "estadoEntrada", "RELEVANTE")));
+        var correctedQuestion = envelope(mapper.writeValueAsString(Map.of(
+                "mensaje", "¿Desde cuándo te duele la cabeza?", "estadoEntrada", "RELEVANTE")));
+        var responses = List.of(response(200, firstQuestion),
+                response(200, envelope("{\"valido\":false,\"motivo\":\"COMUNICACION\"}")),
+                response(200, correctedQuestion), response(200, envelope("{\"valido\":true}")));
+        var requests = responderConCaptura(responses);
+
+        var result = service().enviarMensaje("7", "patient", "Tengo dolor de cabeza");
+
+        assertEquals("¿Desde cuándo te duele la cabeza?", result.respuesta().contenido());
+        assertEquals(2, chat.getMensajes().size());
+        assertEquals(1, chat.getMensajes().stream().filter(m -> m.getAutor() == AutorMensaje.PACIENTE).count());
+        assertEquals(1, chat.getMensajes().stream().filter(m -> m.getAutor() == AutorMensaje.BOT).count());
+        assertEquals(4, requests.size(), "una generación/verificación y una corrección/verificación");
+        String correctionPrompt = requestSystemInstruction(requests.get(2));
+        assertTrue(correctionPrompt.contains("No menciones registro, despedida, clasificación, triage ni resultados."));
+        assertFalse(correctionPrompt.contains("invalid_question_response"));
+        assertFalse(requestBody(requests.get(2)).contains("Ya registré tus respuestas"));
+        verify(chats, times(1)).save(chat);
+        verifyNoInteractions(queue);
+    }
+
+    @Test
+    void segundoRechazoSemanticoDePreguntaNoDuplicaTurnoNiEncola() throws Exception {
+        var firstQuestion = envelope(mapper.writeValueAsString(Map.of(
+                "mensaje", "Ya registré tus respuestas para el equipo médico.", "estadoEntrada", "RELEVANTE")));
+        var correctedQuestion = envelope(mapper.writeValueAsString(Map.of(
+                "mensaje", "Tu dolor se debe a una enfermedad grave.", "estadoEntrada", "RELEVANTE")));
+        var responses = List.of(response(200, firstQuestion),
+                response(200, envelope("{\"valido\":false,\"motivo\":\"COMUNICACION\"}")),
+                response(200, correctedQuestion), response(200, envelope("{\"valido\":false,\"motivo\":\"INFERENCIA\"}")));
+        var requests = responderConCaptura(responses);
+
+        assertThrows(com.pretriage.backend.exceptions.ProveedorIaException.class,
+                () -> service().enviarMensaje("7", "patient", "Tengo dolor de cabeza"));
+
+        assertFalse(chat.isFinalizado());
+        assertEquals(EstadoClasificacionChat.NO_SOLICITADA, chat.getEstadoClasificacion());
+        assertNull(chat.getResultadoTriageJson());
+        assertTrue(chat.getMensajes().isEmpty(), "El turno fallido se revierte una sola vez y no guarda respuesta del bot.");
+        assertEquals(4, requests.size(), "No debe haber una segunda corrección después del rechazo corregido.");
+        assertTrue(requestSystemInstruction(requests.get(2))
+                .contains("No menciones registro, despedida, clasificación, triage ni resultados."));
+        verify(chats, never()).save(any());
+        verifyNoInteractions(queue);
+    }
+
+    private List<HttpRequest> responderConCaptura(List<HttpResponse<String>> responses) throws Exception {
+        var requests = new ArrayList<HttpRequest>();
+        when(http.<String>send(any(), any())).thenAnswer(invocation -> {
+            int index = requests.size();
+            requests.add(invocation.getArgument(0));
+            return responses.get(index);
+        });
+        return requests;
+    }
+
+    private String requestSystemInstruction(HttpRequest request) throws Exception {
+        return mapper.readTree(requestBody(request)).path("systemInstruction").path("parts").get(0)
+                .path("text").stringValue();
+    }
+
+    private String requestBody(HttpRequest request) throws Exception {
+        var captured = new ByteArrayOutputStream();
+        var completed = new CompletableFuture<Void>();
+        request.bodyPublisher().orElseThrow().subscribe(new Flow.Subscriber<>() {
+            @Override public void onSubscribe(Flow.Subscription subscription) { subscription.request(Long.MAX_VALUE); }
+            @Override public void onNext(ByteBuffer item) {
+                byte[] bytes = new byte[item.remaining()];
+                item.get(bytes);
+                captured.write(bytes, 0, bytes.length);
+            }
+            @Override public void onError(Throwable error) { completed.completeExceptionally(error); }
+            @Override public void onComplete() { completed.complete(null); }
+        });
+        completed.get(1, TimeUnit.SECONDS);
+        return captured.toString(StandardCharsets.UTF_8);
     }
 
     @Test

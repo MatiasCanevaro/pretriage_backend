@@ -27,6 +27,14 @@ orientación genérica. El sistema no copia texto de rechazo ni citas del provee
 prompt correctivo o a los logs; la corrección comparte el mismo presupuesto de 45 segundos.
 Un segundo rechazo conserva el chat cerrado en `FALLIDA` para procesamiento manual.
 
+En una continuación de texto, un rechazo semántico de la pregunta conserva solo el
+código de motivo permitido y lo convierte en una instrucción fija para una única
+corrección. Un motivo ausente o una respuesta repetida usa la orientación genérica
+correspondiente; no se arrastra un motivo semántico previo. Si la pregunta corregida
+vuelve a fallar la verificación, el turno se rechaza y no se persiste una respuesta del
+bot ni se crea una entrada de cola. La generación y su verificación, más esa corrección
+y su verificación, comparten el presupuesto de 45 segundos.
+
 El 21 de octubre de 2026 pasaron las **435 pruebas Java** completas con
 `python scripts/test_backend_isolated.py`, contra una base temporal aleatoria,
 y las **12 pruebas Python** de los helpers E2E. Las regresiones controlan 503 y

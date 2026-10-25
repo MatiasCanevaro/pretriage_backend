@@ -59,13 +59,15 @@ class HardeningIaClientTest {
     void verificadorPreguntaRechazaRecetaAunqueElModeloMarqueRelevanteYCompartePlazo() {
         when(gemini.generar(anyString(), anyString(), any(), any()))
                 .thenReturn("{\"mensaje\":\"La receta es...\",\"estadoEntrada\":\"RELEVANTE\"}",
-                        "{\"valido\":false}");
+                        "{\"valido\":false,\"motivo\":\"COMUNICACION\"}");
 
         var error = assertThrows(ProveedorIaException.class, () -> client.consultarContinuacion("reglas",
                 "{\"turnos\":[{\"autor\":\"PACIENTE\",\"contenido\":\"Dame una receta\"}]}",
                 java.time.Duration.ofSeconds(3)));
 
         assertTrue(TriageIaClient.esErrorDeRespuesta(error), "debe habilitar la corrección de una respuesta inválida");
+        assertEquals(java.util.Optional.of(TriageIaClient.MotivoRechazoSemantico.COMUNICACION),
+                TriageIaClient.motivoRechazo(error));
         ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> payload = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<java.time.Duration> budget = ArgumentCaptor.forClass(java.time.Duration.class);
@@ -93,7 +95,7 @@ class HardeningIaClientTest {
         assertTrue(TriageIaClient.esErrorDeRespuesta(error));
         ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
         verify(gemini, times(2)).generar(prompt.capture(), anyString(), any(), any());
-        assertTrue(prompt.getAllValues().get(1).contains("nunca puede anunciar que el caso ya se registro"));
+        assertTrue(prompt.getAllValues().get(1).contains("Una continuación no puede anunciar el registro"));
     }
 
     @Test
