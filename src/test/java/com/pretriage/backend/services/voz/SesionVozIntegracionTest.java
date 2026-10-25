@@ -131,16 +131,59 @@ class SesionVozIntegracionTest {
         verifyNoInteractions(flujo.cola);
     }
 
+    @Test
+    void entrevistaEmocionalSeCierraSinExigirCuantificacionFisica() throws Exception {
+        Flujo flujo = new Flujo();
+        when(flujo.ia.consultar(anyString(), contains("vacío en el pecho"), eq(true)))
+                .thenReturn(new TriageAiResponse(true, "Gracias por contarlo", clasificacionEmocional()));
+        var turnos = List.of(
+                new TurnoVoz(AutorMensaje.PACIENTE, "Siento un vacío en el pecho."),
+                new TurnoVoz(AutorMensaje.BOT, "¿Desde cuándo sentís ese vacío?"),
+                new TurnoVoz(AutorMensaje.PACIENTE, "Desde que me dejó."),
+                new TurnoVoz(AutorMensaje.BOT, "¿Hay algo más que quieras contar sobre cómo te sentís?"),
+                new TurnoVoz(AutorMensaje.PACIENTE, "No, la extraño mucho. No puedo comer."));
+        flujo.entrada("Siento un vacío en el pecho.");
+        flujo.transcripcion("outputTranscription", "¿Desde cuándo sentís ese vacío?");
+        flujo.entrada("Desde que me dejó.");
+        flujo.transcripcion("outputTranscription", "¿Hay algo más que quieras contar sobre cómo te sentís?");
+        flujo.entrada("No, la extraño mucho. No puedo comer.");
+
+        assertTrue(ValidadorCierreEntrevistaVoz.tieneDatosSuficientes(turnos));
+        flujo.finalizar(resumenEmocional());
+        flujo.terminarGemini();
+
+        assertTrue(flujo.chat.isFinalizado());
+        assertTrue(flujo.chat.getMensajes().stream().anyMatch(m -> m.getContenido().contains("Desde que me dejó")));
+        assertTrue(flujo.chat.getMensajes().stream().anyMatch(m -> m.getContenido().contains("No puedo comer")));
+        verify(flujo.ia, times(1)).consultar(anyString(), contains("vacío en el pecho"), eq(true));
+        verify(flujo.cola, times(1)).finalizarTriageEIngresarACola(eq("auth0|voz"), any(), anyString(), any(Chat.class));
+    }
+
     private TriageResultDTO clasificacion(int dolor, int prioridad) {
         return new TriageResultDTO("dolor de cabeza", List.of("dolor de cabeza"), "desde ayer", "se mantiene",
                 dolor, List.of(), List.of(), List.of(), List.of(), "no informado", "Caso de prueba", prioridad,
                 false, "Consultar si empeora");
     }
 
+    private TriageResultDTO clasificacionEmocional() {
+        return new TriageResultDTO("vacío en el pecho desde que me dejó",
+                List.of("vacío en el pecho", "dificultad para comer"), "desde que me dejó",
+                "No puede comer y la extraña", null, List.of(), List.of(), List.of(), List.of(),
+                "no informado", "Malestar emocional por una separación", 2,
+                false, "Consultar con un profesional de salud");
+    }
+
     private ResumenEntrevistaVoz resumen() {
         return new ResumenEntrevistaVoz("dolor de cabeza", List.of("dolor de cabeza"),
                 "hoy", "se mantiene", 2, List.of(), List.of(), List.of(), List.of(),
                 "no informado", "Niega signos de alarma, antecedentes, medicacion y alergias.");
+    }
+
+    private ResumenEntrevistaVoz resumenEmocional() {
+        return new ResumenEntrevistaVoz("Siento un vacío en el pecho desde que me dejó",
+                List.of("vacío emocional", "dificultad para comer"), "desde que me dejó",
+                "No puede comer y la extraña", null, List.of(), List.of(), List.of(), List.of(),
+                "no informado", "Malestar emocional por una separación; no se informan síntomas físicos.");
     }
 
     private final class Flujo {

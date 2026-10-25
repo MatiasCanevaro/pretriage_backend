@@ -18,6 +18,8 @@ public final class ValidadorCierreEntrevistaVoz {
     private static final String SINTOMAS = "dolor|duele|duelen|cefalea|molestia|fiebre|tos|vomitos?|nauseas?|mareos?|sangrado|diarrea|debilidad|moraton(?:es)?|moreton(?:es)?|hematomas?|golpes?|hinchazon|hormigueo|entumecimiento|heridas?|lesion(?:es)?|quemaduras?|queme|quemado|quemada|ardor|me arde|cortes?|cortado|cortada|picazon|me pica|ronchas?|erupcion|sarpullido|torcedura|torci|lastimado|lastimada";
     private static final String OTROS_SINTOMAS = "molestia|tos|vomitos?|nauseas?|mareos?|sangrado|diarrea|debilidad|moraton(?:es)?|moreton(?:es)?|hematomas?|golpes?|hinchazon|hormigueo|entumecimiento|heridas?|lesion(?:es)?|quemaduras?|queme|quemado|quemada|ardor|me arde|cortes?|cortado|cortada|picazon|me pica|ronchas?|erupcion|sarpullido|torcedura|torci|lastimado|lastimada";
     private static final String ALARMAS = "no puedo respirar|me cuesta respirar|dificultad respiratoria|dificultad para respirar|falta de aire|no puedo mover (?:el|un) brazo|boca (?:torcida|desviada)|debilidad unilateral|debilidad (?:subita|repentina)|me duele el pecho|dolor (?:de|en el) pecho|opresion (?:toracica|en el pecho)|disnea|perdida de (?:conciencia|conocimiento)|desmayos?|confusion|desorientad[oa]s?|convulsion(?:es)?|sangrado abundante|reaccion alergica";
+    private static final String EMOCIONES_AFIRMABLES = "ansiedad|angustia|tristeza|triste|depresion|deprimid[oa]s?|duelo|soledad|desesperanza|malestar emocional|me siento mal emocionalmente|me siento (?:un )?vacio|me siento (?:un )?vacia";
+    private static final String CONTEXTO_EMOCIONAL_RELACIONAL = "me dejo|me abandono|me separ(?:e|aron)|perdi a (?:mi|un|una)|la extrano|lo extrano|extrano a [a-z]+|desde que (?:me dejo|me abandono|nos separamos)";
     private static final Pattern INTENSIDAD = Pattern.compile("\\b(10|[0-9])\\s*(?:/|de|sobre)\\s*10\\b");
     private static final Pattern NEGACION = Pattern.compile("\\b(?:no|sin|niega|niego|descarta|descarto|ningun|ninguna|ninguno)\\b");
     private static final Pattern AFIRMACION_TRAS_NEGACION = Pattern.compile("\\b(?:pero|aunque|si|y)\\s+(?:me|tengo|siento|presento|aparecio|aparecen|noto)\\b");
@@ -58,8 +60,19 @@ public final class ValidadorCierreEntrevistaVoz {
             return Optional.of("Espera una respuesta transcripta del paciente antes de solicitar el cierre de la entrevista.");
         }
         if (terminarSolicitado(turnos)) return Optional.empty();
-        if (!tieneMotivoConcreto(turnos)) {
+        if (!tieneMotivoConcreto(turnos) && !tieneMotivoEmocional(turnos)) {
             return Optional.of("El motivo aun no se entiende. Hace una pregunta breve para que el paciente explique que siente o que le ocurre; no enumeres sintomas ni opciones.");
+        }
+        // Emotional distress is within the health scope. Do not turn it into a physical
+        // symptom interview by requiring pain, fever, temperature, or physical impact checks.
+        if (tieneMotivoEmocional(turnos) && !tieneMotivoConcreto(turnos)) {
+            if (rechazoGlobalExplicito(turnos)) return Optional.empty();
+            int ultimaInvitacion = ultimaInvitacionAbierta(turnos);
+            if (ultimaInvitacion < 0) {
+                return Optional.of("El motivo puede ser emocional. Hace una sola invitacion breve para que agregue algo sobre lo que siente o como le afecta, sin sugerir sintomas fisicos.");
+            }
+            return respondioDespues(turnos, ultimaInvitacion) ? Optional.empty()
+                    : Optional.of("Espera la respuesta a la invitacion abierta; no cambies a preguntas de sintomas fisicos.");
         }
         Cuantificacion cuantificacion = analizarCuantificacion(turnos);
         if (cuantificacion.preguntaPendiente()) {
@@ -288,6 +301,25 @@ public final class ValidadorCierreEntrevistaVoz {
             }
         }
         return false;
+    }
+
+    private static boolean tieneMotivoEmocional(List<TurnoVoz> turnos) {
+        if (turnos == null) return false;
+        List<String> respuestas = turnos.stream().filter(ValidadorCierreEntrevistaVoz::esRespuesta)
+                .map(TurnoVoz::contenido).filter(java.util.Objects::nonNull)
+                .map(ValidadorCierreEntrevistaVoz::normalizar).toList();
+        boolean emocionAfirmada = respuestas.stream().anyMatch(texto -> afirmacionEnSegmentos(texto, EMOCIONES_AFIRMABLES));
+        boolean contextoRelacionalAfirmado = respuestas.stream()
+                .anyMatch(texto -> afirmacionEnSegmentos(texto, CONTEXTO_EMOCIONAL_RELACIONAL));
+        // A chest metaphor needs an explicit emotional or relational context; the word
+        // "extraño" by itself is never a health signal. Physical complaints stay on the
+        // physical quantification path even when emotional distress is also present.
+        return emocionAfirmada || contextoRelacionalAfirmado;
+    }
+
+    private static boolean afirmacionEnSegmentos(String texto, String expresion) {
+        return java.util.Arrays.stream(texto.split("[,;.!?\\n]|\\bpero\\b|\\bsin embargo\\b|\\baunque\\b|\\by\\b"))
+                .anyMatch(segmento -> sintomaAfirmado(segmento, expresion));
     }
 
     private static boolean tieneSintomaAfirmado(String segmento) {

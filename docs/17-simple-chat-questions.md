@@ -6,6 +6,15 @@ paciente enumeró, puede preguntar por su inicio o duración y por cuánto lo af
 La cuantificación se limita a esos síntomas: no se pregunta por síntomas nuevos ni
 se traslada a uno la duración, intensidad o impacto informado para otro.
 
+El alcance de salud incluye el malestar emocional y la salud mental. Un relato de
+angustia, tristeza, ansiedad, una pérdida o una relación puede ser un motivo pertinente
+sin que la persona mencione un síntoma físico. En ese caso el bot puede hacer una sola
+invitación abierta para entender qué siente o cómo le afecta; no le exige intensidad
+del dolor, temperatura ni un cuestionario de síntomas físicos. Una metáfora como
+«vacío en el pecho» no se interpreta como dolor torácico o alarma sin afirmación literal.
+Si también afirma un síntoma físico, se mantiene la cuantificación pertinente para ese
+síntoma. Una emoción negada, por sí sola, no activa la entrevista emocional.
+
 Se permite un máximo de cuatro preguntas de cuantificación en toda la entrevista,
 más una única invitación abierta para que el paciente agregue información útil. El
 tope general sigue siendo de ocho respuestas del paciente. Cada turno trata un solo
@@ -56,6 +65,9 @@ desconocidos en la clasificación.
 - La política de cierre de voz usa el historial guardado y las transcripciones
   pendientes. Un resumen de voz no puede inventar datos ni ampliar el conjunto de
   síntomas aportados.
+- El validador permite cerrar relatos emocionales tras una invitación abierta y su
+  respuesta, sin forzar cuantificación física; el preflight semántico conserva la
+  validación de alcance antes de aceptar el cierre.
 - Las alarmas cierran inmediatamente; el resto de los cierres respeta la invitación
   única, el máximo de cuatro preguntas de cuantificación y el tope de ocho respuestas.
 - La clasificación final conserva los datos desconocidos como no informados y aplica

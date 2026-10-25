@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
@@ -21,6 +22,12 @@ import lombok.extern.slf4j.Slf4j;
 @RestControllerAdvice
 @Slf4j
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(AsyncRequestNotUsableException.class)
+    public void handleDisconnectedClient(AsyncRequestNotUsableException e) {
+        // The response is already unusable; writing an error payload would only trigger another failure.
+        log.debug("Cliente desconectado durante respuesta asincrónica: {}", e.getMessage());
+    }
 
     @ExceptionHandler({ CredencialValidaYaExisteException.class, CredencialInvalidaException.class,
             ObraSocialSinValidadorException.class, PacienteNoExisteException.class,

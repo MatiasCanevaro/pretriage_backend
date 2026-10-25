@@ -71,6 +71,9 @@ class SesionVozChatTest {
         String instruccion = setup.path("systemInstruction").path("parts").get(0).path("text").asText();
         assertTrue(instruccion.contains("signos de alarma"));
         assertTrue(instruccion.contains("cuantificar los ya afirmados"));
+        assertTrue(instruccion.contains("No anuncies que la entrevista termino"));
+        assertTrue(instruccion.contains("solo se puede decir despues de esa respuesta exitosa"));
+        assertTrue(instruccion.contains("Si la funcion devuelve \"error\","));
         assertTrue(instruccion.contains("maximo cuatro preguntas"));
         assertTrue(instruccion.replaceAll("\\s+", " ").contains("temperatura solo si la midio"));
         assertTrue(instruccion.contains("finalizar_entrevista"));

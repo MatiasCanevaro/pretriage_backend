@@ -42,11 +42,16 @@ siguiendo la separación entre controles de formato y evaluación de contenido d
 | «Tengo un moratón en la pierna» | Admitir la variante regional; normalizar solo el resultado, conservando el texto original. |
 | Una respuesta breve como «8», después de preguntar intensidad | Interpretar la respuesta en el contexto de la pregunta. |
 | «No tengo dolor de pecho» | Conservar la negación; no convertirla en un síntoma o alarma positiva. |
+| «Siento un vacío en el pecho desde que me dejó» | Admitir el malestar emocional sin exigir un síntoma físico ni convertir la metáfora, por sí sola, en dolor de pecho o alarma. |
 | Un síntoma claro acompañado de una broma o instrucción | Usar únicamente los hechos clínicos comprensibles. |
 
 No se usa una lista cerrada de enfermedades, partes del cuerpo o palabras permitidas.
 El alcance incluye salud mental, exposiciones, medicamentos ingeridos y respuestas
 cotidianas pertinentes. Un error de escritura entendible no debe bloquear la entrevista.
+Un motivo emocional comprensible es suficiente para mantener el caso dentro del alcance;
+la entrevista no debe volver a preguntas físicas solo para habilitar la clasificación.
+Una imagen como «vacío en el pecho» no implica dolor torácico, urgencia o diagnóstico
+sin una afirmación clara de una sensación física.
 
 ## Contratos y persistencia
 
@@ -56,6 +61,9 @@ una aclaración o redirección fija. Esta respuesta administrativa no asigna sí
 prioridad ni diagnóstico y no constituye un fallback clínico. Se identifica con
 `origenRespuesta=CONTROL_CONTEXTO`. Puede repetirse si
 la persona insiste en cambiar de tema, sin activar la corrección por pregunta repetida.
+Una continuación `RELEVANTE` pasa por un verificador independiente que rechaza
+despedidas y mensajes de cierre, incluidos los anuncios de que las respuestas quedaron
+registradas. Solo el cierre orquestado por el backend puede confirmar el registro.
 
 `Mensaje.excluidoDelTriage` es un `Boolean` nullable interno. `true` marca el turno
 de texto rechazado; `null` en registros anteriores equivale a no excluido. El texto
@@ -82,6 +90,9 @@ de 45 segundos. Las continuaciones relevantes también requieren una comprobaci�
 antes de mostrar el texto: esto agrega una solicitud y algo de latencia. Las respuestas
 fijas de alcance no la necesitan. Cada operación mantiene su límite total y una sola
 corrección semántica; los reintentos de transporte conservan sus límites previos.
+El rechazo semántico mantiene su campo y motivo en el log; la capa exterior no debe
+volver a registrarlo como JSON ilegible. Los logs de rechazo no incluyen el texto clínico
+ni el cuerpo de la respuesta del proveedor.
 
 Si no hay hechos clínicos comprensibles, el modelo puede devolver estado no relevante,
 `finalizado=false`, `resultado=null` y evidencia vacía, incluso ante una solicitud

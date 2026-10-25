@@ -486,6 +486,43 @@ class ValidadorCierreEntrevistaVozTest {
         assertTrue(ValidadorCierreEntrevistaVoz.instruccionDatosPendientes(turnos).contains("intensidad del dolor"));
     }
 
+    @Test
+    void motivoEmocionalNoExigeUnaCuantificacionDeSintomasFisicos() {
+        var turnos = List.of(paciente("Siento un vacío en el pecho"),
+                bot("¿Desde cuándo sentís ese vacío?"), paciente("Desde que me dejó."));
+
+        String siguientePaso = ValidadorCierreEntrevistaVoz.instruccionDatosPendientes(turnos);
+
+        assertTrue(siguientePaso.contains("invitacion"), siguientePaso);
+        assertFalse(siguientePaso.contains("intensidad del dolor"), siguientePaso);
+        assertFalse(siguientePaso.contains("temperatura"), siguientePaso);
+
+        var entrevistaCompleta = new ArrayList<>(turnos);
+        entrevistaCompleta.add(bot("¿Hay algo más que quieras contar sobre cómo te sentís?"));
+        entrevistaCompleta.add(paciente("No, la extraño mucho."));
+        assertTrue(ValidadorCierreEntrevistaVoz.tieneDatosSuficientes(entrevistaCompleta));
+        assertFalse(ValidadorCierreEntrevistaVoz.contieneAlarmaLiteral(entrevistaCompleta),
+                "Una metáfora en el pecho no debe convertirse en alarma cardíaca.");
+    }
+
+    @Test
+    void atajoEmocionalNoSeActivaPorAdjetivoNegacionNiSiHaySintomasFisicosAfirmados() {
+        var dolorExtrano = List.of(paciente("Tengo un dolor extraño"));
+        String preguntaSobreDolor = ValidadorCierreEntrevistaVoz.instruccionDatosPendientes(dolorExtrano);
+        assertTrue(preguntaSobreDolor.contains("desde cuándo"), preguntaSobreDolor);
+        assertFalse(preguntaSobreDolor.contains("invitacion"), preguntaSobreDolor);
+
+        var ansiedadNegadaConFiebre = List.of(paciente("No tengo ansiedad, tengo fiebre"));
+        String preguntaSobreFiebre = ValidadorCierreEntrevistaVoz.instruccionDatosPendientes(ansiedadNegadaConFiebre);
+        assertTrue(preguntaSobreFiebre.contains("fiebre"), preguntaSobreFiebre);
+        assertFalse(preguntaSobreFiebre.contains("invitacion"), preguntaSobreFiebre);
+
+        var tristezaConFiebre = List.of(paciente("Siento tristeza y tengo fiebre"));
+        String preguntaSobreSintomas = ValidadorCierreEntrevistaVoz.instruccionDatosPendientes(tristezaConFiebre);
+        assertTrue(preguntaSobreSintomas.contains("fiebre"), preguntaSobreSintomas);
+        assertFalse(preguntaSobreSintomas.contains("invitacion"), preguntaSobreSintomas);
+    }
+
     private static List<TurnoVoz> completa() {
         return List.of(paciente("Dolor de cabeza desde ayer, intensidad 5/10"),
                 paciente("No tengo dificultad para respirar ni dolor de pecho"),

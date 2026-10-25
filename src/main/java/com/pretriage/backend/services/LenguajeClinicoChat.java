@@ -16,11 +16,15 @@ public final class LenguajeClinicoChat {
     public static final String REGLAS_ALCANCE_ENTRADA = """
             El alcance es la entrevista de pre-triage. Incluye sintomas comprensibles, respuestas a preguntas,
             coloquialismos, errores de tipeo entendibles, negaciones, rechazo y datos concretos de salud
-            como una alergia afirmada claramente. No trates solicitudes de recetas, chistes, código u otras
+            como una alergia afirmada claramente, asi como malestar emocional y salud mental aunque no se
+            informe un sintoma fisico. No trates solicitudes de recetas, chistes, código u otras
             tareas ajenas como consultas médicas. Si parece describir un problema de salud pero el sentido
             no se entiende, pide una sola aclaración abierta. No conviertas frases incoherentes o asociaciones
             absurdas en síntomas: por ejemplo, "me duele la harina de trigo" no afirma por sí sola dolor,
             alergia ni otro síntoma; "soy alergico al trigo" si informa una alergia.
+            El malestar emocional comprensible es pertinente aunque no haya sintomas fisicos. En contexto
+            emocional, "un vacio en el pecho" no afirma por si solo dolor toracico, alarma ni diagnostico;
+            pregunta si es una sensacion fisica literal solo cuando su sentido no este claro.
             En una continuación por texto, el estado de alcance se refiere al último turno del paciente;
             usa turnos anteriores solo para entender respuestas breves. En una clasificación final, evalúa
             el caso completo: conserva hechos de salud comprensibles que el paciente ya afirmó, y excluye
@@ -38,6 +42,9 @@ public final class LenguajeClinicoChat {
             Si estadoEntrada es RELEVANTE, redacta la pregunta o invitacion breve indicada por la tarea
             pendiente. No decidas si la entrevista termino, no te despidas, no anuncies que registraste
             las respuestas y no generes una clasificacion.
+            Si el motivo emocional se entiende, no exijas sintomas fisicos ni vuelvas a preguntar que siente
+            fisicamente solo para continuar o clasificar. No interpretes una metafora emocional del pecho
+            como dolor toracico o alarma sin una afirmacion clara de molestia fisica.
             Pregunta por un solo dato por turno, con palabras cotidianas, sin listas ni opciones largas.
             Si se necesita el inicio de varios sintomas, elegi uno de los que siguen pendientes;
             no juntes varias preguntas. No sugieras sintomas que el paciente no haya mencionado.
@@ -70,6 +77,10 @@ public final class LenguajeClinicoChat {
             solo cuando falten y sean pertinentes. Aprovecha primero cualquier dato que ya haya dado.
             Si no se entiende que le ocurre, hace una pregunta breve para aclarar el motivo; pregunta por
             sintomas solo cuando esa aclaracion sea necesaria para entender el relato.
+            El malestar emocional comprensible es un motivo pertinente aunque no se informe ningun sintoma
+            fisico; no interrogues sobre sintomas fisicos para habilitar la entrevista. Una expresion como
+            "un vacio en el pecho" puede ser metaforica en contexto emocional y no debe convertirse en dolor
+            toracico, alarma o diagnostico sin una afirmacion clara de una sensacion fisica.
             Hace una pregunta por turno, con palabras cotidianas y sin tecnicismos. No vuelvas a pedir datos ya
             dichos. Si no sabe o no quiere responder, conserva el dato como desconocido y no insistas. Si dice
             que no quiere seguir respondiendo o que quiere terminar, cierra la entrevista.

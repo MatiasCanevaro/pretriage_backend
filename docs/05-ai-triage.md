@@ -15,6 +15,11 @@ quantification of those already reported. Saying they do not want to continue en
 the interview. The open invitation is never repeated; a clear alarm closes immediately.
 The result schema has no dedicated temperature or impact fields: a measured temperature
 with its unit is retained in symptoms or observations, and impact in observations.
+Mental and emotional distress is within triage scope even when no physical symptom is
+reported. The interview must not demand a physical symptom to continue. Interpret phrases
+such as “un vacío en el pecho” in context; that metaphor alone does not establish chest
+pain, an alarm sign or a diagnosis. Ask whether it is literal physical discomfort only
+when the meaning is unclear.
 
 ## Purpose
 
@@ -90,7 +95,9 @@ documented in [local development](07-local-development.md#chat-history-schema-mi
    set a finalization flag or classification. If Gemini returns an incompatible
    intermediate response or repeats a question, the backend requests at most
    one remote correction for that patient turn, then validates the corrected message
-   itself. Punctuation does not determine validity: zero, two or Unicode question
+   itself. A relevant continuation is also checked for clinical scope and cannot thank
+   the patient for a completed registration, announce that answers were recorded, or
+   otherwise close the interview. Punctuation does not determine validity: zero, two or Unicode question
    marks do not cause an error or a format correction, and Gemini's message is
    preserved as returned for relevant turns. Ambiguous/off-topic turns receive a
    fixed backend clarification or redirection, with no classification or queue update.

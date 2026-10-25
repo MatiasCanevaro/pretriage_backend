@@ -28,6 +28,16 @@ class LenguajeClinicoChatTest {
         assertTrue(reglasEntrevista.contains("pide una aclaracion"));
     }
 
+    @Test
+    void malestarEmocionalNoExigeSintomasFisicosYMetaforasNoSeConviertenEnAlarmas() {
+        String alcance = normalizarPrompt(LenguajeClinicoChat.REGLAS_ALCANCE_ENTRADA);
+        String pregunta = normalizarPrompt(LenguajeClinicoChat.REGLAS_PREGUNTA_TEXTO);
+        String entrevista = normalizarPrompt(LenguajeClinicoChat.REGLAS_ENTREVISTA);
+        assertTrue(alcance.contains("malestar emocional y salud mental aunque no se informe un sintoma fisico"));
+        assertTrue(pregunta.contains("no exijas sintomas fisicos"));
+        assertTrue(entrevista.contains("no debe convertirse en dolor toracico, alarma o diagnostico"));
+    }
+
     private String normalizarPrompt(String prompt) {
         return prompt.toLowerCase(java.util.Locale.ROOT).replaceAll("\\s+", " ");
     }

@@ -13,6 +13,8 @@ is not accepted by the endpoint returns `415` with
 `{"error":"Tipo de contenido no soportado."}`. These generic responses do
 not include request paths or internal exception details. Other endpoint-specific
 status codes and error bodies are documented with their respective flows.
+If a client closes an SSE connection, the backend ends that stream without
+trying to send a JSON error body on the closed `text/event-stream` response.
 
 ## Auth
 
@@ -778,7 +780,7 @@ GET /api/atencion/tiempos/suscribirse/{consultaId}
 Accept: text/event-stream
 ```
 
-Authenticated SSE stream with `tiempo-estimado` and `heartbeat` events. The patient must own the consultation.
+Authenticated SSE stream with `tiempo-estimado` and `heartbeat` events. The patient must own the consultation. When the client disconnects, the stream is removed from the active notifier connections; no response body is written for the closed connection.
 
 ## Reception Admission
 

@@ -3,14 +3,16 @@
 Texto y voz comparten la [política de preguntas sencillas](17-simple-chat-questions.md):
 una pregunta por turno, sin agrupar temas ni leer listas largas. Las correcciones
 del backend mantienen ese estilo. Se permiten hasta cuatro preguntas para cuantificar
-síntomas que el paciente ya enumeró, una invitación abierta y ocho respuestas en total.
+síntomas físicos que el paciente ya enumeró, una invitación abierta y ocho respuestas en total.
 «No tengo otros síntomas» detiene la búsqueda de síntomas nuevos, pero deja completar
 la cuantificación permitida de los ya nombrados; «no quiero seguir» termina la
-entrevista. Gemini Live genera las preguntas y el backend aplica el cierre compartido.
+entrevista. El alcance también incluye malestar emocional; si el relato es emocional,
+no se fuerza un interrogatorio de síntomas físicos. Gemini Live genera las preguntas y
+el backend aplica el cierre compartido.
 
 Integración de la rama `feature/chat-voz-gemini-live`, actualizada el 11 de octubre de 2026 tras incorporar `desarrollo` en ambos repositorios.
 
-Gemini Live ahora conduce la entrevista directamente por voz: escucha, pregunta y responde con audio. Cuando decide cerrar, entrega un resumen al backend. El backend comprueba el alcance de la entrevista antes de aceptar el cierre. Después de la despedida, llama a Gemini REST para preclasificar, guarda la transcripción y actualiza la cola. El chat de texto conserva su flujo de preguntas con Gemini REST. Ambos aplican la [política de alcance y evidencia clínica](20-chat-hardening.md).
+Gemini Live ahora conduce la entrevista directamente por voz: escucha, pregunta y responde con audio. Cuando decide cerrar, entrega un resumen al backend. El backend comprueba el alcance de la entrevista antes de aceptar el cierre. Live no debe anunciar que terminó ni que registró las respuestas antes de recibir la respuesta de `finalizar_entrevista`; si la función devuelve un error, la entrevista sigue abierta. Después de la despedida aceptada, llama a Gemini REST para preclasificar, guarda la transcripción y actualiza la cola. El chat de texto conserva su flujo de preguntas con Gemini REST. Ambos aplican la [política de alcance y evidencia clínica](20-chat-hardening.md).
 
 La versión anterior usaba Gemini para transcribir cada respuesta y leer las preguntas de Ollama. Esa arquitectura quedó reemplazada en voz: ya no existe la función `registrar_respuesta_paciente` ni se emite `turno_bot` por cada respuesta hablada.
 
@@ -23,6 +25,13 @@ originales siguen guardados tal como llegaron. Por ejemplo, `moratón` se guarda
 
 Gemini debe pedir una explicación neutral ante un término desconocido o ambiguo antes
 de tomarlo como un dato clínico, sin adivinar diagnósticos, medicamentos, dosis ni alergias.
+Un relato sobre angustia, tristeza, ansiedad, una pérdida o una relación puede ser un
+motivo de salud pertinente por sí mismo. Una metáfora como «vacío en el pecho» no se
+convierte en dolor torácico ni alarma sin afirmación literal de un síntoma físico. En
+esos relatos el bot puede preguntar brevemente qué siente o cómo le afecta, sin exigir
+intensidad de dolor, temperatura ni otra cuantificación física. Si también informa
+síntomas físicos afirmados, el bot cuantifica esos síntomas según las reglas habituales;
+una emoción negada no habilita el flujo emocional.
 Si se llega al límite de respuestas o hay una alarma clara, lo que siga sin aclararse se
 registra literalmente en observaciones como `termino no aclarado`. La aclaración no
 retrasa el cierre por alarma. Negaciones, intensidad, fechas, ubicación y lateralidad
@@ -93,6 +102,7 @@ sequenceDiagram
     C->>O: Comprobar alcance sin persistir
     O-->>C: RELEVANTE, AMBIGUO o FUERA_DE_CONTEXTO
     Note over B,G: Rechazo o nueva respuesta del paciente: continuar sin cerrar
+    Note over B,G: No anunciar registro ni despedirse antes de recibir la respuesta de la función
     B-->>M: entrevista_finalizada con resumen
     B->>G: audioStreamEnd
     B->>G: toolResponse con mensaje de despedida
@@ -343,3 +353,13 @@ La corrección fue comprobada contra Gemini REST real con una entrevista sintét
 devolvió la pregunta y mantuvo el chat abierto con origen `GEMINI` en unos 2 segundos.
 La primera respuesta y los repositorios fueron simulados; no se modificó el chat
 del usuario. La suite completa pasó 379 pruebas Java usando PostgreSQL aislado.
+
+## Verificación del 25 de octubre de 2026
+
+La suite aislada ejecutó **571 pruebas**, con **4 pruebas opt-in de Gemini omitidas** y
+cero fallos o errores. Las regresiones verifican que Live espere la respuesta de
+`finalizar_entrevista` antes de anunciar registro o despedirse, y que un motivo
+emocional no omita la cuantificación de síntomas físicos afirmados. La desconexión
+esperada de SSE termina sin enviar un cuerpo JSON de error. Estas pruebas usan
+proveedores simulados; no validan audio Live real ni el comportamiento acústico del
+micrófono y parlante.

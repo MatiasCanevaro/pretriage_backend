@@ -5,7 +5,11 @@ import com.pretriage.backend.exceptions.ProveedorIaException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.core.read.ListAppender;
 
 import java.util.List;
 import java.util.Map;
@@ -75,6 +79,72 @@ class HardeningIaClientTest {
         assertTrue(budget.getAllValues().get(1).compareTo(java.time.Duration.ZERO) > 0);
         assertEquals(java.util.Set.of("valido"),
                 ((Map<?, ?>) schema.getAllValues().get(1).get("properties")).keySet());
+    }
+
+    @Test
+    void verificadorPreguntaRechazaAnuncioDeRegistroDuranteContinuacion() {
+        when(gemini.generar(anyString(), anyString(), any(), any()))
+                .thenReturn("{\"mensaje\":\"Gracias. Ya registré tus respuestas para el equipo médico.\",\"estadoEntrada\":\"RELEVANTE\"}",
+                        "{\"valido\":false}");
+
+        var error = assertThrows(ProveedorIaException.class, () -> client.consultarContinuacion("reglas",
+                input("Me siento triste."), java.time.Duration.ofSeconds(3)));
+
+        assertTrue(TriageIaClient.esErrorDeRespuesta(error));
+        ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
+        verify(gemini, times(2)).generar(prompt.capture(), anyString(), any(), any());
+        assertTrue(prompt.getAllValues().get(1).contains("nunca puede anunciar que el caso ya se registro"));
+    }
+
+    @Test
+    void rechazoSemanticoSeRegistraUnaVezConClasificacionCorrectaYSinTextoDelPaciente() {
+        String patientText = "Me duele la garganta. CONFIDENCIAL: no puedo comer desde que me dejó";
+        stubChatResponse(finalResponse("Me duele la garganta."), "{\"valido\":false}");
+        Logger logger = (Logger) LoggerFactory.getLogger(TriageIaClient.class);
+        Level previousLevel = logger.getLevel();
+        ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.setLevel(Level.WARN);
+        logger.addAppender(appender);
+        try {
+            assertThrows(ProveedorIaException.class,
+                    () -> client.consultar("reglas", input(patientText), true));
+        } finally {
+            logger.detachAppender(appender);
+            logger.setLevel(previousLevel);
+        }
+
+        assertEquals(1, appender.list.size());
+        String logged = appender.list.get(0).getFormattedMessage();
+        assertTrue(logged.contains("category=invalid_response field=semantic_verification reason=rejected"));
+        assertFalse(logged.contains("malformed_or_unreadable"));
+        assertFalse(logged.contains("CONFIDENCIAL"));
+        assertFalse(logged.contains("no puedo comer"));
+    }
+
+    @Test
+    void aceptaMalestarEmocionalSinExigirSintomasFisicosNiConvertirMetaforaEnAlarma() {
+        String input = "{\"turnos\":[{\"autor\":\"PACIENTE\",\"contenido\":\"La extraño. Siento un vacío en el pecho desde que me dejó. No puedo comer.\"}]}";
+        String proposal = """
+                {"finalizado":true,"mensaje":"Gracias. Ya registré tus respuestas.","estadoEntrada":"RELEVANTE",
+                 "resultado":{"motivoConsulta":"Vacío en el pecho y dificultad para comer","sintomas":["vacío en el pecho","no poder comer"],"inicio":"desde que me dejó",
+                 "evolucion":"no informado","intensidadDolor":null,"signosAlarma":[],"antecedentesRelevantes":[],
+                 "medicamentos":[],"alergias":[],"posibilidadEmbarazo":"no informado","observaciones":"Relacionado a un evento emocional.",
+                 "nivelPrioridad":2,"requiereAtencionInmediata":false,"recomendacionSeguridad":"Consulte si empeora."},
+                 "evidenciaClinica":[{"campo":"sintomas","valor":"vacío en el pecho","cita":"Siento un vacío en el pecho"},
+                 {"campo":"sintomas","valor":"no poder comer","cita":"No puedo comer"}]}
+                """;
+        stubChatResponse(proposal, "{\"valido\":true}");
+
+        var response = client.consultar("reglas", input, true);
+
+        assertTrue(response.finalizado());
+        assertEquals(List.of(), response.resultado().signosAlarma());
+        assertFalse(response.resultado().requiereAtencionInmediata());
+        ArgumentCaptor<String> verificationPrompt = ArgumentCaptor.forClass(String.class);
+        verify(gemini, times(2)).generar(verificationPrompt.capture(), anyString(), any(), any());
+        assertTrue(verificationPrompt.getAllValues().get(1).contains("no exijas que el paciente mencione uno"));
+        assertTrue(verificationPrompt.getAllValues().get(1).contains("sin inferir dolor toracico, alarma ni diagnostico"));
     }
 
     @Test

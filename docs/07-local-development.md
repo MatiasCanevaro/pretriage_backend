@@ -34,6 +34,11 @@ pretriage.voz.gemini.idioma=${GEMINI_LIVE_LANGUAGE:es-US}
 pretriage.voz.origenes-permitidos=${PRETRIAGE_VOZ_ORIGENES:*}
 ```
 
+The estimated-attention SSE endpoint sends `tiempo-estimado` and `heartbeat`
+events. Closing the client connection is an expected end of that stream: its
+emitter is removed from the notifier and the backend does not try to write a
+JSON error response to the closed connection.
+
 The voice chat (`/api/chat/{id}/voz`) is optional: without `GEMINI_API_KEY` its
 handshake returns `503`; text classification returns a provider error and reception retains its local fallback. Set the key in `.env`
 to enable it, and restrict `PRETRIAGE_VOZ_ORIGENES` (comma-separated origin
