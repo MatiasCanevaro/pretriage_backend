@@ -1147,6 +1147,9 @@ Requires `ADMIN_HOSPITAL` access to `{hospitalId}`. Returns `200` with an array 
 (`fechaHoraInicio DESC`, then `id DESC`). A sector can be inactive. Legacy sessions
 without a direct sector are included through their room's sector. No matching
 sessions returns `[]`; this endpoint does not return finalized history.
+After a successful close, refetching this list excludes the closed session even
+though its record remains in the database. Only the close response returns that
+session in `FINALIZADA`; the list endpoint still excludes it.
 
 Each item contains `id`, `medicoId`, `medicoNombre`, `estado`, `sectorId`,
 `sectorNombre`, `salaId`, `salaNombre`, `codigoEspecialidad`,

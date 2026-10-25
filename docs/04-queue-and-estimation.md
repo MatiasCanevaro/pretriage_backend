@@ -106,6 +106,12 @@ These come from `ConsultaMedica.sector` and tell the patient where to wait once 
 
 ## No Active Doctors
 
+Administrative session closure changes an `ACTIVA`/`PAUSADA` session to
+`FINALIZADA` and releases its doctor/room reservation. The finalized row remains
+in the database for historical references, contributes no active capacity, and
+is excluded from the sector's administrative session list. That list is limited
+to sessions still available to manage; it is not a history query.
+
 If there are no active doctors:
 
 - Estimation still uses one virtual doctor.

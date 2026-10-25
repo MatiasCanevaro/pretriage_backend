@@ -46,9 +46,14 @@ Hospital administrators can list `ACTIVA` and `PAUSADA` sessions under each
 sector in the web configuration panel and explicitly confirm **Finalizar sesión**.
 This also works for inactive sectors and legacy sessions whose sector is inferred
 from their room. Only an administrator authorized for that hospital can do this.
+The list excludes `FINALIZADA`: closing a session removes it from the next list
+response. The persisted session remains available for internal historical
+references; this administrative endpoint does not provide a finalized-session
+history view.
 
-The operation changes either state to `FINALIZADA`, records the end time and an
-audit event, and releases the doctor and room reservation. Pausing does not release
+The close operation changes either state to `FINALIZADA` and returns the updated
+session. It records the end time and an audit event, and releases the doctor and
+room reservation. Pausing does not release
 that reservation. Finalization preserves the session and clinical/queue history;
 it does not cancel or move queued patients. Repeating a successful close preserves
 the original end time and does not add another audit event.

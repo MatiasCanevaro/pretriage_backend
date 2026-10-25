@@ -196,6 +196,7 @@ values in declaration order and `distribucionGravedadMedico` the same 5 + `SIN_R
 - `Sala`
 - `AsignacionMedicoHospital`
 - `RepoSesionesAtencionMedica`
+- `SesionesMedicasAdminService`: sector listing includes only `ACTIVA`/`PAUSADA`, including inactive sectors and legacy room-sector associations. Closing returns a `FINALIZADA` DTO and preserves the database row, but subsequent lists exclude it; this is not a finalized-session history endpoint.
 - `AtencionMedica`
 - `EstadoAtencionMedica`
 - `RepoAtencionesMedicas`

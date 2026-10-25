@@ -306,6 +306,9 @@ To release those reservations without editing the database, sign in as the
 hospital administrator, open the hospital's sector configuration, find the
 **Sesiones médicas** list, and confirm **Finalizar sesión** for the intended
 doctor/room. This also handles paused sessions and sessions in inactive sectors.
+This list contains only `ACTIVA`/`PAUSADA`. After closure the row disappears from
+the refreshed list while the finalized session remains stored in the database;
+the panel does not expose a finalized-session history list through this endpoint.
 The backend checks for called/in-attention patients, preserves history and writes
 an audit event. No sessions are automatically closed at startup. Restart the
 backend after installing the code change and reload the web panel to use the new
