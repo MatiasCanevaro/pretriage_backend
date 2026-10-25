@@ -424,6 +424,14 @@ inserted no duplicate seed rows.
 
 If tests fail with access to `npipe:////./pipe/dockerDesktopLinuxEngine`, run from a shell/session that has Docker Desktop access.
 
+### WebSocket container missing in an integration test
+
+Full-context service integration tests use
+`@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)`.
+The default mock servlet environment has no Jakarta WebSocket `ServerContainer`,
+so it cannot initialize the voice configuration. Keep database access isolated
+with `python scripts/test_backend_isolated.py`, including for password-change tests.
+
 ### Gemini unavailable
 
 Set `GEMINI_API_KEY` in the ignored `.env` and optionally `GEMINI_CHAT_MODEL`.

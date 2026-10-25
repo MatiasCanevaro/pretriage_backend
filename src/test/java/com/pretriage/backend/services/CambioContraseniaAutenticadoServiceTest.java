@@ -2,8 +2,8 @@ package com.pretriage.backend.services;
 
 /*
  * Test de integración del cambio de contraseña autenticado: mockea las
- * respuestas de la API de auth0 usando wireMockServer y usa la base real
- * (docker compose) para verificar el conteo de intentos y el bloqueo.
+ * respuestas de la API de auth0 usando wireMockServer y usa la base
+ * descartable del runner aislado para verificar el conteo de intentos y el bloqueo.
  * */
 
 import ch.qos.logback.classic.Logger;
@@ -51,7 +51,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@SpringBootTest
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @TestPropertySource(properties = {
                 "auth0.client-id.machine-to-machine=AUTH0_M2M_CLIENT_ID",
                 "auth0.client-secret.machine-to-machine=AUTH0_M2M_CLIENT_SECRET",
