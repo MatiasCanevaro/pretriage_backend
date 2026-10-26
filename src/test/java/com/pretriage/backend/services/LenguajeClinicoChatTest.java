@@ -37,7 +37,10 @@ class LenguajeClinicoChatTest {
         String entrevista = normalizarPrompt(LenguajeClinicoChat.REGLAS_ENTREVISTA);
         assertTrue(alcance.contains("malestar emocional y salud mental aunque no se informe un sintoma fisico"));
         assertTrue(pregunta.contains("no exijas sintomas fisicos"));
-        assertTrue(entrevista.contains("no debe convertirse en dolor toracico, alarma o diagnostico"));
+        assertTrue(entrevista.contains("una expresion ambigua como \"un vacio en el pecho\""));
+        assertTrue(entrevista.contains("empieza invitando a describir con palabras propias que quiso decir o que siente"));
+        assertTrue(entrevista.contains("sin ofrecer interpretaciones o categorias"));
+        assertTrue(entrevista.contains("solo si la respuesta aun deja una ambiguedad relevante"));
     }
 
     private String normalizarPrompt(String prompt) {

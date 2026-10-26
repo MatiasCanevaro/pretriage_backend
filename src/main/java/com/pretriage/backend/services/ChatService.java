@@ -587,7 +587,14 @@ public class ChatService {
                 EstadoEntradaChat estado = estadoEntrada(respuesta);
                 if (estado == EstadoEntradaChat.FUERA_DE_CONTEXTO) return respuesta;
                 String error = errorPregunta(chat, respuesta, progreso);
-                if (error == null) return respuesta;
+                if (error == null) {
+                    if (intento > 0) {
+                        log.info("Chat IA question correction accepted chatId={} reason={} semanticReason={}",
+                                chat.getId(), correccion,
+                                motivoCorreccion.map(TriageIaClient.MotivoRechazoSemantico::name).orElse("none"));
+                    }
+                    return respuesta;
+                }
                 if (intento == 1) throw respuestaIaInvalida(chat, error);
                 correccion = error;
                 motivoCorreccion = java.util.Optional.empty();
@@ -615,10 +622,18 @@ public class ChatService {
                                   java.util.Optional<TriageIaClient.MotivoRechazoSemantico> motivoSemantico) {
         String tarea = progreso.instruccionSiguientePaso();
         String correccionTexto = motivoSemantico.map(motivo -> " La pregunta anterior no fue aceptable. "
-                + reglaCorreccionPregunta(motivo)
+                + reglaCorreccionPregunta(motivo, progreso)
                 + " Reescribila como una unica pregunta breve, pertinente al relato, sin repetir la pregunta anterior.")
-                .orElseGet(() -> correccion == null ? "" : " La respuesta anterior no fue aceptable (" + correccion
-                        + "). Reescribila como una unica pregunta breve, pertinente al relato, sin repetir la pregunta anterior.");
+                .orElseGet(() -> {
+                    if (correccion == null) return "";
+                    String reglaLocal = reglaCorreccionObjetivoPregunta(progreso, correccion);
+                    if (reglaLocal != null) {
+                        return " La pregunta anterior no respetó el objetivo de aclaración. " + reglaLocal
+                                + " Reescribila como una única pregunta breve y pertinente, sin repetir la pregunta anterior.";
+                    }
+                    return " La respuesta anterior no fue aceptable (" + correccion + "). Reescribila como una "
+                            + "unica pregunta breve, pertinente al relato, sin repetir la pregunta anterior.";
+                });
         return "Sos un asistente de admision para pre-triage. " + LenguajeClinicoChat.REGLAS_ALCANCE_ENTRADA
                 + tarea + correccionTexto
                 + " Devolve estadoEntrada y mensaje segun el contrato. "
@@ -628,7 +643,33 @@ public class ChatService {
                 + LenguajeClinicoChat.REGLAS_PREGUNTA_TEXTO;
     }
 
-    private String reglaCorreccionPregunta(TriageIaClient.MotivoRechazoSemantico motivo) {
+    private String reglaCorreccionObjetivoPregunta(ProgresoEntrevista progreso, String errorLocal) {
+        ProgresoEntrevista.ObjetivoTurno objetivo = progreso.objetivoDelTurno();
+        if (objetivo.tipo() != ProgresoEntrevista.TipoObjetivo.ACLARACION || objetivo.sintomaId() != null
+                || objetivo.dimension() != null) {
+            return null;
+        }
+        return switch (errorLocal) {
+            case "ACLARACION_FUERA_DE_OBJETIVO", "SINTOMA_NO_COINCIDE", "DIMENSION_NO_COINCIDE" ->
+                    reglaAclaracionInicial();
+            default -> null;
+        };
+    }
+
+    private String reglaCorreccionPregunta(TriageIaClient.MotivoRechazoSemantico motivo,
+                                           ProgresoEntrevista progreso) {
+        boolean aclaracionInicial = progreso.objetivoDelTurno().tipo() == ProgresoEntrevista.TipoObjetivo.ACLARACION
+                && progreso.objetivoDelTurno().sintomaId() == null
+                && progreso.objetivoDelTurno().dimension() == null;
+        if (aclaracionInicial) {
+            String alcance = reglaAclaracionInicial();
+            return switch (motivo) {
+                case COMUNICACION -> "Formula una sola pregunta breve para continuar y no menciones registro, "
+                        + "despedida, clasificación, triage ni resultados. " + alcance;
+                case NEGACION -> "Respeta la negación expresada por la persona. " + alcance;
+                case INFERENCIA, SIN_RESPALDO, INTENSIDAD_NO_DOLOR -> alcance;
+            };
+        }
         return switch (motivo) {
             case COMUNICACION -> "Formula una sola pregunta breve para continuar. No menciones registro, despedida, clasificación, triage ni resultados.";
             case INFERENCIA -> "Pregunta neutralmente solo por el dato pendiente; no asumas causas ni hechos que la persona no informó.";
@@ -636,6 +677,13 @@ public class ChatService {
             case SIN_RESPALDO -> "No presentes como hecho ningún dato nuevo. Pregunta solo por la dimensión pendiente, sin atribuir síntomas no informados.";
             case INTENSIDAD_NO_DOLOR -> "No asocies al dolor la intensidad de una sensación no dolorosa. Pregunta solo por la sensación ya mencionada y la dimensión pendiente.";
         };
+    }
+
+    private String reglaAclaracionInicial() {
+        return "Invita a la persona a explicar con sus propias palabras qué quiso decir o qué siente, "
+                + "retomando de forma neutral la expresión que usó. No la categorices ni le ofrezcas opciones "
+                + "físicas o emocionales; tampoco preguntes por dolor, duración, intensidad, causas o síntomas "
+                + "nuevos todavía.";
     }
 
     private String errorPregunta(Chat chat, TriageAiResponse respuesta, ProgresoEntrevista progreso) {

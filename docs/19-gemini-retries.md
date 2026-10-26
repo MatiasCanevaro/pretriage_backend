@@ -53,6 +53,14 @@ corrección; no abre un presupuesto ni un bucle nuevos. `AMBIGUO` no omite el co
 local del objetivo ni la repetición. Las paráfrasis no reconocidas localmente se
 evalúan semánticamente con el objetivo canónico, sin imponer un formato rígido.
 
+Para una aclaración de motivo todavía indefinido (`ACLARACION` sin síntoma ni
+dimensión), tanto un rechazo local como `INFERENCIA` o `SIN_RESPALDO` reciben
+feedback fijo que pide explicar con palabras propias el sentido de la expresión.
+No pide elegir categorías físicas/emocionales ni cuantificar todavía. Los demás
+objetivos conservan su feedback y sus límites anteriores. Si la segunda propuesta
+se acepta, se registra `Chat IA question correction accepted` con chatId y códigos
+de motivo, sin texto clínico. La aceptación no prueba entrega HTTP ni commit.
+
 Una aclaración necesaria puede repetir la última pregunta si el dato sigue
 pendiente y conserva intentos disponibles. Esto no permite repetir preguntas
 antiguas ni reinicia los presupuestos de

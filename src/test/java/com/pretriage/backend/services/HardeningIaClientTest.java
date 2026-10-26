@@ -56,13 +56,40 @@ class HardeningIaClientTest {
         verify(gemini, times(2)).generar(prompt.capture(), payload.capture(), schema.capture(), any());
         assertTrue(prompt.getAllValues().get(0).contains("recetas"));
         assertTrue(prompt.getAllValues().get(0).contains("objetivoDelTurno"));
-        assertTrue(prompt.getAllValues().get(1).contains("pregunta abierta con vocabulario genérico"));
-        assertTrue(prompt.getAllValues().get(1).contains("No introduzcas"));
-        assertTrue(prompt.getAllValues().get(1).contains("carácter físico o emocional"));
+        String verifierPrompt = normalizarPrompt(prompt.getAllValues().get(1));
+        assertTrue(verifierPrompt.contains("explicar con palabras propias"));
+        assertTrue(verifierPrompt.contains("no ofrezcas interpretaciones ni opciones"));
+        assertTrue(verifierPrompt.contains("ni preguntes por dolor, duracion, intensidad"));
         assertTrue(payload.getAllValues().get(1).contains("\"tipo\":\"ACLARACION\""));
         assertEquals(java.util.Set.of("mensaje", "estadoEntrada"),
                 ((Map<?, ?>) schema.getAllValues().get(0).get("properties")).keySet());
         assertEquals(2, ((Map<?, ?>) schema.getAllValues().get(0).get("properties")).size());
+    }
+
+    @Test
+    void aclaracionInicialAbiertaRetomaLaExpresionSinCategorizarla() {
+        String input = """
+                {"turnos":[{"autor":"PACIENTE","contenido":"Siento un vacío en el pecho."}],
+                 "objetivoDelTurno":{"tipo":"ACLARACION","sintomaId":null,"dimension":null}}
+                """;
+        String openQuestion = "¿Podés explicar con tus palabras qué significa para vos ese vacío en el pecho?";
+        when(gemini.generar(anyString(), anyString(), any(), any()))
+                .thenReturn("{\"mensaje\":\"" + openQuestion + "\",\"estadoEntrada\":\"AMBIGUO\"}",
+                        "{\"valido\":true}");
+
+        var response = client.consultarContinuacion("Aclara el motivo.", input, java.time.Duration.ofSeconds(3));
+
+        assertEquals(openQuestion, response.mensaje());
+        assertEquals(EstadoEntradaChat.AMBIGUO, response.estadoEntrada());
+        ArgumentCaptor<String> prompts = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> payloads = ArgumentCaptor.forClass(String.class);
+        verify(gemini, times(2)).generar(prompts.capture(), payloads.capture(), any(), any());
+        String verifier = normalizarPrompt(prompts.getAllValues().get(1));
+        assertTrue(verifier.contains("retomando de forma neutral la expresion ambigua"));
+        assertTrue(verifier.contains("no ofrezcas interpretaciones ni opciones"));
+        assertTrue(verifier.contains("una distincion concreta solo"));
+        assertTrue(payloads.getAllValues().get(1).contains("Siento un vacío en el pecho."));
+        assertTrue(payloads.getAllValues().get(1).contains(openQuestion));
     }
 
     @Test
@@ -216,6 +243,36 @@ class HardeningIaClientTest {
         verify(gemini, times(2)).generar(verificationPrompt.capture(), anyString(), any(), any());
         assertTrue(verificationPrompt.getAllValues().get(1).contains("no exijas que el paciente mencione uno"));
         assertTrue(verificationPrompt.getAllValues().get(1).contains("sin inferir dolor toracico, alarma ni diagnostico"));
+    }
+
+    @Test
+    void aclaracionEmocionalExplicitaNoSeConvierteEnDolorToracicoNiAlarma() {
+        String input = """
+                {"turnos":[
+                  {"autor":"PACIENTE","contenido":"Siento un vacío en el pecho."},
+                  {"autor":"BOT","contenido":"¿Podés explicar con tus palabras qué significa ese vacío en el pecho?"},
+                  {"autor":"PACIENTE","contenido":"Quiero decir que estoy triste; no me duele el pecho."}]}
+                """;
+        String proposal = """
+                {"finalizado":true,"mensaje":"Gracias. Ya registré tus respuestas para el equipo médico.",
+                 "estadoEntrada":"RELEVANTE",
+                 "resultado":{"motivoConsulta":"Malestar emocional expresado como un vacío en el pecho",
+                 "sintomas":["malestar emocional"],"inicio":"no informado","evolucion":"no informado",
+                 "intensidadDolor":null,"signosAlarma":[],"antecedentesRelevantes":[],"medicamentos":[],
+                 "alergias":[],"posibilidadEmbarazo":"no informado","observaciones":"",
+                 "nivelPrioridad":2,"requiereAtencionInmediata":false,"recomendacionSeguridad":"Consulte si empeora."},
+                 "evidenciaClinica":[{"campo":"sintomas","valor":"malestar emocional","cita":"estoy triste"}]}
+                """;
+        stubChatResponse(proposal, "{\"valido\":true}");
+
+        var result = client.consultar("reglas", input, true);
+
+        assertTrue(result.finalizado());
+        assertEquals(List.of("malestar emocional"), result.resultado().sintomas());
+        assertNull(result.resultado().intensidadDolor());
+        assertEquals(List.of(), result.resultado().signosAlarma());
+        assertFalse(result.resultado().requiereAtencionInmediata());
+        assertEquals(2, result.resultado().nivelPrioridad());
     }
 
     @Test
@@ -414,6 +471,10 @@ class HardeningIaClientTest {
 
     private String input(String patientText) {
         return "{\"turnos\":[{\"autor\":\"PACIENTE\",\"contenido\":\"" + patientText + "\"}]}";
+    }
+
+    private String normalizarPrompt(String prompt) {
+        return prompt.toLowerCase(java.util.Locale.ROOT).replaceAll("\\s+", " ");
     }
 
     private void stubChatResponse(String response, String verification) {

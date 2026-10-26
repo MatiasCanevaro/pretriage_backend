@@ -673,6 +673,112 @@ class ProgresoEntrevistaTest {
     }
 
     @Test
+    void aclaracionAbiertaConservaElObjetivoAmbiguoYUnaRespuestaFisicaNoInventaDolor() {
+        var progreso = ProgresoEntrevista.evaluar(turnos(
+                p("Siento un vacío en el pecho"),
+                b("¿Podés describir con tus palabras qué sentís con ese vacío?"),
+                p("Es físico")));
+
+        assertEquals(ProgresoEntrevista.MotivoCierre.EN_CURSO, progreso.motivoCierre());
+        assertTrue(progreso.datos().stream().anyMatch(d -> d.sintomaId().equals("sensacion:vacio_pecho")
+                && d.estado() == ProgresoEntrevista.Estado.PENDIENTE));
+        assertFalse(progreso.datos().stream().anyMatch(d -> d.sintomaId().startsWith("dolor:")));
+        assertEquals(ProgresoEntrevista.TipoObjetivo.DATO, progreso.objetivoDelTurno().tipo());
+    }
+
+    @Test
+    void aclaracionAbiertaPuedeConfirmarUnMotivoEmocionalSinCrearUnaSensacionFisica() {
+        var progreso = ProgresoEntrevista.evaluar(turnos(
+                p("Siento un vacío en el pecho"),
+                b("¿Podés contarme con tus palabras qué significa para vos ese vacío?"),
+                p("Es emocional")));
+
+        assertEquals(ProgresoEntrevista.MotivoCierre.EN_CURSO, progreso.motivoCierre());
+        assertTrue(progreso.datos().isEmpty());
+        assertEquals(ProgresoEntrevista.TipoObjetivo.INVITACION, progreso.objetivoDelTurno().tipo());
+    }
+
+    @Test
+    void negacionDeUnaCategoriaNoAfirmaLaCategoriaOpuesta() {
+        for (String respuesta : List.of("No es físico", "No es emocional")) {
+            var progreso = ProgresoEntrevista.evaluar(turnos(
+                    p("Siento un vacío en el pecho"),
+                    b("¿Podés describir con tus palabras qué sentís con ese vacío?"),
+                    p(respuesta)));
+
+            assertTrue(progreso.requiereAclaracion(), respuesta);
+            assertTrue(progreso.datos().isEmpty(), respuesta);
+            assertEquals(ProgresoEntrevista.TipoObjetivo.ACLARACION, progreso.objetivoDelTurno().tipo(), respuesta);
+        }
+    }
+
+    @Test
+    void aclaracionAbiertaAceptaUnSintomaRealSinConvertirLaFraseAmbiguaEnHallazgo() {
+        var progreso = ProgresoEntrevista.evaluar(turnos(
+                p("Siento un vacío en el pecho"),
+                b("¿Podés contarme con tus palabras qué te pasa?"),
+                p("También me duele la cabeza")));
+
+        assertTrue(progreso.datos().stream().anyMatch(d -> d.sintomaId().equals("dolor:cabeza")));
+        assertFalse(progreso.datos().stream().anyMatch(d -> d.sintomaId().equals("sensacion:vacio_pecho")));
+    }
+
+    @Test
+    void aclaracionAbiertaNoReemplazaElObjetivoDeUnDatoPendiente() {
+        var progreso = ProgresoEntrevista.evaluar(turnos(
+                p("Tengo tos"), b("¿Desde cuándo empezó la tos?"), p("Messi 8"),
+                b("¿Desde cuándo empezó la tos?"), p("Desde ayer")));
+
+        assertEquals("desde ayer", dato(progreso, "sintoma:tos", ProgresoEntrevista.Dimension.INICIO).valor());
+        assertEquals(ProgresoEntrevista.TipoObjetivo.DATO, progreso.objetivoDelTurno().tipo());
+    }
+
+    @Test
+    void respuestaEmocionalTrasContextoExcluidoPermiteInvitacionSinCrearSensacion() {
+        var progreso = ProgresoEntrevista.evaluarConContexto(List.of(
+                new ProgresoEntrevista.Turno(AutorMensaje.PACIENTE, "Siento un vacío en el pecho", true),
+                bt("¿Podés describir con tus palabras qué sentís?"),
+                pt("Es emocional", false)));
+
+        assertTrue(progreso.datos().isEmpty());
+        assertEquals(ProgresoEntrevista.TipoObjetivo.INVITACION, progreso.objetivoDelTurno().tipo());
+    }
+
+    @Test
+    void respuestaFisicaSinRepetirDatoExcluidoNoConfirmaSensacion() {
+        var progreso = ProgresoEntrevista.evaluarConContexto(List.of(
+                new ProgresoEntrevista.Turno(AutorMensaje.PACIENTE, "Siento un vacío en el pecho", true),
+                bt("¿Podés describir con tus palabras qué sentís?"),
+                pt("Es físico", false)));
+
+        assertTrue(progreso.datos().isEmpty());
+        assertTrue(progreso.requiereAclaracion());
+        assertEquals(ProgresoEntrevista.TipoObjetivo.ACLARACION, progreso.objetivoDelTurno().tipo());
+    }
+
+    @Test
+    void reiteracionAutocontenidaDelVacioFisicoEsUnHallazgoDelPaciente() {
+        var progreso = ProgresoEntrevista.evaluarConContexto(List.of(
+                new ProgresoEntrevista.Turno(AutorMensaje.PACIENTE, "Siento un vacío en el pecho", true),
+                bt("¿Podés describir con tus palabras qué sentís?"),
+                pt("La sensación de vacío es física", false)));
+
+        assertTrue(progreso.datos().stream().anyMatch(d -> d.sintomaId().equals("sensacion:vacio_pecho")));
+        assertFalse(progreso.datos().stream().anyMatch(d -> d.sintomaId().startsWith("dolor:")));
+    }
+
+    @Test
+    void negacionDeLaCategoriaFisicaNoRegistraElVacioComoSensacionFisica() {
+        for (String relato : List.of("Siento un vacío que no es una sensación física",
+                "Siento un vacío en el pecho que no es físico")) {
+            var progreso = ProgresoEntrevista.evaluar(turnos(p(relato)));
+
+            assertTrue(progreso.datos().isEmpty(), relato);
+            assertTrue(progreso.requiereAclaracion(), relato);
+        }
+    }
+
+    @Test
     void limiteDeTurnosCierraComoParcialYNoComoDatosResueltos() {
         var turnos = new java.util.ArrayList<ProgresoEntrevista.Turno>();
         List<String> motivos = List.of("Tengo fiebre", "Tengo tos", "Tengo náuseas", "Tengo vómitos",

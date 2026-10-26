@@ -123,6 +123,69 @@ class ChatAutomaticRetryTest {
     }
 
     @Test
+    void aclaracionInicialCorrigeLaPreguntaDeOpcionesAUnaInvitacionAbierta() throws Exception {
+        chat.agregarMensaje(new com.pretriage.backend.model.chat.Mensaje(
+                "¿Cuál es el principal motivo de consulta?", AutorMensaje.BOT, null));
+        String binaryQuestion = "¿Ese vacío en el pecho es una sensación física o emocional?";
+        String openQuestion = "¿Podés explicar con tus palabras qué significa para vos ese vacío en el pecho?";
+        var rejectedByObjective = envelope(mapper.writeValueAsString(Map.of(
+                "mensaje", binaryQuestion, "estadoEntrada", "AMBIGUO")));
+        var corrected = envelope(mapper.writeValueAsString(Map.of(
+                "mensaje", openQuestion, "estadoEntrada", "AMBIGUO")));
+        var requests = responderConCaptura(List.of(response(200, rejectedByObjective),
+                response(200, envelope("{\"valido\":true}")), response(200, corrected),
+                response(200, envelope("{\"valido\":true}"))));
+
+        var result = service().enviarMensaje("7", "patient", "Siento un vacío en el pecho");
+
+        assertEquals(openQuestion, result.respuesta().contenido());
+        assertTrue(chat.getMensajes().stream().noneMatch(m -> binaryQuestion.equals(m.getContenido())));
+        assertEquals(1, chat.getMensajes().stream().filter(m -> m.getAutor() == AutorMensaje.PACIENTE
+                && "Siento un vacío en el pecho".equals(m.getContenido())).count());
+        assertEquals(1, chat.getMensajes().stream().filter(m -> m.getAutor() == AutorMensaje.BOT
+                && openQuestion.equals(m.getContenido())).count());
+        assertEquals(4, requests.size(), "una redacción/verificación y una única corrección/verificación");
+
+        String correctionPrompt = normalizarPrompt(requestSystemInstruction(requests.get(2)));
+        assertTrue(correctionPrompt.contains("invita a la persona a explicar con sus propias palabras"));
+        assertTrue(correctionPrompt.contains("no la categorices ni le ofrezcas opciones físicas o emocionales"));
+        assertTrue(correctionPrompt.contains("tampoco preguntes por dolor, duración, intensidad, causas o síntomas nuevos todavía"));
+        assertFalse(correctionPrompt.contains("aclaracion_fuera_de_objetivo"),
+                "El rechazo local se convierte en feedback legible, no en un código para Gemini.");
+        assertFalse(requestBody(requests.get(2)).contains(binaryQuestion),
+                "La respuesta rechazada no se adjunta como instrucción en el reintento.");
+        verify(chats, times(1)).save(chat);
+        verifyNoInteractions(queue);
+    }
+
+    @Test
+    void rechazoSemanticoDeCategoriasEnAclaracionGuiaLaMismaAclaracionAbierta() throws Exception {
+        chat.agregarMensaje(new com.pretriage.backend.model.chat.Mensaje(
+                "¿Cuál es el principal motivo de consulta?", AutorMensaje.BOT, null));
+        String binaryQuestion = "¿Ese vacío en el pecho es una sensación física o emocional?";
+        String openQuestion = "¿Podés contarme con tus palabras qué significa para vos ese vacío en el pecho?";
+        var rejected = envelope(mapper.writeValueAsString(Map.of(
+                "mensaje", binaryQuestion, "estadoEntrada", "AMBIGUO")));
+        var corrected = envelope(mapper.writeValueAsString(Map.of(
+                "mensaje", openQuestion, "estadoEntrada", "AMBIGUO")));
+        var requests = responderConCaptura(List.of(response(200, rejected),
+                response(200, envelope("{\"valido\":false,\"motivo\":\"INFERENCIA\"}")),
+                response(200, corrected), response(200, envelope("{\"valido\":true}"))));
+
+        var result = service().enviarMensaje("7", "patient", "Siento un vacío en el pecho");
+
+        assertEquals(openQuestion, result.respuesta().contenido());
+        assertEquals(4, requests.size(), "una redacción/verificación y una única corrección/verificación");
+        String correctionPrompt = normalizarPrompt(requestSystemInstruction(requests.get(2)));
+        assertTrue(correctionPrompt.contains("invita a la persona a explicar con sus propias palabras"));
+        assertTrue(correctionPrompt.contains("no la categorices ni le ofrezcas opciones físicas o emocionales"));
+        assertTrue(correctionPrompt.contains("sin repetir la pregunta anterior"));
+        assertFalse(correctionPrompt.contains("question_semantic_verification"));
+        verify(chats, times(1)).save(chat);
+        verifyNoInteractions(queue);
+    }
+
+    @Test
     void segundoRechazoSemanticoDePreguntaNoDuplicaTurnoNiEncola() throws Exception {
         var firstQuestion = envelope(mapper.writeValueAsString(Map.of(
                 "mensaje", "Ya registré tus respuestas para el equipo médico.", "estadoEntrada", "RELEVANTE")));
@@ -265,6 +328,10 @@ class ChatAutomaticRetryTest {
     private String requestSystemInstruction(HttpRequest request) throws Exception {
         return mapper.readTree(requestBody(request)).path("systemInstruction").path("parts").get(0)
                 .path("text").stringValue();
+    }
+
+    private String normalizarPrompt(String prompt) {
+        return prompt.toLowerCase(java.util.Locale.ROOT).replaceAll("\\s+", " ");
     }
 
     private String requestBody(HttpRequest request) throws Exception {

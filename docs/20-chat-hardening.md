@@ -43,6 +43,7 @@ siguiendo la separación entre controles de formato y evaluación de contenido d
 | «Tengo un moratón en la pierna» | Admitir la variante regional; normalizar solo el resultado, conservando el texto original. |
 | Una respuesta breve como «8», después de preguntar intensidad | Interpretar la respuesta en el contexto de la pregunta. |
 | «No tengo dolor de pecho» | Conservar la negación; no convertirla en un síntoma o alarma positiva. |
+| «Siento un vacío en el pecho», sin más contexto | Pedir que describa con palabras propias qué siente, sin proponer dolor, causa ni categorías físicas o emocionales. |
 | «Siento un vacío en el pecho desde que me dejó» | Admitir el malestar emocional sin exigir un síntoma físico ni convertir la metáfora, por sí sola, en dolor de pecho o alarma. |
 | Un síntoma claro acompañado de una broma o instrucción | Usar únicamente los hechos clínicos comprensibles. |
 
@@ -60,6 +61,12 @@ del paciente. La indicación de listas vacías para datos ausentes se limita a l
 listas opcionales. Si Gemini incumple el requisito de síntomas significativos,
 el código fijo `SINTOMAS_AUSENTES` orienta una sola corrección; la evidencia y el
 verificador siguen siendo obligatorios y no se fabrica ningún síntoma localmente.
+
+Generación, corrección y verificación comparten el criterio de aclaración inicial
+abierta. Para `ACLARACION` sin síntoma ni dimensión, el feedback de un rechazo
+local o semántico pide explicar el motivo con palabras propias, en lugar de
+ofrecer categorías o exigir cuantificación prematura. Esto conserva la corrección
+única y los 45 segundos; no genera una pregunta clínica local ni quita controles.
 
 ## Contratos y persistencia
 

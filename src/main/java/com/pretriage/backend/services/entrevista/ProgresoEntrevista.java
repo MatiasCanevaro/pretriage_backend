@@ -372,7 +372,15 @@ public final class ProgresoEntrevista {
                     Hallazgo vacuum = new Hallazgo("sensacion:vacio_pecho", "la sensación de vacío", false, 0, 0, text);
                     motivoClinico = true;
                     hechosClinicos = true;
+                    ultimoTurnoPacienteTieneHechos = true;
                     advanced |= ensureObjectives(vacuum);
+                }
+                boolean clasificacionEmocional = affirmatedPattern(text, Pattern.compile("\\b(?:emocional|emocionalmente)\\b"));
+                if (clasificacionEmocional) {
+                    emocional = true;
+                    hechosClinicos = true;
+                    ultimoTurnoPacienteTieneHechos = true;
+                    advanced = true;
                 }
                 advanced |= !symptoms(text).isEmpty() || affirmatedPattern(text, EMOTION);
                 if (!advanced) requiereAclaracion = true;
@@ -391,6 +399,10 @@ public final class ProgresoEntrevista {
         }
 
         private void processBot(String text) {
+            // Preserve the unresolved objective from the patient turn that led to this prompt.
+            // An open clarification is still an interview task even when it has no dimension words.
+            boolean aclaracionAbiertaPendiente = requiereAclaracion && tareaAclarar == null
+                    && !motivoClinico && !emocional;
             requiereAclaracion = false;
             if (INVITATION.matcher(text).find()) {
                 if (!respondioInvitacion) {
@@ -402,6 +414,10 @@ public final class ProgresoEntrevista {
                 return;
             }
             if (text.contains("emocional") && (text.contains("fisic") || text.contains("corporal"))) {
+                tarea = new Tarea(TipoTarea.ACLARACION, List.of(), text);
+                return;
+            }
+            if (aclaracionAbiertaPendiente) {
                 tarea = new Tarea(TipoTarea.ACLARACION, List.of(), text);
                 return;
             }
@@ -421,6 +437,10 @@ public final class ProgresoEntrevista {
             }
             Dimension dimension = askedDimension(text);
             if (dimension == null) {
+                if (hasQuestionForm(text) && tareaAclarar == null && !motivoClinico && !emocional) {
+                    tarea = new Tarea(TipoTarea.ACLARACION, List.of(), text);
+                    return;
+                }
                 tarea = new Tarea(TipoTarea.NINGUNA, List.of(), text);
                 return;
             }
@@ -865,11 +885,13 @@ public final class ProgresoEntrevista {
             }
             Matcher vacuum = Pattern.compile("\\b(?:vacio|vacia)\\b").matcher(segment);
             while (vacuum.find()) {
-                if (!affirmedAt(text, segmentStart + vacuum.start()) || !segment.matches(".*\\b(?:pecho|cuerpo)\\b.*")) continue;
-                if (segment.matches(".*\\b(?:fisic[oa]|corporal)\\b.*")) {
-                    String id = "sensacion:vacio_pecho";
-                    found.putIfAbsent(id, new Hallazgo(id, "la sensación de vacío", false, vacuum.start(), vacuum.end(), segment));
-                }
+                boolean afirmacionFisica = affirmatedPattern(segment,
+                        Pattern.compile("\\b(?:fisic[oa]|fisicamente|corporal)\\b"));
+                boolean autodescriptiva = segment.matches(".*\\bsensacion\\b.*") && afirmacionFisica;
+                if (!affirmedAt(text, segmentStart + vacuum.start())
+                        || !(segment.matches(".*\\b(?:pecho|cuerpo)\\b.*") && afirmacionFisica || autodescriptiva)) continue;
+                String id = "sensacion:vacio_pecho";
+                found.putIfAbsent(id, new Hallazgo(id, "la sensación de vacío", false, vacuum.start(), vacuum.end(), segment));
             }
             if (!hasSeparator) break;
             segmentStart = separators.end();

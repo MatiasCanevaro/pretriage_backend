@@ -129,6 +129,16 @@ Cerrar la entrevista y completar la clasificación siguen siendo operaciones
 distintas. Un fallo del proveedor conserva las respuestas y el estado `FALLIDA`;
 el reintento de procesamiento no vuelve a entrevistar ni agrega un mensaje.
 
+Una pregunta abierta para aclarar el motivo conserva esa tarea aunque no contenga
+las palabras «físico» o «emocional». Solo se usa esta asociación cuando aún no hay
+un motivo comprensible; no desplaza la pregunta de un dato pendiente de síntomas
+ya conocidos. Una respuesta emocional afirmativa permite continuar sin crear
+una sensación física, y negar una categoría no afirma su opuesta.
+
+Si el turno original quedó excluido, no se recupera como evidencia ni se reenvía
+al proveedor. Una nueva respuesta debe aportar por sí misma los hechos que se
+clasificarán. El contexto del bot tampoco puede sustituir una cita del paciente.
+
 ## Contexto y persistencia
 
 Los turnos marcados `excluidoDelTriage=true` se usan localmente para medir los

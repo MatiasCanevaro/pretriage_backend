@@ -189,6 +189,36 @@ the replacement passed validation; it does not establish HTTP delivery or commit
 success. Inspect the persisted chat status and client error before concluding
 that a recoverable warning forced a manual retry.
 
+At the start of an ambiguous interview, local
+`ACLARACION_FUERA_DE_OBJETIVO` alternating with semantic `INFERENCIA` can indicate
+that the proposed clarification itself introduces a category or quantifies an
+unclear complaint. The generation, correction and verification policies now all
+start with an open clarification in the patient's words. This is separate from
+the final-classification correction. `Chat IA question correction accepted`
+identifies an automatically recovered question rejection; it contains only safe
+codes. Failed interviewing turns still roll back, so inspect the draft/client
+error instead of inferring their text from the saved history. In this failure
+path, a chat containing only the greeting means the attempted patient turn was
+not committed.
+
+Verified on 2026-10-25 after the open-clarification correction: the isolated suite
+reported 677 tests, no failures or errors, and 11 skipped tests. A separate opt-in
+Gemini check used a fictitious ambiguous complaint, an emotional clarification
+and a final negative reply. It reached `COMPLETADA` with `DATOS_RESUELTOS`; one
+rejected proposal was recovered automatically without resending a patient turn.
+The real chat message was tested locally with a simulated provider, not sent by
+this diagnostic to Gemini. The application database was read only. Restart the
+backend to load this correction; no mobile rebuild is needed.
+
+```powershell
+python -B scripts/test_backend_isolated.py
+./mvnw.cmd "-Dtest=ChatHardeningGeminiSmokeTest#chatRealAclaraAbiertamenteAntesDeRegistrarUnMotivoEmocional" "-Dpretriage.gemini.hardening.live=true" "-Dspring.docker.compose.enabled=false" test
+```
+
+The opt-in check needs `GEMINI_API_KEY` in the process environment and makes real
+provider requests with synthetic data. It uses mocked repositories and queue
+services, without starting Spring or connecting to the application database.
+
 When transport errors coexist with `invalid_response`, `repeated_question` or
 `premature_or_unsafe_closure`, do not attribute all delays to the provider. A
 single message correction or final-result correction adds another Gemini request

@@ -46,6 +46,11 @@ La única sustitución local es la variante regional `moratón` y su plural en e
 no modifica la clasificación, no incorpora un fallback y no reescribe chats finalizados.
 Más detalles en [AI triage](05-ai-triage.md#clinical-language-normalization).
 
+Las reglas compartidas empiezan una aclaración de motivo ambiguo con una pregunta
+abierta para describir qué siente o qué quiso decir. No ofrecen de entrada las
+categorías física/emocional ni fuerzan dolor, duración o intensidad. La respuesta
+a esa aclaración mantiene el vínculo contextual sin inferir hechos del bot.
+
 ## Respuesta final incompleta de Gemini REST
 
 La clasificación posterior al cierre de Live exige una respuesta REST completa

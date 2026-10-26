@@ -450,6 +450,80 @@ class ChatHardeningGeminiSmokeTest {
         assertFalse(String.join("\n", capturedPrompts).contains("DETALLE_INVENTADO_SMOKE"));
     }
 
+    @Test
+    void chatRealAclaraAbiertamenteAntesDeRegistrarUnMotivoEmocional() {
+        Paciente paciente = new Paciente();
+        Chat chat = new Chat(paciente);
+        chat.setId(17L);
+        addBot(chat, "Hola. Contame qué te pasa.");
+
+        RepoChat chats = mock(RepoChat.class);
+        RepoPacientes patients = mock(RepoPacientes.class);
+        RepoConsultasMedicas consultations = mock(RepoConsultasMedicas.class);
+        RepoEntradasCola entries = mock(RepoEntradasCola.class);
+        AtencionHospitalService queue = mock(AtencionHospitalService.class);
+        var providerCalls = new AtomicInteger();
+        var realGenerator = generator();
+        var delegatedGenerator = mock(GeminiJsonClient.class);
+        when(delegatedGenerator.generar(anyString(), anyString(), any(), any(Duration.class)))
+                .thenAnswer(invocation -> {
+                    providerCalls.incrementAndGet();
+                    return realGenerator.generar(invocation.getArgument(0), invocation.getArgument(1),
+                            invocation.getArgument(2), invocation.getArgument(3));
+                });
+        var service = new ChatService(chats, patients, consultations, entries, queue,
+                new TriageIaClient(delegatedGenerator, mapper), mapper);
+        when(chats.findByIdAndPacienteUsuarioAuthId(17L, "auth0|synthetic-smoke"))
+                .thenReturn(java.util.Optional.of(chat));
+        when(chats.save(any(Chat.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(queue.finalizarTriageEIngresarACola(anyString(), any(), anyString(), any(Chat.class)))
+                .thenReturn(new com.pretriage.backend.controllers.dtos.TiempoEstimadoAtencionResponse());
+
+        service.enviarMensaje("17", "auth0|synthetic-smoke",
+                "Tengo una sensación extraña y no sé cómo explicar lo que me pasa");
+
+        assertFalse(chat.isFinalizado());
+        assertEquals(EstadoClasificacionChat.NO_SOLICITADA, chat.getEstadoClasificacion());
+        assertEquals(ProgresoEntrevista.MotivoCierre.EN_CURSO, progress(chat).motivoCierre());
+        assertEquals(ProgresoEntrevista.TipoObjetivo.ACLARACION, progressBeforeLastBot(chat).objetivoDelTurno().tipo(),
+                "el primer turno ambiguo debe conservarse como aclaración abierta");
+        String clarification = Normalizer.normalize(chat.getMensajes().getLast().getContenido(), Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "").toLowerCase(Locale.ROOT);
+        assertFalse(clarification.matches("(?s).*(fisic|corporal|emocional|mental|dolor|intensidad|desde cuando|0 a 10).*"),
+                "la aclaración debe mantenerse abierta, sin cuantificar ni ofrecer causas: " + clarification);
+        verify(queue, never()).finalizarTriageEIngresarACola(anyString(), any(), anyString(), any(Chat.class));
+
+        service.enviarMensaje("17", "auth0|synthetic-smoke",
+                "Es una tristeza muy grande desde que me mudé de ciudad");
+
+        assertFalse(chat.isFinalizado());
+        assertEquals(EstadoClasificacionChat.NO_SOLICITADA, chat.getEstadoClasificacion());
+        assertEquals(ProgresoEntrevista.MotivoCierre.EN_CURSO, progress(chat).motivoCierre());
+        assertEquals(ProgresoEntrevista.TipoObjetivo.INVITACION, progressBeforeLastBot(chat).objetivoDelTurno().tipo(),
+                "la aclaración emocional debe avanzar a una invitación sencilla");
+        verify(queue, never()).finalizarTriageEIngresarACola(anyString(), any(), anyString(), any(Chat.class));
+
+        service.enviarMensaje("17", "auth0|synthetic-smoke", "No");
+
+        assertTrue(chat.isFinalizado());
+        assertEquals(EstadoClasificacionChat.COMPLETADA, chat.getEstadoClasificacion());
+        var saved = mapper.readTree(chat.getResultadoTriageJson());
+        assertEquals("DATOS_RESUELTOS", saved.path("seguimientoEntrevista").path("motivoCierre").asText());
+        assertFalse(saved.path("sintomas").isEmpty(), "la clasificación debe conservar el malestar emocional expresado");
+        assertTrue(saved.path("sintomas").toString().toLowerCase(Locale.ROOT)
+                        .matches("(?s).*(triste|emocional|malestar|depres).*"),
+                "la clasificación debe reflejar el motivo emocional expresado");
+        assertTrue(saved.path("intensidadDolor").isNull(), "el relato no informa dolor ni intensidad");
+        assertTrue(saved.path("signosAlarma").isEmpty(), "la entrevista no refiere signos de alarma");
+        assertFalse(saved.path("requiereAtencionInmediata").asBoolean());
+        assertTrue(saved.path("nivelPrioridad").asInt() >= 1 && saved.path("nivelPrioridad").asInt() <= 5);
+        assertEquals(1, chat.getMensajes().stream().filter(m -> m.getAutor() == AutorMensaje.PACIENTE
+                && m.getContenido().equals("No")).count());
+        verify(queue, times(1)).finalizarTriageEIngresarACola(anyString(), any(), anyString(), any(Chat.class));
+        assertTrue(providerCalls.get() <= 12,
+                "las tres operaciones permiten generación, verificación y como máximo una corrección cada una");
+    }
+
     private static void addBot(Chat chat, String contenido) {
         chat.agregarMensaje(new Mensaje(contenido, AutorMensaje.BOT, null));
     }
@@ -489,6 +563,17 @@ class ChatHardeningGeminiSmokeTest {
                 .map(mensaje -> new ProgresoEntrevista.Turno(mensaje.getAutor(), mensaje.getContenido(),
                         Boolean.TRUE.equals(mensaje.getExcluidoDelTriage())))
                 .toList());
+    }
+
+    private static ProgresoEntrevista progressBeforeLastBot(Chat chat) {
+        List<ProgresoEntrevista.Turno> turns = chat.getMensajes().stream()
+                .map(mensaje -> new ProgresoEntrevista.Turno(mensaje.getAutor(), mensaje.getContenido(),
+                        Boolean.TRUE.equals(mensaje.getExcluidoDelTriage())))
+                .toList();
+        if (!turns.isEmpty() && turns.getLast().autor() == AutorMensaje.BOT) {
+            turns = turns.subList(0, turns.size() - 1);
+        }
+        return ProgresoEntrevista.evaluarConContexto(turns);
     }
 
     private String conversation(List<TurnoVoz> turnos) {

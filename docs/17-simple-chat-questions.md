@@ -18,6 +18,13 @@ entenderla, pero no autoriza a renombrarla como dolor. Una intensidad de una sen
 no dolorosa no se copia en `intensidadDolor`. Una emoción negada, por sí sola, no activa
 la entrevista emocional.
 
+Cuando el motivo todavía es ambiguo, la primera aclaración invita a explicarlo
+con palabras propias y puede retomar la expresión original de forma neutral.
+No ofrece interpretaciones físicas o emocionales ni pregunta todavía por dolor,
+duración, intensidad o causas. Una pregunta concreta posterior solo corresponde
+si la respuesta deja una ambigüedad relevante. Esta aclaración para entender el
+motivo es distinta de la invitación única a agregar información al final.
+
 El cierre normal depende del progreso por síntoma y dato: respondido, desconocido
 o rechazado. Se mantiene una única invitación abierta para que el paciente agregue
 información útil. Ya no se cierra por contar cuatro preguntas u ocho respuestas.
