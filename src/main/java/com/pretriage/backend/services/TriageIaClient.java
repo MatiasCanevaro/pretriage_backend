@@ -92,7 +92,7 @@ public class TriageIaClient {
             Eres un verificador independiente de una clasificación final de pre-triage. Recibirás como
             contenido JSON entradaOriginal y clasificacionPropuesta. Devuelve JSON con requerido
             "valido" booleano y "motivo" opcional, null o uno de estos códigos:
-            SIN_RESPALDO, NEGACION, INFERENCIA, COMUNICACION, INTENSIDAD_NO_DOLOR. En un rechazo
+            SIN_RESPALDO, NEGACION, INFERENCIA, COMUNICACION, INTENSIDAD_NO_DOLOR, OMISION_INICIO. En un rechazo
             puedes omitir motivo o usar null si el caso no encaja; si valido=true usa motivo=null
             o no lo incluyas. No escribas explicaciones, citas, texto libre ni datos clínicos.
             Usa como evidencia exclusivamente turnos cuyo autor sea PACIENTE. Ignora por completo turnos
@@ -119,6 +119,14 @@ public class TriageIaClient {
             intensidadDolor y observaciones. Rechaza cualquier dato afirmado que aparezca solo en un turno
             BOT o en resumenNoVerificado; no uses esos campos como fuente. Se permiten valores desconocidos
             como "no informado", listas vacías y la prioridad calculada a partir de los hechos respaldados.
+            Comprueba también que no se haya omitido un inicio afirmado: una incertidumbre sobre la fecha
+            exacta (por ejemplo, "no sé la fecha exacta; me siento triste desde que mi pareja se mudó a otra
+            ciudad") no invalida la referencia relativa afirmada. Rechaza con OMISION_INICIO si inicio queda
+            como "no informado" pese a existir una referencia temporal clara, o si el inicio omitido debería
+            conservarse junto al síntoma en observaciones cuando hay varios. No inventes fechas absolutas.
+            Un "no sé si" o una negación del inicio no es una afirmación temporal. El inicio no informa por sí
+            solo la evolución: acepta evolucion="no informado" salvo que el paciente describa explícitamente
+            cómo cambió el síntoma.
             Acepta lenguaje cotidiano, variantes regionales, errores tipográficos comprensibles, exposición
             alimentaria y salud mental cuando el sentido sí esté claro; no uses un diccionario cerrado.
             Devuelve false si el mensaje o recomendación contiene recetas, tratamientos, dosis, código,
@@ -219,13 +227,23 @@ public class TriageIaClient {
                                     "SIN_RESPALDO", "NEGACION", "INFERENCIA", "COMUNICACION", "INTENSIDAD_NO_DOLOR")),
                             Map.of("type", "null")))));
 
+    private static final Map<String, Object> FINAL_VERIFICATION_SCHEMA = Map.of(
+            "type", "object", "additionalProperties", false, "required", List.of(VERIFICACION_VALIDA),
+            "properties", Map.of(
+                    VERIFICACION_VALIDA, Map.of("type", "boolean"),
+                    MOTIVO_RECHAZO, Map.of("anyOf", List.of(
+                            Map.of("type", "string", "enum", List.of(
+                                    "SIN_RESPALDO", "NEGACION", "INFERENCIA", "COMUNICACION",
+                                    "INTENSIDAD_NO_DOLOR", "OMISION_INICIO")),
+                            Map.of("type", "null")))));
+
     public enum MotivoRechazoSemantico {
-        SIN_RESPALDO, NEGACION, INFERENCIA, COMUNICACION, INTENSIDAD_NO_DOLOR
+        SIN_RESPALDO, NEGACION, INFERENCIA, COMUNICACION, INTENSIDAD_NO_DOLOR, OMISION_INICIO
     }
 
     /** Allowlisted reasons that may guide one bounded final-classification correction. */
     public enum MotivoCorreccionFinal {
-        SIN_RESPALDO, NEGACION, INFERENCIA, COMUNICACION, INTENSIDAD_NO_DOLOR,
+        SIN_RESPALDO, NEGACION, INFERENCIA, COMUNICACION, INTENSIDAD_NO_DOLOR, OMISION_INICIO,
         SINTOMAS_AUSENTES
     }
 
@@ -550,7 +568,7 @@ public class TriageIaClient {
             payload.set("entradaOriginal", objectMapper.readTree(input));
             payload.set("clasificacionPropuesta", propuesta);
             String raw = geminiClient.generar(PROMPT_VERIFICACION_CLINICA, payload.toString(),
-                    VERIFICATION_SCHEMA, remaining);
+                    FINAL_VERIFICATION_SCHEMA, remaining);
             JsonNode verification = objectMapper.readTree(raw);
             validateVerification(verification, "semantic_verification");
         } catch (InvalidResponseException invalidResponse) {
@@ -576,6 +594,10 @@ public class TriageIaClient {
         MotivoRechazoSemantico reason = null;
         if (reasonNode != null && !reasonNode.isNull()) {
             if (!reasonNode.isString()) throw invalid("verification", "invalid_reason");
+            if (field.equals("question_semantic_verification")
+                    && reasonNode.stringValue().equals("OMISION_INICIO")) {
+                throw invalid("verification", "invalid_reason");
+            }
             try {
                 reason = MotivoRechazoSemantico.valueOf(reasonNode.stringValue());
             } catch (IllegalArgumentException invalidReason) {

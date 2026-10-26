@@ -118,6 +118,14 @@ el cierre parcial conserva los datos no obtenidos; sin hechos clínicos comprens
 se cierra sin resultado ni actualización de cola. Véase
 [cierre por datos resueltos](21-cierre-por-datos-resueltos.md).
 
+La proyección para el proveedor también omite las respuestas `BOT` asociadas a un
+turno `PACIENTE` excluido, hasta el siguiente turno admitido. Así una pregunta que
+citaba la expresión ambigua no vuelve a exponerla indirectamente. Esos mensajes
+siguen visibles y disponibles para el progreso local; no se reescribe el historial
+ni se cambia la exclusión. Las preguntas posteriores a pacientes admitidos sí
+conservan su función de contexto para respuestas breves. Texto, clasificación de
+voz y reintentos comparten esta proyección del historial persistido.
+
 La entrada REST de clasificación es JSON con `turnos` de `autor` y `contenido`;
 voz puede añadir `resumenNoVerificado`. Las citas solo pueden proceder de turnos
 `PACIENTE` admitidos, nunca de preguntas `BOT` ni del resumen generado por Live.
@@ -131,9 +139,23 @@ Una cita existente por sí sola no prueba que respalde el síntoma. La segunda
 comprobación final evalúa coherencia, afirmación frente a negación, correspondencia
 con el relato y alcance del texto dirigido al paciente. También revisa el origen de
 los demás hechos atribuidos al paciente, como alergias, medicamentos y antecedentes.
+Un pronombre como «lo» o «eso», sin antecedente en un turno admitido del paciente,
+no permite recuperar un síntoma expresado solo por el bot o en texto excluido.
+Una relación o un malestar emocional directamente expresados sí pueden aportar
+hechos propios, sin añadir una manifestación física.
+
+La comprobación también exige conservar un inicio relativo explícito: desconocer
+la fecha exacta no elimina una cláusula afirmada como «desde que…». No se inventa
+una fecha ni se transforma la referencia en una duración. Si hay inicios distintos,
+se conserva su asociación con cada síntoma en observaciones. La evolución sigue
+sin informar si el paciente no describió un cambio.
+
 La respuesta de verificación requiere `valido` y admite el código opcional acotado
-`SIN_RESPALDO`, `NEGACION`, `INFERENCIA`, `COMUNICACION` o `INTENSIDAD_NO_DOLOR`,
-o bien `null`; también puede omitirse. La forma antigua que contiene solo `valido`
+`SIN_RESPALDO`, `NEGACION`, `INFERENCIA`, `COMUNICACION` o `INTENSIDAD_NO_DOLOR`.
+Solo la verificación final admite además `OMISION_INICIO`: orienta la corrección
+para conservar un inicio explícito sin inventar fechas ni evolución. El esquema
+de preguntas no incluye ese código y su validador lo rechaza si apareciera.
+El motivo puede ser `null` u omitirse. La forma antigua que contiene solo `valido`
 sigue aceptándose. El código puede
 orientar el único intento de corrección del cierre; no se usa texto libre del proveedor,
 no se guarda en el resultado clínico y un código no nulo junto a `valido=true` se

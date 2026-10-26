@@ -55,8 +55,10 @@ class ChatHardeningTest {
         var historialVisible = flujo.service.obtenerChat(CHAT_ID, PACIENTE_ID);
         var historialVoz = flujo.service.obtenerHistorialClinicoVoz(CHAT_ID, PACIENTE_ID);
         assertTrue(historialVisible.mensajes().stream().anyMatch(m -> m.contenido().equals(payload)));
+        assertTrue(historialVisible.mensajes().stream().anyMatch(m -> m.autor().equals("BOT")
+                && m.contenido().contains("¿Qué te está pasando?")));
         assertFalse(historialVoz.stream().anyMatch(m -> m.contenido().equals(payload)));
-        assertTrue(historialVoz.stream().anyMatch(m -> m.autor().equals("BOT")
+        assertFalse(historialVoz.stream().anyMatch(m -> m.autor().equals("BOT")
                 && m.contenido().contains("¿Qué te está pasando?")));
 
         ArgumentCaptor<String> conversacion = ArgumentCaptor.forClass(String.class);

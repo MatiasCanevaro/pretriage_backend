@@ -46,6 +46,9 @@ class TriageIaClientTest {
         assertEquals(java.util.Set.of("mensaje", "estadoEntrada"), properties.keySet());
         assertEquals(java.util.Set.of("valido", "motivo"),
                 ((Map<?, ?>) schema.getAllValues().get(1).get("properties")).keySet());
+        Map<?, ?> questionVerifierProperties =
+                (Map<?, ?>) schema.getAllValues().get(1).get("properties");
+        assertFalse(questionVerifierProperties.get("motivo").toString().contains("OMISION_INICIO"));
         clearInvocations(geminiClient);
         when(geminiClient.generar(anyString(), anyString(), any(), any()))
                 .thenReturn(mapper.writeValueAsString(new TriageAiResponse(true, "Listo", resultado)));
@@ -251,6 +254,26 @@ class TriageIaClientTest {
                 ((Map<?, ?>) responseSchema.getValue().get("properties")).keySet());
         assertEquals(java.util.Set.of("valido", "motivo"),
                 ((Map<?, ?>) verifierSchema.getValue().get("properties")).keySet());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void clasificadorPuedeRecibirCorreccionEspecificaPorInicioAfirmadoOmitido() {
+        when(geminiClient.generar(anyString(), anyString(), any(), any(java.time.Duration.class)))
+                .thenReturn(response(true, "5", "3", "[\"dolor de garganta\"]"),
+                        "{\"valido\":false,\"motivo\":\"OMISION_INICIO\"}");
+
+        ProveedorIaException error = assertThrows(ProveedorIaException.class,
+                () -> client.consultar("sistema", input(), true));
+
+        assertEquals(java.util.Optional.of(TriageIaClient.MotivoCorreccionFinal.OMISION_INICIO),
+                TriageIaClient.motivoCorreccionFinal(error));
+        ArgumentCaptor<Map<String, Object>> schemas = ArgumentCaptor.forClass(Map.class);
+        verify(geminiClient, times(2)).generar(anyString(), anyString(), schemas.capture(), any());
+        Map<?, ?> verifierProperties = (Map<?, ?>) schemas.getAllValues().get(1).get("properties");
+        Map<?, ?> motive = (Map<?, ?>) verifierProperties.get("motivo");
+        var alternatives = (List<Map<String, Object>>) motive.get("anyOf");
+        assertTrue(alternatives.get(0).get("enum").toString().contains("OMISION_INICIO"));
     }
 
     @Test

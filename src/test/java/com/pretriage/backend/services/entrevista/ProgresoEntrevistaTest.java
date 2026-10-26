@@ -131,6 +131,65 @@ class ProgresoEntrevistaTest {
     }
 
     @Test
+    void incertidumbreDeFechaNoBorraInicioRelativoAfirmadoEnLaRespuestaDeInicio() {
+        var progreso = ProgresoEntrevista.evaluar(turnos(
+                p("Tengo tos"),
+                b("¿Desde cuándo empezó la tos?"),
+                p("No sé la fecha exacta; la tos empezó desde que mi pareja se mudó a otra ciudad.")));
+
+        var inicio = dato(progreso, "sintoma:tos", ProgresoEntrevista.Dimension.INICIO);
+        assertEquals(Estado.RESPONDIDO, inicio.estado());
+        assertEquals("desde que mi pareja se mudo a otra ciudad", inicio.valor());
+    }
+
+    @Test
+    void incertidumbreONegacionDelInicioNoSeConviertenEnTiempoAfirmado() {
+        var incierto = ProgresoEntrevista.evaluar(turnos(
+                p("Tengo tos"), b("¿Desde cuándo empezó la tos?"),
+                p("No sé si la tos empezó desde que mi pareja se mudó a otra ciudad.")));
+        var inicioIncierto = dato(incierto, "sintoma:tos", ProgresoEntrevista.Dimension.INICIO);
+        assertNotEquals(Estado.RESPONDIDO, inicioIncierto.estado());
+
+        var negado = ProgresoEntrevista.evaluar(turnos(
+                p("Tengo tos"), b("¿Desde cuándo empezó la tos?"),
+                p("La tos no empezó desde que mi pareja se mudó a otra ciudad.")));
+        var inicioNegado = dato(negado, "sintoma:tos", ProgresoEntrevista.Dimension.INICIO);
+        assertNotEquals(Estado.RESPONDIDO, inicioNegado.estado());
+    }
+
+    @Test
+    void fraseExactaConNoLoSeYDesdeQueEllaMeDejoConservaElInicioAfirmado() {
+        var progreso = ProgresoEntrevista.evaluar(turnos(
+                p("Tengo una molestia"), b("¿Desde cuándo empezó esta molestia?"),
+                p("No lo sé, lo siento desde que ella me dejó.")));
+
+        var inicio = dato(progreso, "sintoma:molestia", ProgresoEntrevista.Dimension.INICIO);
+        assertEquals(Estado.RESPONDIDO, inicio.estado());
+        assertEquals("desde que ella me dejo", inicio.valor());
+    }
+
+    @Test
+    void incertidumbreYNegacionSobreEllaNoAfirmanElInicio() {
+        var sentimientoHipotetico = ProgresoEntrevista.evaluar(turnos(
+                p("Tengo una molestia"), b("¿Desde cuándo empezó esta molestia?"),
+                p("No sé si lo siento desde que ella me dejó.")));
+        assertNotEquals(Estado.RESPONDIDO,
+                dato(sentimientoHipotetico, "sintoma:molestia", ProgresoEntrevista.Dimension.INICIO).estado());
+
+        var incierto = ProgresoEntrevista.evaluar(turnos(
+                p("Tengo una molestia"), b("¿Desde cuándo empezó esta molestia?"),
+                p("No sé si empezó desde que ella me dejó.")));
+        assertNotEquals(Estado.RESPONDIDO,
+                dato(incierto, "sintoma:molestia", ProgresoEntrevista.Dimension.INICIO).estado());
+
+        var negado = ProgresoEntrevista.evaluar(turnos(
+                p("Tengo una molestia"), b("¿Desde cuándo empezó esta molestia?"),
+                p("La molestia no empezó desde que ella me dejó.")));
+        assertNotEquals(Estado.RESPONDIDO,
+                dato(negado, "sintoma:molestia", ProgresoEntrevista.Dimension.INICIO).estado());
+    }
+
+    @Test
     void respuestaExcluidaALaPreguntaNaturalNoResuelveNiTransfiereElInicio() {
         var progreso = ProgresoEntrevista.evaluarConContexto(List.of(
                 pt("Me duele la cabeza y tengo fiebre", false),

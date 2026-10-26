@@ -18,6 +18,8 @@ import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.time.Duration;
 import java.text.Normalizer;
@@ -133,6 +135,33 @@ class ChatHardeningGeminiSmokeTest {
         assertNull(response.resultado());
         assertEquals(2, harness.calls().get(), "la propuesta fija debe pasar por el verificador Gemini real");
         verify(harness.mockedGenerator(), times(2)).generar(anyString(), anyString(), any(), any(Duration.class));
+    }
+
+    @Test
+    void verificadorRealRechazaSintomaSoloEnBotAunqueLaCitaSeaDelPaciente() {
+        var harness = clientWithRealVerifier(syntheticEmotionalFinal(
+                "nudo en la garganta", "desde que mi pareja se mudó a otra ciudad"));
+        String input = conversation(List.of(
+                new TurnoVoz(AutorMensaje.BOT, "¿Podés explicar eso de un nudo en la garganta?"),
+                patient("No sé la fecha exacta; me siento triste desde que mi pareja se mudó a otra ciudad.")));
+
+        var error = assertThrows(ProveedorIaException.class,
+                () -> harness.client().consultar(LenguajeClinicoChat.REGLAS_RESULTADO, input, true));
+        assertTrue(TriageIaClient.esErrorDeRespuesta(error), "debe rechazarse el contenido, no fallar el transporte");
+        assertEquals(2, harness.calls().get(), "la cita literal no sustituye la verificación semántica real");
+    }
+
+    @Test
+    void verificadorRealRechazaInicioOmitidoPeseAReferenciaRelativaAfirmada() {
+        var harness = clientWithRealVerifier(syntheticEmotionalFinal("tristeza", "no informado"));
+        String input = conversation(List.of(patient(
+                "No sé la fecha exacta; me siento triste desde que mi pareja se mudó a otra ciudad.")));
+
+        var error = assertThrows(ProveedorIaException.class,
+                () -> harness.client().consultar(LenguajeClinicoChat.REGLAS_RESULTADO, input, true));
+        assertEquals(java.util.Optional.of(TriageIaClient.MotivoCorreccionFinal.OMISION_INICIO),
+                TriageIaClient.motivoCorreccionFinal(error));
+        assertEquals(2, harness.calls().get(), "una fecha desconocida no borra el inicio relativo expresado");
     }
 
     @Test
@@ -484,11 +513,13 @@ class ChatHardeningGeminiSmokeTest {
         AtencionHospitalService queue = mock(AtencionHospitalService.class);
         var providerCalls = new AtomicInteger();
         var providerResponses = new CopyOnWriteArrayList<String>();
+        var providerInputs = new CopyOnWriteArrayList<String>();
         var realGenerator = generator();
         var delegatedGenerator = mock(GeminiJsonClient.class);
         when(delegatedGenerator.generar(anyString(), anyString(), any(), any(Duration.class)))
                 .thenAnswer(invocation -> {
                     providerCalls.incrementAndGet();
+                    providerInputs.add(invocation.getArgument(1));
                     String generated = realGenerator.generar(invocation.getArgument(0), invocation.getArgument(1),
                             invocation.getArgument(2), invocation.getArgument(3));
                     providerResponses.add(generated);
@@ -514,10 +545,13 @@ class ChatHardeningGeminiSmokeTest {
                 .replaceAll("\\p{M}", "").toLowerCase(Locale.ROOT);
         assertFalse(clarification.matches("(?s).*(fisic|corporal|emocional|mental|dolor|intensidad|desde cuando|0 a 10).*"),
                 "la aclaración debe mantenerse abierta, sin cuantificar ni ofrecer causas: " + clarification);
+        assertTrue(Boolean.TRUE.equals(chat.getMensajes().get(1).getExcluidoDelTriage()));
+        int requestsBeforeClarificationReply = providerInputs.size();
+        String omittedBot = chat.getMensajes().getLast().getContenido();
         verify(queue, never()).finalizarTriageEIngresarACola(anyString(), any(), anyString(), any(Chat.class));
 
         service.enviarMensaje("17", "auth0|synthetic-smoke",
-                "No sé, empecé a sentir mucha tristeza cuando mi pareja se mudó a otra ciudad");
+                "No sé la fecha exacta; me siento triste desde que mi pareja se mudó a otra ciudad");
 
         assertFalse(chat.isFinalizado());
         assertEquals(EstadoClasificacionChat.NO_SOLICITADA, chat.getEstadoClasificacion());
@@ -544,6 +578,21 @@ class ChatHardeningGeminiSmokeTest {
         assertTrue(saved.path("sintomas").toString().toLowerCase(Locale.ROOT)
                         .matches("(?s).*(triste|emocional|malestar|depres).*"),
                 "la clasificación debe reflejar el motivo emocional expresado");
+        String onset = Normalizer.normalize(saved.path("inicio").asText(), Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "").toLowerCase(Locale.ROOT);
+        assertTrue(onset.contains("desde que") && onset.contains("pareja") && onset.contains("mudo")
+                && onset.contains("ciudad"), "conservar el inicio relativo sin inventar una fecha: " + onset);
+        assertTrue(saved.path("evolucion").asText().toLowerCase(Locale.ROOT).contains("no informado"),
+                "una referencia de inicio no informa evolución");
+        for (String input : providerInputs.subList(requestsBeforeClarificationReply, providerInputs.size())) {
+            JsonNode original = mapper.readTree(input);
+            if (original.has("entradaOriginal")) original = original.path("entradaOriginal");
+            for (JsonNode turn : original.path("turnos")) {
+                String text = turn.path("contenido").asText();
+                assertNotEquals("Me pasa algo raro y no encuentro palabras para explicarlo", text);
+                assertNotEquals(omittedBot, text, "no reexportar el BOT asociado al turno excluido");
+            }
+        }
         assertTrue(saved.path("intensidadDolor").isNull(), "el relato no informa dolor ni intensidad");
         assertTrue(saved.path("signosAlarma").isEmpty(), "la entrevista no refiere signos de alarma");
         assertFalse(saved.path("requiereAtencionInmediata").asBoolean());
@@ -611,24 +660,41 @@ class ChatHardeningGeminiSmokeTest {
         return mapper.writeValueAsString(Map.of("turnos", turnos));
     }
 
-    private QuestionVerifierHarness clientWithRealQuestionVerifier(String proposedMessage) {
-        var realGenerator = generator();
-        var mockedGenerator = mock(GeminiJsonClient.class);
-        var calls = new AtomicInteger();
+    private VerifierHarness clientWithRealQuestionVerifier(String proposedMessage) {
         String fixedQuestion = mapper.writeValueAsString(Map.of(
                 "mensaje", proposedMessage,
                 "estadoEntrada", EstadoEntradaChat.RELEVANTE.name()));
+        return clientWithRealVerifier(fixedQuestion);
+    }
+
+    private String syntheticEmotionalFinal(String symptom, String onset) {
+        var root = (ObjectNode) mapper.readTree(emptySymptomsFinalResponse());
+        var result = (ObjectNode) root.path("resultado");
+        result.put("motivoConsulta", "malestar emocional");
+        result.putArray("sintomas").add(symptom);
+        result.put("inicio", onset);
+        result.put("observaciones", "");
+        root.set("evidenciaClinica", mapper.valueToTree(List.of(Map.of(
+                "campo", "sintomas", "valor", symptom,
+                "cita", "me siento triste desde que mi pareja se mudó a otra ciudad"))));
+        return mapper.writeValueAsString(root);
+    }
+
+    private VerifierHarness clientWithRealVerifier(String fixedResponse) {
+        var realGenerator = generator();
+        var mockedGenerator = mock(GeminiJsonClient.class);
+        var calls = new AtomicInteger();
         when(mockedGenerator.generar(anyString(), anyString(), any(), any(Duration.class)))
                 .thenAnswer(invocation -> {
-                    if (calls.getAndIncrement() == 0) return fixedQuestion;
+                    if (calls.getAndIncrement() == 0) return fixedResponse;
                     return realGenerator.generar(invocation.getArgument(0), invocation.getArgument(1),
                             invocation.getArgument(2), invocation.getArgument(3));
                 });
-        return new QuestionVerifierHarness(new TriageIaClient(mockedGenerator, mapper), mockedGenerator, calls);
+        return new VerifierHarness(new TriageIaClient(mockedGenerator, mapper), mockedGenerator, calls);
     }
 
-    private record QuestionVerifierHarness(TriageIaClient client, GeminiJsonClient mockedGenerator,
-                                           AtomicInteger calls) { }
+    private record VerifierHarness(TriageIaClient client, GeminiJsonClient mockedGenerator,
+                                   AtomicInteger calls) { }
 
     private static TurnoVoz patient(String contenido) {
         return new TurnoVoz(AutorMensaje.PACIENTE, contenido);

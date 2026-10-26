@@ -19,8 +19,9 @@ with its unit is retained in symptoms or observations, and impact in observation
 Mental and emotional distress is within triage scope even when no physical symptom is
 reported. The interview must not demand a physical symptom to continue. Interpret phrases
 such as “un vacío en el pecho” in context; that metaphor alone does not establish chest
-pain, an alarm sign or a diagnosis. Ask whether it is literal physical discomfort only
-when the meaning is unclear.
+pain, an alarm sign or a diagnosis. When the meaning is unclear, start with an open
+clarification in the patient's own words, without offering physical or emotional
+categories.
 
 ## Purpose
 
@@ -30,9 +31,18 @@ The [chat hardening policy](20-chat-hardening.md) handles off-topic and incohere
 input before accepting clinical facts. Rejected text remains visible in history
 with an internal `Mensaje.excluidoDelTriage` marker and is excluded from clinical
 evidence. Excluded turns still count locally toward attempts and resource budgets;
-their text is not resent to the provider. The final chat classification
-requires patient citations and an independent semantic check within the remaining
+their text is not resent to the provider. BOT replies associated with an excluded
+patient turn are omitted from that projection too, until the next admitted patient
+turn; they cannot indirectly reintroduce the excluded expression. Admitted patient
+turns and their interviewer questions retain their contextual role. The final chat
+classification requires patient citations and an independent semantic check within the remaining
 operation budget; this does not change reception's existing fallback.
+
+An admitted pronoun without an admitted patient antecedent does not establish a
+symptom mentioned only by BOT. Final generation and verification also preserve
+explicit relative onset even if the patient does not know the exact date, while
+leaving evolution unknown unless a change was described. They do not infer dates,
+durations or a physical symptom from an emotional context.
 
 ## Model
 

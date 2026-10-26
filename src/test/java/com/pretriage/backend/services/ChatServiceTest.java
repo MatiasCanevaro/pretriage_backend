@@ -217,6 +217,61 @@ class ChatServiceTest {
         verify(repoChat).save(chat);
         verifyNoInteractions(atencionHospitalService);
     }
+
+    @Test
+    void omiteBotQueCitaTurnoExcluidoPeroConservaBotTrasPacienteAdmitidoEnEntradaDelProveedor() {
+        Paciente paciente = new Paciente();
+        Chat chat = new Chat(paciente);
+        chat.setId(1L);
+        chat.agregarMensaje(new Mensaje("Hola", AutorMensaje.BOT, null));
+        Mensaje excluido = new Mensaje("Siento un vacío en el pecho", AutorMensaje.PACIENTE, paciente);
+        excluido.setExcluidoDelTriage(true);
+        chat.agregarMensaje(excluido);
+        String botQueCitaExcluido = "¿Qué querés decir con ‘siento un vacío en el pecho’?";
+        chat.agregarMensaje(new Mensaje(botQueCitaExcluido, AutorMensaje.BOT, null));
+        chat.agregarMensaje(new Mensaje("Tengo tos", AutorMensaje.PACIENTE, paciente));
+        String botTrasAdmitido = "¿Desde cuándo empezó la tos?";
+        chat.agregarMensaje(new Mensaje(botTrasAdmitido, AutorMensaje.BOT, null));
+
+        when(repoChat.findByIdAndPacienteUsuarioAuthId(1L, "auth0|paciente")).thenReturn(Optional.of(chat));
+        when(repoChat.save(any(Chat.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(triageIaClient.consultarContinuacion(anyString(), anyString(), any()))
+                .thenReturn(new TriageAiResponse(false, "¿La tos te dificulta hacer tus actividades habituales?", null));
+
+        chatService.enviarMensaje("1", "auth0|paciente", "Desde ayer");
+
+        org.mockito.ArgumentCaptor<String> datos = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(triageIaClient).consultarContinuacion(anyString(), datos.capture(), any());
+        assertFalse(contieneTurnoJson(datos.getValue(), "PACIENTE", excluido.getContenido()));
+        assertFalse(contieneTurnoJson(datos.getValue(), "BOT", botQueCitaExcluido));
+        assertTrue(contieneTurnoJson(datos.getValue(), "PACIENTE", "Tengo tos"));
+        assertTrue(contieneTurnoJson(datos.getValue(), "BOT", botTrasAdmitido));
+        assertTrue(contieneTurnoJson(datos.getValue(), "PACIENTE", "Desde ayer"));
+    }
+
+    @Test
+    void historialClinicoDeVozTampocoExponeBotQueCitaTurnoExcluido() {
+        Paciente paciente = new Paciente();
+        Chat chat = new Chat(paciente);
+        chat.setId(1L);
+        chat.agregarMensaje(new Mensaje("Hola", AutorMensaje.BOT, null));
+        Mensaje excluido = new Mensaje("Siento un vacío en el pecho", AutorMensaje.PACIENTE, paciente);
+        excluido.setExcluidoDelTriage(true);
+        chat.agregarMensaje(excluido);
+        String botQueCitaExcluido = "¿Qué querés decir con ‘siento un vacío en el pecho’?";
+        chat.agregarMensaje(new Mensaje(botQueCitaExcluido, AutorMensaje.BOT, null));
+        chat.agregarMensaje(new Mensaje("Me siento triste", AutorMensaje.PACIENTE, paciente));
+        String botTrasAdmitido = "¿Querés contarme algo más?";
+        chat.agregarMensaje(new Mensaje(botTrasAdmitido, AutorMensaje.BOT, null));
+        when(repoChat.findByIdAndPacienteUsuarioAuthId(1L, "auth0|paciente")).thenReturn(Optional.of(chat));
+
+        var history = chatService.obtenerHistorialClinicoVoz("1", "auth0|paciente");
+
+        assertFalse(history.stream().anyMatch(turno -> turno.contenido().equals(excluido.getContenido())));
+        assertFalse(history.stream().anyMatch(turno -> turno.contenido().equals(botQueCitaExcluido)));
+        assertTrue(history.stream().anyMatch(turno -> turno.contenido().equals("Me siento triste")));
+        assertTrue(history.stream().anyMatch(turno -> turno.contenido().equals(botTrasAdmitido)));
+    }
     @Test
     void cierraSinRecorrerChecklistCuandoElRelatoYaTieneContextoUtil() {
         Paciente paciente = new Paciente();

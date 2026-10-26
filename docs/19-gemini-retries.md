@@ -27,6 +27,13 @@ orientación genérica. El sistema no copia texto de rechazo ni citas del provee
 prompt correctivo o a los logs; la corrección comparte el mismo presupuesto de 45 segundos.
 Un segundo rechazo conserva el chat cerrado en `FALLIDA` para procesamiento manual.
 
+`OMISION_INICIO` es un motivo permitido solo en la verificación final. Su feedback
+fijo pide conservar la referencia temporal afirmada, aun si se desconoce la fecha
+exacta, y vincular los distintos inicios con sus síntomas. No copia localmente un
+valor sobre el resultado, no infiere evolución ni amplía los intentos o el plazo.
+La corrección vuelve a pasar por la verificación final. El esquema y el validador
+de preguntas no aceptan ese motivo.
+
 El rechazo local exacto `sintomas:missing_or_uninformative` conserva el código
 permitido `SINTOMAS_AUSENTES` para esa misma corrección, en texto, voz y reintento
 de clasificación. El feedback fijo pide recuperar hechos descriptivos expresos,

@@ -42,11 +42,11 @@ public final class ProgresoEntrevista {
     private record SeleccionObjetivo(ObjetivoTurno objetivo, String etiqueta, int intentos, boolean medicionConfirmada) { }
 
     private static final Pattern NEGACION = Pattern.compile("\\b(?:no|sin|niega|niego|descarta|descarto|ningun[oa]s?)\\b");
-    private static final Pattern AFIRMACION = Pattern.compile("(?:\\b(?:pero|aunque|si|y)\\s+|[,;]\\s*)(?:me|tengo|siento|presento|aparecio|aparecen|noto)\\b");
+    private static final Pattern AFIRMACION = Pattern.compile("(?:\\b(?:pero|aunque|si|y)\\s+|[,;]\\s*)(?:me|tengo|(?:lo\\s+)?siento|presento|aparecio|aparecen|noto)\\b");
     private static final Pattern ORDEN_INVENTAR = Pattern.compile("\\b(?:pon|ponga|agrega|agregue|anade|anada|incluye|incluya|marca|marque|anota|anote|escribe|escriba|registra|registre|inventa|invente)\\b.{0,60}$");
     private static final Pattern FECHA = Pattern.compile("\\b(?:desde\\s+(?:ayer|hoy|anoche|anteayer|el\\s+amanecer|esta\\s+(?:manana|tarde|noche)|que\\s+me\\s+dejo)|desde\\s+hace\\s+(?:un\\s+)?(?:rato|momento|poco)|hace\\s+\\d+\\s*(?:minutos?|horas?|dias?|semanas?|meses?|anos?)|(?:ayer|anoche|anteayer|hoy|el\\s+amanecer|esta\\s+(?:manana|tarde|noche)|hace\\s+\\S+\\s+(?:minutos?|horas?|dias?|semanas?|meses?|anos?))|(?:desde\\s+que\\s+(?:empezo|comenzo|aparecio)))\\b");
     private static final Pattern DURACION_COMPUESTA = Pattern.compile("\\bhace\\s+\\d+\\s*(?:minutos?|horas?|dias?|semanas?|meses?|anos?)(?:\\s+y\\s+\\d+\\s*(?:minutos?|horas?|dias?|semanas?|meses?|anos?))*\\b");
-    private static final Pattern INICIO_RELATIVO = Pattern.compile("\\bdesde\\s+que\\s+(?:me\\s+dejo|se\\s+fue)\\b");
+    private static final Pattern INICIO_RELATIVO = Pattern.compile("\\bdesde\\s+que\\s+[^,;.!?]{1,80}");
     private static final Pattern MEDICION = Pattern.compile("\\b(\\d{2}(?:[.,]\\d)?)\\s*(?:grados?|°(?:\\s*c)?|celsius)\\b|\\btemperatura\\s*(?:de|:)?\\s*(\\d{2}(?:[.,]\\d)?)\\b");
     private static final Pattern IMPACTO = Pattern.compile("\\b(?:mucho|muchisimo|bastante|poco|muy poco|nada|un poco|si|no|me limita|no me limita|me impide|no me impide|no puedo (?:trabajar|dormir|comer|caminar|hacer mis actividades)|me cuesta (?:trabajar|dormir|comer|caminar))\\b");
     private static final Pattern TEMPERATURA_BARE = Pattern.compile("^(\\d{2}(?:[.,]\\d)?)$|^(\\d{2}(?:[.,]\\d)?)[.!]$");
@@ -715,6 +715,10 @@ public final class ProgresoEntrevista {
                     && !genericPainForPainTarget
                     && !text.matches(".*\\b(?:ambos|ambas|los dos|las dos)\\b.*");
             if (explicitlyMentionsOther) return new ResultadoRespuesta(null, null);
+            // A hedge about precision must not erase a relative onset affirmed in the same
+            // answer. A bare unknown still resolves the requested datum as unknown.
+            String onset = target.dimension == Dimension.INICIO ? extractTimeForOnset(text) : null;
+            if (onset != null) return new ResultadoRespuesta(Estado.RESPONDIDO, onset);
             if (UNKNOWN.matcher(text).find()) return new ResultadoRespuesta(Estado.DESCONOCIDO, null);
             if (target.dimension == Dimension.TEMPERATURA && isNegativeMeasurementConfirmation(text)) {
                 return new ResultadoRespuesta(Estado.DESCONOCIDO, null);
@@ -984,9 +988,13 @@ public final class ProgresoEntrevista {
 
     private static String extractTimeForOnset(String text) {
         Matcher relative = INICIO_RELATIVO.matcher(text);
-        if (relative.find()) return relative.group();
+        if (relative.find()) return affirmedAt(text, relative.start()) ? relative.group().strip() : null;
         Matcher compound = DURACION_COMPUESTA.matcher(text);
-        return compound.find() ? compound.group() : extractTime(text);
+        if (compound.find()) return affirmedAt(text, compound.start()) ? compound.group() : null;
+        String time = extractTime(text);
+        if (time == null) return null;
+        Matcher candidate = Pattern.compile(Pattern.quote(time)).matcher(text);
+        return candidate.find() && affirmedAt(text, candidate.start()) ? time : null;
     }
 
     private static String painValue(String text) {

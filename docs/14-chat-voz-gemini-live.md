@@ -158,7 +158,10 @@ de la entrevista y sin escribir mensajes ni estados. `AMBIGUO` pide aclaración 
 respuesta durante esa comprobación invalida la instantánea para autorizar el cierre.
 Los turnos de texto marcados `excluidoDelTriage` permanecen visibles para el paciente,
 pero no se entregan a Live ni cuentan como evidencia de suficiencia o alarmas;
-sí cuentan localmente para los límites de recursos. El resumen
+sí cuentan localmente para los límites de recursos.
+Tampoco se entregan las respuestas BOT asociadas a un turno excluido, hasta el
+siguiente paciente admitido, para no reenviar indirectamente una expresión citada.
+El resumen
 generado por Live no es evidencia del paciente ni autoriza por sí solo una alarma.
 
 Hay un límite total de 30 segundos desde que se acepta la función, independiente del tiempo posterior de Gemini REST. Si vence, falla la conexión o llega un cierre anormal, se guarda la entrevista cerrada con clasificación `FALLIDA` y se emiten `error` y `fin`; no se clasifica una entrevista con cierre sin confirmar. La ventana reduce la pérdida de fragmentos tardíos, pero no garantiza recuperar texto que Google nunca envíe antes del cierre: `turnComplete` no confirma que haya terminado la transcripción de entrada.

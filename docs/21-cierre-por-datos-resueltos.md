@@ -148,6 +148,13 @@ una sensación física, y negar una categoría no afirma su opuesta.
 Si el turno original quedó excluido, no se recupera como evidencia ni se reenvía
 al proveedor. Una nueva respuesta debe aportar por sí misma los hechos que se
 clasificarán. El contexto del bot tampoco puede sustituir una cita del paciente.
+El contexto `BOT` asociado a ese turno excluido se omite también del envío al
+proveedor, para que no vuelva a introducirlo mediante una pregunta que lo citaba.
+
+Para un dato de inicio, una referencia temporal afirmada puede resolver el dato
+aunque la respuesta comience indicando que no conoce la fecha exacta. Las
+referencias negadas o inciertas siguen sin resolverlo. La clasificación conserva
+la relación temporal expresada, sin deducir una fecha ni una evolución.
 
 ## Contexto y persistencia
 

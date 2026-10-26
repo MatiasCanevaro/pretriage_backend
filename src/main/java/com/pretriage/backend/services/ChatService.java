@@ -56,10 +56,16 @@ public class ChatService {
             no significa que haya negado signos de alarma que no menciono. No infieras su ausencia.
             Si no se informo un dato, dejalo como no informado y conserva la prioridad y los flags que
             correspondan a la evidencia disponible.
-            Copia el inicio informado (por ejemplo "desde ayer") sin reemplazarlo por "hoy".
+            Copia el inicio informado (por ejemplo "desde ayer") sin reemplazarlo por "hoy". Una duda
+            sobre la fecha exacta no borra una referencia relativa que el paciente sí afirma: conserva
+            literalmente expresiones como "no sé la fecha exacta; me siento triste desde que mi pareja se mudó
+            a otra ciudad". No inventes una fecha absoluta ni infieras evolución a partir del inicio;
+            evolucion queda como "no informado" salvo que el paciente describa cómo cambió el síntoma.
             Conserva por separado el inicio de cada sintoma; no extiendas el tiempo informado para uno a otro.
             Si los inicios son distintos, vincula cada tiempo con su sintoma en observaciones y no los combines
             en un unico inicio.
+            Si un turno PACIENTE usa solo un pronombre como "lo" o "eso" y no nombró su antecedente en un
+            turno PACIENTE admitido, no recuperes síntomas citados por BOT ni de turnos excluidos.
             Si informa dolor X de 10 o X/10, intensidadDolor es X; solo usa null si no lo informo.
             intensidadDolor solo representa una intensidad que el paciente atribuyo explicitamente al dolor;
             una escala para otra sensacion no dolorosa no es intensidadDolor. Nunca uses este campo para
@@ -169,10 +175,7 @@ public class ChatService {
     @Transactional(readOnly = true)
     public List<MensajeDTO> obtenerHistorialClinicoVoz(String idChat, String idPaciente) {
         Chat chat = buscarChatPropio(idChat, idPaciente);
-        return chat.getMensajes().stream()
-                .filter(mensaje -> !Boolean.TRUE.equals(mensaje.getExcluidoDelTriage()))
-                .map(MapperMensaje::toDTO)
-                .toList();
+        return mensajesLiteralesVoz(chat).stream().map(MapperMensaje::toDTO).toList();
     }
 
     /** Returns the full local progress projection, including exclusion flags; never provider input. */
@@ -466,6 +469,7 @@ public class ChatService {
             case INFERENCIA -> "Quita diagnosticos, causas y sintomas inferidos. Conserva solo lo que el paciente dijo y usa lenguaje descriptivo sin atribuir una causa.";
             case COMUNICACION -> "Corrige el mensaje dirigido al paciente: agradece y confirma el registro, sin mencionar triage, clasificacion, prioridad ni resultados internos.";
             case INTENSIDAD_NO_DOLOR -> "intensidadDolor solo puede contener una escala de dolor que el paciente atribuyo explicitamente al dolor. Una intensidad de otra sensacion no es dolor; usa null si no informo dolor cuantificado.";
+            case OMISION_INICIO -> "Conserva en inicio y observaciones cada referencia temporal afirmada por el paciente, incluso si también dice que no sabe la fecha exacta. No inventes una fecha absoluta ni una evolución. Si hay varios inicios, vincula cada uno con su síntoma.";
             case SINTOMAS_AUSENTES -> "Incluye en sintomas al menos un hecho de salud descriptivo expresado por el paciente, también si describe malestar emocional o de salud mental. Conserva sus palabras y evidencia; no inventes sintomas fisicos ni diagnosticos para llenar el campo. Un vacio en el pecho no es dolor toracico salvo que el paciente afirme dolor. Si no hay un hecho respaldado, no lo fabriques ni lo sustituyas por un marcador.";
         };
     }
@@ -670,7 +674,7 @@ public class ChatService {
                 case COMUNICACION -> "Formula una sola pregunta breve para continuar y no menciones registro, "
                         + "despedida, clasificación, triage ni resultados. " + alcance;
                 case NEGACION -> "Respeta la negación expresada por la persona. " + alcance;
-                case INFERENCIA, SIN_RESPALDO, INTENSIDAD_NO_DOLOR -> alcance;
+                case INFERENCIA, SIN_RESPALDO, INTENSIDAD_NO_DOLOR, OMISION_INICIO -> alcance;
             };
         }
         return switch (motivo) {
@@ -685,6 +689,7 @@ public class ChatService {
             case NEGACION -> "Respeta la negación que ya dio la persona. No la reformules como afirmación y pregunta solo el dato pendiente.";
             case SIN_RESPALDO -> "No presentes como hecho ningún dato nuevo. Pregunta solo por la dimensión pendiente, sin atribuir síntomas no informados.";
             case INTENSIDAD_NO_DOLOR -> "No asocies al dolor la intensidad de una sensación no dolorosa. Pregunta solo por la sensación ya mencionada y la dimensión pendiente.";
+            case OMISION_INICIO -> "Conserva el inicio que el paciente ya afirmó y pregunta únicamente por el dato pendiente, sin inferir una fecha.";
         };
     }
 
@@ -749,9 +754,30 @@ public class ChatService {
     }
 
     private List<TurnoVoz> turnosLiteralesVoz(Chat chat) {
-        return chat.getMensajes().stream()
-                .filter(mensaje -> !Boolean.TRUE.equals(mensaje.getExcluidoDelTriage()))
-                .map(mensaje -> new TurnoVoz(mensaje.getAutor(), mensaje.getContenido())).toList();
+        return mensajesLiteralesVoz(chat).stream()
+                .map(mensaje -> new TurnoVoz(mensaje.getAutor(), mensaje.getContenido()))
+                .toList();
+    }
+
+    /** Excluded patient turns remain in local history; a BOT quote of one cannot re-enter triage input. */
+    private List<Mensaje> mensajesLiteralesVoz(Chat chat) {
+        List<Mensaje> mensajes = new ArrayList<>();
+        boolean omitirBotHastaPacienteAdmitido = false;
+        for (Mensaje mensaje : chat.getMensajes()) {
+            if (mensaje.getAutor() == AutorMensaje.PACIENTE) {
+                if (Boolean.TRUE.equals(mensaje.getExcluidoDelTriage())) {
+                    // A BOT response may quote an excluded patient message. Keep it in stored history
+                    // for conversation/progress accounting, but do not let it re-enter provider input.
+                    omitirBotHastaPacienteAdmitido = true;
+                    continue;
+                }
+                mensajes.add(mensaje);
+                omitirBotHastaPacienteAdmitido = false;
+            } else if (!omitirBotHastaPacienteAdmitido) {
+                mensajes.add(mensaje);
+            }
+        }
+        return List.copyOf(mensajes);
     }
 
     private String construirConversacion(Chat chat) {

@@ -289,10 +289,28 @@ database with Compose disabled. A synthetic real-provider correction also comple
 without adding a patient message. See [the database verification incident](15-test-isolation-incident.md)
 for the earlier shared-database loss and the isolation safeguard introduced afterwards.
 
-The final classification input includes the interviewer questions strictly as
-context, so short patient replies can be associated with the questions they
-answer; interviewer text is not patient evidence. The symptom validator also
+The final classification input includes interviewer questions associated with
+admitted patient turns strictly as context, so short replies can be associated
+with those questions. BOT replies associated with excluded patient turns are
+omitted too: quoting a rejected expression must not reintroduce it into provider
+input. Interviewer text is not patient evidence. The symptom validator also
 recognizes traumatic complaints such as moratón, hematoma and hormigueo.
+
+Verified on 2026-10-26 after correcting indirect reuse of excluded text and onset
+loss: 697 tests were recorded by the isolated suite, with no failures or errors
+and 14 skipped tests. The local regressions check REST and Live history projection,
+preservation of admitted questions, and affirmed versus uncertain/negated onset.
+Three opt-in checks with real Gemini and entirely synthetic text also passed:
+a BOT-only symptom was rejected despite a literal citation from an unrelated
+patient statement, an omitted explicit onset produced `OMISION_INICIO`, and a
+complete emotional interview preserved relative onset without inventing evolution.
+The reported phrase was replayed only in local tests with simulated providers.
+No completed chat, priority, symptom list or application record was rewritten.
+Restart the backend to load the change; no mobile rebuild is needed.
+
+```powershell
+./mvnw.cmd "-Dtest=ChatHardeningGeminiSmokeTest#chatRealAclaraAbiertamenteAntesDeRegistrarUnMotivoEmocional+verificadorRealRechazaSintomaSoloEnBotAunqueLaCitaSeaDelPaciente+verificadorRealRechazaInicioOmitidoPeseAReferenciaRelativaAfirmada" "-Dpretriage.gemini.hardening.live=true" "-Dspring.docker.compose.enabled=false" test
+```
 
 The shared onset validator recognizes `anoche`, `esta mañana`, `esta tarde`
 and `esta noche`, in addition to existing dates/durations. A complete interview
