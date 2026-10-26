@@ -114,9 +114,16 @@ in the first turn without any extra early-finalization allowance.
 Mobile distinguishes backend HTTP failures from transport failures when sending a
 text message. A 5xx reports that the assistant could not respond, 401/403 indicates
 access/session trouble, 404 reports a missing chat, and 429 requests a pause. It
-keeps the draft and manual retry; it does not automatically repeat a POST. Closed
-interviews still recover authoritative state through GET and offer classification
-retry without another patient message. An unfinished failed turn is removed by
+keeps the draft and manual retry when delivery cannot be confirmed; it does not
+automatically repeat a POST. After an ambiguous failure (network, 5xx or 409), the
+updated mobile client checks GET up to four times with short request timeouts and
+bounded backoff. It matches new messages after the ordered pre-send history,
+using author and trimmed content rather than any historical equal text. A confirmed
+new patient/BOT pair or a closed chat clears the resend warning. A saved patient
+turn without a reply exposes a read-only update action instead of another POST.
+Closed interviews recover authoritative classification state and offer processing
+retry on `FALLIDA` without another patient message. Other 4xx errors retain the
+original access/validation error without this polling. An unfinished failed turn is removed by
 `ChatService`, so its absence from message history cannot identify the failure;
 correlate the original backend log at the time of the attempt. Gemini's internal
 REST retries do not replay a mobile patient's POST.
