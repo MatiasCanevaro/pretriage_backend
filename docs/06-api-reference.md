@@ -525,8 +525,10 @@ Server -> client:
 - `{"tipo":"interrumpido"}`: patient spoke over Gemini; drop queued playback.
 - `{"tipo":"turno_completo"}`, `{"tipo":"sesion_por_expirar"}`,
   `{"tipo":"error","mensaje":...}`.
-- `{"tipo":"entrevista_finalizada","resumen":ResumenEntrevistaVoz}`: Gemini closed
-  the interview; microphone audio is ignored from now on.
+- `{"tipo":"entrevista_finalizada","resumen":ResumenEntrevistaVoz}`: the backend
+  confirmed interview closure; microphone audio is ignored from now on. `resumen`
+  is optional: it is absent when the backend recovers a missing Live tool call
+  using the saved transcript and the existing final-classification processor.
 - `{"tipo":"triage_finalizado","respuesta":MensajeDTO,"atencionEstimada":...,"origenRespuesta":...}`:
   Gemini REST preclassification, same meaning as the final
   `ChatTurnResponse` of `POST /api/chat/{id}/mensajes`.
@@ -535,9 +537,17 @@ Server -> client:
 Keep the backend socket open after `entrevista_finalizada`: classification is
 still pending. `triage_finalizado` is sent only after normal Gemini transport
 closure and successful classification/persistence. If that closure cannot be
-confirmed, the backend attempts to save the received transcript for continuation
-and emits `error` and `fin`; they do not imply a finalized triage. A rejected summary keeps
+confirmed after interview closure, the backend attempts to save the received
+transcript as closed with classification `FALLIDA` and emits `error` and `fin`;
+they do not imply a completed classification. A rejected summary keeps
 the interview open and does not emit `entrevista_finalizada`.
+
+When shared progress is terminal and the patient declined the open invitation,
+one tool-call reminder plus bounded timers can recover closure without another
+patient response. Pending data, an unchanged rejected scope preflight or late
+patient input prevent automatic classification. Transcript-only recovery uses
+the existing bounded Gemini REST classification and verification; it creates no
+local clinical summary or priority. See the interaction guide for drain timing.
 
 Voice and text turns share the same `Chat`.
 See [the interaction guide](14-chat-voz-gemini-live.md) for the full sequence,

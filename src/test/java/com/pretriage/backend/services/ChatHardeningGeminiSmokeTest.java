@@ -220,6 +220,71 @@ class ChatHardeningGeminiSmokeTest {
     }
 
     @Test
+    void flujoRealConservaDuracionNaturalDelDolorDeRodillaSinRepreguntarla() {
+        Paciente paciente = new Paciente();
+        Chat chat = new Chat(paciente);
+        chat.setId(10L);
+        addBot(chat, "Hola. Contame qué te pasa.");
+        addPatient(chat, "Me duele la rodilla.", false);
+        addBot(chat, "¿Cuántas horas o días hace que empezó ese dolor?");
+        addPatient(chat, "Hace 3 días y 2 horas.", false);
+        addBot(chat, "¿El dolor de rodilla te dificulta hacer tus actividades habituales?");
+        addPatient(chat, "Sí, me cuesta caminar.", false);
+        addBot(chat, "¿Hay algo más que quieras contar sobre lo que te pasa?");
+
+        RepoChat chats = mock(RepoChat.class);
+        RepoPacientes patients = mock(RepoPacientes.class);
+        RepoConsultasMedicas consultations = mock(RepoConsultasMedicas.class);
+        RepoEntradasCola entries = mock(RepoEntradasCola.class);
+        AtencionHospitalService queue = mock(AtencionHospitalService.class);
+        var providerCalls = new AtomicInteger();
+        var realGenerator = generator();
+        var delegatedGenerator = mock(GeminiJsonClient.class);
+        when(delegatedGenerator.generar(anyString(), anyString(), any(), any(Duration.class)))
+                .thenAnswer(invocation -> {
+                    providerCalls.incrementAndGet();
+                    return realGenerator.generar(invocation.getArgument(0), invocation.getArgument(1),
+                            invocation.getArgument(2), invocation.getArgument(3));
+                });
+        var service = new ChatService(chats, patients, consultations, entries, queue,
+                new TriageIaClient(delegatedGenerator, mapper), mapper);
+        when(chats.findByIdAndPacienteUsuarioAuthId(10L, "auth0|synthetic-smoke"))
+                .thenReturn(java.util.Optional.of(chat));
+        when(chats.save(any(Chat.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(queue.finalizarTriageEIngresarACola(anyString(), any(), anyString(), any(Chat.class)))
+                .thenReturn(new com.pretriage.backend.controllers.dtos.TiempoEstimadoAtencionResponse());
+
+        assertEquals(ProgresoEntrevista.MotivoCierre.EN_CURSO, progress(chat).motivoCierre());
+        service.enviarMensaje("10", "auth0|synthetic-smoke", "No");
+
+        assertTrue(chat.isFinalizado());
+        assertEquals(EstadoClasificacionChat.COMPLETADA, chat.getEstadoClasificacion());
+        var saved = mapper.readTree(chat.getResultadoTriageJson());
+        assertEquals("DATOS_RESUELTOS", saved.path("seguimientoEntrevista").path("motivoCierre").asText());
+        var data = saved.path("seguimientoEntrevista").path("datos");
+        assertTrue(java.util.stream.StreamSupport.stream(data.spliterator(), false).anyMatch(d ->
+                d.path("sintomaId").asText().equals("dolor:rodilla")
+                        && d.path("dimension").asText().equals("INICIO")
+                        && d.path("estado").asText().equals("RESPONDIDO")));
+        assertTrue(java.util.stream.StreamSupport.stream(data.spliterator(), false).anyMatch(d ->
+                d.path("sintomaId").asText().equals("dolor:rodilla")
+                        && d.path("dimension").asText().equals("IMPACTO")
+                        && d.path("estado").asText().equals("RESPONDIDO")));
+        String onset = Normalizer.normalize(saved.path("inicio").asText(), Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "").toLowerCase(Locale.ROOT);
+        assertTrue(onset.contains("3 dias") && onset.contains("2 horas"),
+                "la clasificación debe conservar ambos componentes del inicio informado: " + onset);
+        assertEquals(1, chat.getMensajes().stream().filter(m -> m.getAutor() == AutorMensaje.PACIENTE
+                && m.getContenido().equals("No")).count());
+        assertEquals(1, chat.getMensajes().stream().filter(m -> m.getAutor() == AutorMensaje.BOT
+                && m.getContenido().equals("¿Cuántas horas o días hace que empezó ese dolor?")).count());
+        assertTrue(saved.path("intensidadDolor").isNull(), "no se informó intensidad de dolor");
+        assertTrue(saved.path("nivelPrioridad").asInt() >= 1 && saved.path("nivelPrioridad").asInt() <= 5);
+        assertTrue(providerCalls.get() <= 4, "dos generaciones/verificaciones con como máximo una corrección");
+        verify(queue, times(1)).finalizarTriageEIngresarACola(anyString(), any(), anyString(), any(Chat.class));
+    }
+
+    @Test
     void chatRealPreguntaObjetivoDeDolorYClasificaTrasLaRespuesta() {
         Paciente paciente = new Paciente();
         Chat chat = new Chat(paciente);

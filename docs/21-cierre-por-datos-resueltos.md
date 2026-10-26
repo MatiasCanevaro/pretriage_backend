@@ -26,6 +26,13 @@ inicio/duración, intensidad del dolor, impacto de otra molestia o temperatura
 cuando hay fiebre. Dos síntomas distintos conservan sus propios datos; una
 respuesta sobre uno no completa automáticamente al otro.
 
+Las preguntas de inicio pueden usar variantes como «cuántas horas o días hace que
+empezó» o «cuánto tiempo lleva». Una duración compuesta conserva sus componentes;
+una referencia como «desde que se fue», cuando responde a la pregunta de inicio
+de un síntoma concreto, se guarda como referencia relativa sin inventar una fecha.
+Esa asociación no completa el inicio de otro síntoma ni transforma una referencia
+sin contexto en evidencia espontánea sobre todos los síntomas.
+
 | Estado | Significado |
 | --- | --- |
 | `PENDIENTE` | Falta una respuesta que pueda interpretarse para ese dato. |
@@ -148,6 +155,13 @@ ni sus presupuestos. El cierre de voz conserva la herramienta, validación,
 drenaje de transcripciones y procesamiento posteriores existentes. El móvil no
 decide el cierre contando mensajes y no requiere un protocolo nuevo.
 
+Si los datos permiten cerrar y se respondió negativamente a la invitación abierta,
+la sesión de voz no exige otro «no» si Live omite su herramienta de finalización.
+Tras un único aviso y un margen acotado, puede cerrar usando la transcripción
+literal y el procesamiento de Gemini REST existente, sin construir un resumen
+clínico local. Antes de confirmar el cierre vuelve a comprobar el progreso y las
+transcripciones tardías. Un rechazo de alcance pendiente no se salta por esa vía.
+
 El reconocimiento local de síntomas y expresiones es acotado. No es una lista de
 consultas permitidas: un motivo de salud comprensible fuera de ese léxico conserva
 el chequeo semántico y la clasificación de Gemini. Los presupuestos técnicos no
@@ -199,3 +213,15 @@ Para repetir solo el caso real:
 
 Las pruebas de voz usan transporte simulado. Esta validación no incluye una
 grabación nueva en un teléfono físico ni una evaluación clínica de prioridades.
+
+La corrección posterior de reconocimiento de inicio y cierre sin herramienta
+pasó 663 pruebas backend registradas (diez omitidas), sin fallos ni errores.
+Una reconstrucción local del historial del incidente
+permite cerrar al responder la invitación por voz, con inicio e impacto resueltos.
+El historial persistido no fue reescrito. Un caso ficticio independiente también
+pasó generación y verificación con Gemini REST real, conservando la duración
+compuesta y sin inventar intensidad numérica de dolor:
+
+```powershell
+./mvnw.cmd "-Dtest=ChatHardeningGeminiSmokeTest#flujoRealConservaDuracionNaturalDelDolorDeRodillaSinRepreguntarla" "-Dpretriage.gemini.hardening.live=true" "-Dspring.docker.compose.enabled=false" test
+```

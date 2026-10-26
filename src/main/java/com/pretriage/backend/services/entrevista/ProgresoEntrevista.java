@@ -45,6 +45,8 @@ public final class ProgresoEntrevista {
     private static final Pattern AFIRMACION = Pattern.compile("(?:\\b(?:pero|aunque|si|y)\\s+|[,;]\\s*)(?:me|tengo|siento|presento|aparecio|aparecen|noto)\\b");
     private static final Pattern ORDEN_INVENTAR = Pattern.compile("\\b(?:pon|ponga|agrega|agregue|anade|anada|incluye|incluya|marca|marque|anota|anote|escribe|escriba|registra|registre|inventa|invente)\\b.{0,60}$");
     private static final Pattern FECHA = Pattern.compile("\\b(?:desde\\s+(?:ayer|hoy|anoche|anteayer|el\\s+amanecer|esta\\s+(?:manana|tarde|noche)|que\\s+me\\s+dejo)|desde\\s+hace\\s+(?:un\\s+)?(?:rato|momento|poco)|hace\\s+\\d+\\s*(?:minutos?|horas?|dias?|semanas?|meses?|anos?)|(?:ayer|anoche|anteayer|hoy|el\\s+amanecer|esta\\s+(?:manana|tarde|noche)|hace\\s+\\S+\\s+(?:minutos?|horas?|dias?|semanas?|meses?|anos?))|(?:desde\\s+que\\s+(?:empezo|comenzo|aparecio)))\\b");
+    private static final Pattern DURACION_COMPUESTA = Pattern.compile("\\bhace\\s+\\d+\\s*(?:minutos?|horas?|dias?|semanas?|meses?|anos?)(?:\\s+y\\s+\\d+\\s*(?:minutos?|horas?|dias?|semanas?|meses?|anos?))*\\b");
+    private static final Pattern INICIO_RELATIVO = Pattern.compile("\\bdesde\\s+que\\s+(?:me\\s+dejo|se\\s+fue)\\b");
     private static final Pattern MEDICION = Pattern.compile("\\b(\\d{2}(?:[.,]\\d)?)\\s*(?:grados?|°(?:\\s*c)?|celsius)\\b|\\btemperatura\\s*(?:de|:)?\\s*(\\d{2}(?:[.,]\\d)?)\\b");
     private static final Pattern IMPACTO = Pattern.compile("\\b(?:mucho|muchisimo|bastante|poco|muy poco|nada|un poco|si|no|me limita|no me limita|me impide|no me impide|no puedo (?:trabajar|dormir|comer|caminar|hacer mis actividades)|me cuesta (?:trabajar|dormir|comer|caminar))\\b");
     private static final Pattern TEMPERATURA_BARE = Pattern.compile("^(\\d{2}(?:[.,]\\d)?)$|^(\\d{2}(?:[.,]\\d)?)[.!]$");
@@ -535,9 +537,15 @@ public final class ProgresoEntrevista {
             boolean changed = false;
             Tracker onset = trackers.get(new Clave(symptom.sintomaId(), Dimension.INICIO));
             String segment = symptom.segmento();
-            String time = extractTime(segment);
-            if (time == null && uniqueSymptom(text, symptom.sintomaId())) time = extractTime(text);
-            if (time == null && explicitlySharedOnset(text, symptom.sintomaId())) time = extractTime(text);
+            boolean askedThisOnset = tarea.tipo() == TipoTarea.DATO
+                    && tarea.claves().contains(new Clave(symptom.sintomaId(), Dimension.INICIO));
+            String time = askedThisOnset ? extractTimeForOnset(segment) : extractTime(segment);
+            if (time == null && uniqueSymptom(text, symptom.sintomaId())) {
+                time = askedThisOnset ? extractTimeForOnset(text) : extractTime(text);
+            }
+            if (time == null && explicitlySharedOnset(text, symptom.sintomaId())) {
+                time = askedThisOnset ? extractTimeForOnset(text) : extractTime(text);
+            }
             if (onset != null && onset.estado != Estado.RESPONDIDO && time != null) {
                 onset.set(Estado.RESPONDIDO, time);
                 changed = true;
@@ -666,7 +674,7 @@ public final class ProgresoEntrevista {
             }
             if (REFUSAL.matcher(text).find()) return new ResultadoRespuesta(Estado.RECHAZADO, null);
             String value = switch (target.dimension) {
-                case INICIO -> extractTime(text);
+                case INICIO -> extractTimeForOnset(text);
                 case INTENSIDAD -> painValueForAskedScale(text);
                 case IMPACTO -> impactValue(text, tarea.contenidoBot());
                 case TEMPERATURA -> extractTemperature(text, true);
@@ -760,7 +768,11 @@ public final class ProgresoEntrevista {
     private static Dimension askedDimension(String text) {
         if (text.contains("desde cuando") || text.contains("cuando empezo") || text.contains("cuando empezaron")
                 || text.contains("cuando comenzo") || text.contains("cuando comenzaron")
-                || text.contains("hace cuanto") || text.contains("inicio") || text.contains("duracion")) return Dimension.INICIO;
+                || text.contains("hace cuanto") || text.contains("hace cuantos") || text.contains("hace cuantas")
+                || text.contains("inicio") || text.contains("duracion")
+                || Pattern.compile("\\bcuant[oa]s?\\s+(?:horas?|dias?|semanas?|meses?|anos?)\\b.{0,60}\\b(?:hace|empezo|comenzo|inicio|aparecio)\\b")
+                        .matcher(text).find()
+                || Pattern.compile("\\bcuant[oa]\\s+tiempo\\s+(?:hace|lleva|paso)\\b").matcher(text).find()) return Dimension.INICIO;
         if (text.contains("temperatura") || text.contains("cuantos grados") || text.contains("marco el termometro")
                 || text.contains("cuanto marco") || text.contains("que marco el termometro")) return Dimension.TEMPERATURA;
         if (text.contains("intensidad") && (text.contains("vacio") || text.contains("sensacion"))) return Dimension.IMPACTO;
@@ -921,6 +933,13 @@ public final class ProgresoEntrevista {
         return duration.find() ? duration.group() : null;
     }
 
+    private static String extractTimeForOnset(String text) {
+        Matcher relative = INICIO_RELATIVO.matcher(text);
+        if (relative.find()) return relative.group();
+        Matcher compound = DURACION_COMPUESTA.matcher(text);
+        return compound.find() ? compound.group() : extractTime(text);
+    }
+
     private static String painValue(String text) {
         String value = text.strip();
         Matcher fraction = Pattern.compile("^(?:intensidad(?: del dolor)?\\s*(?:es|de)?\\s*)?(10|[0-9])\\s*(?:/|de|sobre)\\s*10[.!]?$|^(?:intensidad(?: del dolor)?\\s*(?:es|de)?\\s*)?(10|[0-9])[.!]?$", Pattern.CASE_INSENSITIVE).matcher(value);
@@ -978,8 +997,7 @@ public final class ProgresoEntrevista {
 
     private static boolean onsetUnknownApplies(String text, String segment, String symptomId) {
         String scoped = uniqueSymptom(text, symptomId) ? text : segment;
-        return UNKNOWN.matcher(scoped).find()
-                && scoped.matches(".*\\b(?:desde cuando|cuando empezo|cuando comenzo|cuando comenzaron|hace cuanto)\\b.*");
+        return UNKNOWN.matcher(scoped).find() && askedDimension(scoped) == Dimension.INICIO;
     }
 
     private static boolean severityUnknownApplies(String text, String segment, String symptomId) {
@@ -996,8 +1014,7 @@ public final class ProgresoEntrevista {
 
     private static boolean onsetRefusalApplies(String text, String segment, String symptomId) {
         String scoped = uniqueSymptom(text, symptomId) ? text : segment;
-        return REFUSAL.matcher(scoped).find()
-                && scoped.matches(".*\\b(?:desde cuando|cuando empezo|cuando comenzo|cuando comenzaron|hace cuanto)\\b.*");
+        return REFUSAL.matcher(scoped).find() && askedDimension(scoped) == Dimension.INICIO;
     }
 
     private static String impactValue(String text) {

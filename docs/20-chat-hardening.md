@@ -85,6 +85,12 @@ registro), `INFERENCIA` (asunción no respaldada), `SIN_RESPALDO` (afirmación c
 expresada), `NEGACION` (contradicción de una negación concreta) e `INTENSIDAD_NO_DOLOR`
 (equiparar otra sensación con dolor). El booleano legado sigue siendo válido.
 
+El verificador distingue una pregunta neutral de una afirmación clínica. Una
+aclaración abierta puede usar vocabulario genérico; no permite introducir síntomas
+concretos ni suponer una causa o un origen físico o emocional. Una referencia
+temporal relativa ya aportada para el inicio no se rechaza por carecer de una
+duración calendárica. El objetivo pendiente sigue siendo el control del backend.
+
 La continuación incluye `objetivoDelTurno` como control generado por el backend
 en el nivel superior de la entrada JSON. El verificador exige que la pregunta
 corresponda a ese objetivo, además de ser segura y pertinente al relato; el texto

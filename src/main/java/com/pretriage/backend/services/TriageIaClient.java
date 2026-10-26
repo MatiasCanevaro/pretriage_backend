@@ -148,6 +148,17 @@ public class TriageIaClient {
             respaldado por el relato; rechaza preguntas sobre síntomas nuevos que el paciente no mencionó.
             Distingue la pregunta de la afirmación: rechaza si la respuesta da por cierto un síntoma, dato o causa
             no expresado, pero no solo porque la pregunta neutral nombre el síntoma o dato que busca cuantificar.
+            Una pregunta neutral sobre un síntoma afirmado y su dimensión pendiente no afirma el síntoma ni un
+            valor; acepta la forma interrogativa aunque nombre ese síntoma. Antes de aprobarla, comprueba si
+            esa dimensión ya quedó respondida en los turnos del paciente, incluso con una referencia temporal
+            relativa a un hecho o evento comprensible (por ejemplo, "desde que me dejó") para INICIO. Si ya
+            respondió el inicio, no lo trates como pendiente ni apruebes una repregunta innecesaria. Una
+            referencia relativa es una respuesta válida tal como fue expresada: no exijas que la traduzca a
+            horas o días, no inventes una fecha ni conviertas el evento en una duración numérica.
+            Para ACLARACION, se permite una pregunta abierta con vocabulario genérico o las palabras ambiguas
+            que la persona usó, siempre que solo pida explicar qué quiso decir o qué siente. No introduzcas
+            síntomas nuevos ni atribuyas una causa, diagnóstico o carácter físico o emocional antes de que
+            la persona lo aclare.
             Si la respuesta del paciente incluye un número (por ejemplo, "8") junto con una frase absurda o
             incoherente, puede pedir aclarar específicamente el dato solicitado por la pregunta BOT anterior.
             No conviertas el objeto de esa frase en síntoma ni reinicies la aclaración completa del motivo si el

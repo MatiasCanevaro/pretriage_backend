@@ -132,6 +132,53 @@ class SesionVozIntegracionTest {
     }
 
     @Test
+    void rechazoGlobalSinToolSeProcesaAutomaticamenteDesdeLaTranscripcionGuardada() throws Exception {
+        Flujo flujo = new Flujo();
+        flujo.entrada("Me duele la cabeza desde ayer.");
+        flujo.completarEntrevista();
+        flujo.sesion.alRecibir("{\"serverContent\":{\"turnComplete\":true}}"); // único nudge
+        flujo.sesion.alRecibir("{\"serverContent\":{\"turnComplete\":true}}"); // no tool-call
+        assertTrue(flujo.conexion.cierreSolicitado.await(5, TimeUnit.SECONDS));
+        assertTrue(flujo.canal.contiene("entrevista_finalizada"));
+        assertFalse(flujo.canal.eventos.stream().anyMatch(e -> e.contains("\"resumen\"")));
+
+        flujo.sesion.alCerrar(1000, "fin");
+
+        assertTrue(flujo.canal.cerrado.await(3, TimeUnit.SECONDS));
+        assertTrue(flujo.chat.isFinalizado());
+        assertEquals(EstadoClasificacionChat.COMPLETADA, flujo.chat.getEstadoClasificacion());
+        assertEquals(1, flujo.canal.eventos.stream()
+                .filter(e -> e.contains("\"tipo\":\"triage_finalizado\"")).count());
+        assertEquals(3, flujo.chat.getMensajes().stream().filter(m -> m.getAutor() == AutorMensaje.PACIENTE).count());
+        assertTrue(flujo.chat.getMensajes().stream().anyMatch(m -> m.getContenido().contains("No, no tengo más síntomas.")));
+        verify(flujo.ia, times(1)).consultar(anyString(), anyString(), eq(true));
+        verify(flujo.repo, times(2)).save(flujo.chat);
+    }
+
+    @Test
+    void fallaRestTrasNoToolDejaElChatFallidoYPermiteReintentoPosterior() throws Exception {
+        Flujo flujo = new Flujo();
+        when(flujo.ia.consultar(anyString(), anyString(), anyBoolean()))
+                .thenThrow(new ProveedorIaException(new IllegalStateException("sin cuota")));
+        flujo.entrada("Me duele la cabeza desde ayer.");
+        flujo.completarEntrevista();
+        flujo.sesion.alRecibir("{\"serverContent\":{\"turnComplete\":true}}");
+        flujo.sesion.alRecibir("{\"serverContent\":{\"turnComplete\":true}}");
+        assertTrue(flujo.conexion.cierreSolicitado.await(5, TimeUnit.SECONDS));
+
+        flujo.sesion.alCerrar(1000, "fin");
+
+        assertTrue(flujo.canal.cerrado.await(3, TimeUnit.SECONDS));
+        assertTrue(flujo.chat.isFinalizado());
+        assertEquals(EstadoClasificacionChat.FALLIDA, flujo.chat.getEstadoClasificacion());
+        assertNull(flujo.chat.getResultadoTriageJson());
+        assertFalse(flujo.canal.contiene("triage_finalizado"));
+        assertEquals(3, flujo.chat.getMensajes().stream().filter(m -> m.getAutor() == AutorMensaje.PACIENTE).count());
+        verify(flujo.repo, times(2)).save(flujo.chat);
+        verifyNoInteractions(flujo.cola);
+    }
+
+    @Test
     void entrevistaEmocionalSeCierraSinExigirCuantificacionFisica() throws Exception {
         Flujo flujo = new Flujo();
         when(flujo.ia.consultar(anyString(), contains("vacío en el pecho"), eq(true)))
@@ -201,6 +248,9 @@ class SesionVozIntegracionTest {
             chat.setId(7L);
             chat.agregarMensaje(new Mensaje("Cual es el motivo?", AutorMensaje.BOT, null));
             when(repo.findByIdAndPacienteUsuarioAuthId(7L, "auth0|voz")).thenReturn(Optional.of(chat));
+            when(repo.findForUpdate(7L, "auth0|voz")).thenReturn(Optional.of(chat));
+            when(repo.findFirstByPacienteUsuarioAuthIdOrderByFechaHoraCreacionDescIdDesc("auth0|voz"))
+                    .thenReturn(Optional.of(chat));
             when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(ia.consultar(anyString(), anyString(), anyBoolean()))
                     .thenReturn(new TriageAiResponse(true, "Listo", clasificacion(2, 3)));

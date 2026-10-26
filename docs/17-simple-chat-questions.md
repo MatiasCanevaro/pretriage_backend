@@ -58,6 +58,11 @@ cuenta como avance una sola vez y no consume intentos del valor. Una corrección
 válida posterior puede recuperar un dato agotado cuando se vincula a la pregunta
 o al síntoma correcto; no habilita a insistir indefinidamente en ese dato.
 
+Una referencia temporal relativa comprensible puede responder el inicio del
+síntoma preguntado. No se exige traducirla a horas o días ni se inventa una fecha.
+Las aclaraciones abiertas usan vocabulario cotidiano y no afirman por sí mismas
+un síntoma, una causa o un origen físico o emocional.
+
 ## Implementación
 
 - `LenguajeClinicoChat` agrupa las instrucciones de entrevista y comunicación;

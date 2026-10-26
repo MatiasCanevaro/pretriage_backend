@@ -56,10 +56,45 @@ class HardeningIaClientTest {
         verify(gemini, times(2)).generar(prompt.capture(), payload.capture(), schema.capture(), any());
         assertTrue(prompt.getAllValues().get(0).contains("recetas"));
         assertTrue(prompt.getAllValues().get(0).contains("objetivoDelTurno"));
+        assertTrue(prompt.getAllValues().get(1).contains("pregunta abierta con vocabulario genérico"));
+        assertTrue(prompt.getAllValues().get(1).contains("No introduzcas"));
+        assertTrue(prompt.getAllValues().get(1).contains("carácter físico o emocional"));
         assertTrue(payload.getAllValues().get(1).contains("\"tipo\":\"ACLARACION\""));
         assertEquals(java.util.Set.of("mensaje", "estadoEntrada"),
                 ((Map<?, ?>) schema.getAllValues().get(0).get("properties")).keySet());
         assertEquals(2, ((Map<?, ?>) schema.getAllValues().get(0).get("properties")).size());
+    }
+
+    @Test
+    void verificadorNoExigeDuracionCalendariaSiElInicioRelativoYaFueRespondido() {
+        String input = """
+                {"turnos":[
+                  {"autor":"PACIENTE","contenido":"Me siento vacía desde que terminó la relación."},
+                  {"autor":"BOT","contenido":"¿Desde cuándo te sentís así?"},
+                  {"autor":"PACIENTE","contenido":"Desde que me dejó."}],
+                 "objetivoDelTurno":{"tipo":"INVITACION","sintomaId":null,"dimension":null}}
+                """;
+        when(gemini.generar(anyString(), anyString(), any(), any()))
+                .thenReturn("{\"mensaje\":\"¿Hay algo más que quieras contar?\",\"estadoEntrada\":\"RELEVANTE\"}",
+                        "{\"valido\":true}");
+
+        var result = client.consultarContinuacion("Solo haz la invitación abierta indicada.", input,
+                java.time.Duration.ofSeconds(3));
+
+        assertEquals("¿Hay algo más que quieras contar?", result.mensaje());
+        ArgumentCaptor<String> prompts = ArgumentCaptor.forClass(String.class);
+        @SuppressWarnings("rawtypes") ArgumentCaptor<Map> schemas = ArgumentCaptor.forClass(Map.class);
+        verify(gemini, times(2)).generar(prompts.capture(), anyString(), schemas.capture(), any());
+        String verifierPrompt = prompts.getAllValues().get(1).replaceAll("\\s+", " ");
+        assertTrue(verifierPrompt.contains("referencia temporal relativa"));
+        assertTrue(verifierPrompt.contains("desde que me dejó"));
+        assertTrue(verifierPrompt.contains("no exijas que la traduzca a horas o días"));
+        assertTrue(verifierPrompt.contains("no inventes una fecha"));
+        assertTrue(verifierPrompt.contains("no lo trates como pendiente"));
+        assertEquals(java.util.Set.of("mensaje", "estadoEntrada"),
+                ((Map<?, ?>) schemas.getAllValues().get(0).get("properties")).keySet());
+        assertEquals(java.util.Set.of("valido", "motivo"),
+                ((Map<?, ?>) schemas.getAllValues().get(1).get("properties")).keySet());
     }
 
     @Test

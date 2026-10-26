@@ -66,6 +66,96 @@ class ProgresoEntrevistaTest {
     }
 
     @Test
+    void preguntaNaturalPorHorasODiasVinculaLaDuracionAlDolorYPermiteCerrarTrasLaInvitacion() {
+        var preguntaInicio = ProgresoEntrevista.evaluar(turnos(p("Me duele la cabeza")));
+        assertTrue(preguntaInicio.validarPreguntaPropuesta(
+                "¿Podrías precisarme aproximadamente cuántas horas o días hace que empezó ese dolor?").isEmpty());
+
+        var progreso = ProgresoEntrevista.evaluar(turnos(
+                p("Me duele la cabeza"),
+                b("¿Podrías precisarme aproximadamente cuántas horas o días hace que empezó ese dolor?"),
+                p("hace 2 años y 1 día"),
+                b("¿Este dolor te impide realizar tus actividades habituales?"), p("Sí."),
+                b("¿Hay algo más que quieras contar?"), p("No")));
+
+        var inicio = dato(progreso, "dolor:cabeza", ProgresoEntrevista.Dimension.INICIO);
+        assertEquals(Estado.RESPONDIDO, inicio.estado());
+        assertEquals("hace 2 anos y 1 dia", inicio.valor());
+        var impacto = dato(progreso, "dolor:cabeza", ProgresoEntrevista.Dimension.IMPACTO);
+        assertEquals(Estado.RESPONDIDO, impacto.estado());
+        assertEquals("si.", impacto.valor());
+        assertEquals(ProgresoEntrevista.MotivoCierre.DATOS_RESUELTOS, progreso.motivoCierre());
+    }
+
+    @Test
+    void duracionRelativaSeConservaLiteralYSinTransferirseAOtroSintoma() {
+        var progreso = ProgresoEntrevista.evaluar(turnos(
+                p("Me duele la cabeza y la espalda"),
+                b("¿Desde cuándo empezó el dolor de cabeza?"), p("Desde que me dejó")));
+
+        assertEquals("desde que me dejo", dato(progreso, "dolor:cabeza", ProgresoEntrevista.Dimension.INICIO).valor());
+        assertEquals(Estado.PENDIENTE,
+                dato(progreso, "dolor:espalda", ProgresoEntrevista.Dimension.INICIO).estado());
+    }
+
+    @Test
+    void referenciaRelativaDesdeQueSeFueResuelveDolorGenericoSoloBajoPreguntaDeInicio() {
+        var progreso = ProgresoEntrevista.evaluar(turnos(
+                p("Es un dolor reprofundo y tengo fiebre"),
+                b("¿Podrías decirme cuántas horas o días hace que empezó ese dolor?"),
+                p("Desde que se fue")));
+
+        assertEquals("desde que se fue",
+                dato(progreso, "dolor:general", ProgresoEntrevista.Dimension.INICIO).valor());
+        assertEquals(Estado.PENDIENTE,
+                dato(progreso, "fiebre", ProgresoEntrevista.Dimension.INICIO).estado());
+
+        var espontaneo = ProgresoEntrevista.evaluar(turnos(p("Tengo dolor de cabeza desde que se fue")));
+        assertEquals(Estado.PENDIENTE,
+                dato(espontaneo, "dolor:cabeza", ProgresoEntrevista.Dimension.INICIO).estado());
+    }
+
+    @Test
+    void desdeQueMeDejoConservaLaResolucionEspontaneaDelSintomaNombradoSinTransferencia() {
+        var explicito = ProgresoEntrevista.evaluar(turnos(p("Me duele la cabeza desde que me dejó")));
+        var inicioExplicito = dato(explicito, "dolor:cabeza", ProgresoEntrevista.Dimension.INICIO);
+        assertEquals(Estado.RESPONDIDO, inicioExplicito.estado());
+        assertEquals("desde que me dejo", inicioExplicito.valor());
+
+        var separados = ProgresoEntrevista.evaluar(turnos(
+                p("Me duele la cabeza; tengo fiebre desde que me dejó")));
+        assertEquals(Estado.PENDIENTE,
+                dato(separados, "dolor:cabeza", ProgresoEntrevista.Dimension.INICIO).estado());
+        assertEquals("desde que me dejo",
+                dato(separados, "fiebre", ProgresoEntrevista.Dimension.INICIO).valor());
+    }
+
+    @Test
+    void respuestaExcluidaALaPreguntaNaturalNoResuelveNiTransfiereElInicio() {
+        var progreso = ProgresoEntrevista.evaluarConContexto(List.of(
+                pt("Me duele la cabeza y tengo fiebre", false),
+                bt("¿Podrías decirme cuántas horas o días hace que empezó el dolor de cabeza?"),
+                pt("hace 2 años y 1 día", true)));
+
+        assertEquals(Estado.PENDIENTE,
+                dato(progreso, "dolor:cabeza", ProgresoEntrevista.Dimension.INICIO).estado());
+        assertEquals(Estado.PENDIENTE,
+                dato(progreso, "fiebre", ProgresoEntrevista.Dimension.INICIO).estado());
+        assertEquals(1, dato(progreso, "dolor:cabeza", ProgresoEntrevista.Dimension.INICIO).intentos());
+    }
+
+    @Test
+    void aclaracionAceptaParafrasisAbiertaDelMismoInicioPeroNoIntroduceOtroSintoma() {
+        var progreso = ProgresoEntrevista.evaluar(turnos(
+                p("Me duele la cabeza"), b("¿Desde cuándo empezó el dolor de cabeza?"), p("Quizás")));
+        assertEquals(ProgresoEntrevista.TipoObjetivo.ACLARACION, progreso.objetivoDelTurno().tipo());
+        assertTrue(progreso.validarPreguntaPropuesta(
+                "¿Podrías contarme con tus palabras cuánto tiempo lleva ese dolor de cabeza?").isEmpty());
+        assertEquals("SINTOMA_NO_COINCIDE", progreso.validarPreguntaPropuesta(
+                "¿Podrías contarme con tus palabras cuánto tiempo lleva ese dolor de espalda?").orElseThrow());
+    }
+
+    @Test
     void fiebreNoSeResuelveConNumeroDePesoNiUnaMedicionSinValor() {
         var peso = ProgresoEntrevista.evaluar(turnos(p("Tengo fiebre"), b("¿Qué temperatura mediste?"), p("38 kg")));
         assertEquals(ProgresoEntrevista.Estado.PENDIENTE,
