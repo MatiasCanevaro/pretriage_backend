@@ -26,16 +26,16 @@ import static org.mockito.Mockito.*;
 
 class ChatQuestionFormatTest {
     private static final String PACIENTE = "synthetic";
-    private static final String MOTIVO = "Tengo cefalea y fiebre";
+    private static final String MOTIVO = "Tengo cefalea";
     private static final String NUEVO_MENSAJE = "La cefalea empezó ayer";
 
     @Test
     void aceptaPreguntasConFormatosDePuntuacionNaturales() {
         for (String pregunta : List.of(
-                "Contame desde cuándo te duele la cabeza.",
-                "¿Desde cuándo te duele??",
-                "¿Desde cuándo te duele？",
-                "¿Desde cuándo te duele la cabeza? ¿Y la fiebre?")) {
+                "Contame la intensidad de la cefalea.",
+                "¿Cuánto te duele la cabeza??",
+                "¿Cuánto te duele la cabeza？",
+                "¿Cuál es la intensidad del dolor de cabeza? ¿Y cómo te afecta?")) {
             Flujo flujo = new Flujo();
             flujo.prepararRespuesta(question(pregunta));
 
@@ -56,14 +56,14 @@ class ChatQuestionFormatTest {
     @Test
     void corrigeUnaRespuestaVaciaConUnaSolaConsultaRemotaYGuardaElTurnoUnaVez() {
         Flujo flujo = new Flujo();
-        flujo.prepararRespuesta(new TriageAiResponse(false, "   ", null), question("¿Desde cuándo empezó la cefalea?"));
+        flujo.prepararRespuesta(new TriageAiResponse(false, "   ", null), question("¿Qué intensidad tiene la cefalea?"));
 
         ChatTurnResponse response = flujo.enviar(NUEVO_MENSAJE);
 
-        assertEquals("¿Desde cuándo empezó la cefalea?", response.respuesta().contenido());
+        assertEquals("¿Qué intensidad tiene la cefalea?", response.respuesta().contenido());
         assertEquals(List.of(MOTIVO, NUEVO_MENSAJE), flujo.mensajesDe(AutorMensaje.PACIENTE));
         assertEquals(List.of("Hola. ¿Cuál es el motivo principal de tu consulta?",
-                "¿Desde cuándo empezó la cefalea?"), flujo.mensajesDe(AutorMensaje.BOT));
+                "¿Qué intensidad tiene la cefalea?"), flujo.mensajesDe(AutorMensaje.BOT));
         verify(flujo.provider, times(2)).consultarContinuacion(anyString(), anyString(), any());
         verify(flujo.provider, never()).consultar(anyString(), anyString(), anyBoolean());
         verifyNoInteractions(flujo.queue);
@@ -73,16 +73,16 @@ class ChatQuestionFormatTest {
     void corrigeRespuestaConResultadoOFinalizacionInesperados() {
         for (TriageAiResponse[] respuestas : List.<TriageAiResponse[]>of(
                 new TriageAiResponse[]{new TriageAiResponse(false, "¿Desde cuándo?", classification()),
-                        question("¿Cuándo comenzaron los síntomas?")},
+                        question("¿Cuánto te duele la cabeza?")},
                 new TriageAiResponse[]{new TriageAiResponse(true, "¿Desde cuándo?", null),
-                        question("¿Cuándo comenzaron los síntomas?")},
-                new TriageAiResponse[]{null, question("¿Cuándo comenzaron los síntomas?")})) {
+                        question("¿Cuánto te duele la cabeza?")},
+                new TriageAiResponse[]{null, question("¿Cuánto te duele la cabeza?")})) {
             Flujo flujo = new Flujo();
             flujo.prepararRespuesta(respuestas);
 
             ChatTurnResponse response = flujo.enviar(NUEVO_MENSAJE);
 
-            assertEquals("¿Cuándo comenzaron los síntomas?", response.respuesta().contenido());
+            assertEquals("¿Cuánto te duele la cabeza?", response.respuesta().contenido());
             assertFalse(flujo.chat.isFinalizado());
             assertEquals(List.of(MOTIVO, NUEVO_MENSAJE), flujo.mensajesDe(AutorMensaje.PACIENTE));
             verify(flujo.provider, times(2)).consultarContinuacion(anyString(), anyString(), any());
@@ -109,23 +109,23 @@ class ChatQuestionFormatTest {
     }
 
     @Test
-    void corrigePreguntaRepetidaDentroDelPresupuestoSinPersistirLaDuplicada() {
+    void corrigePreguntaSobreDatoYaResueltoParaSeguirConElObjetivoPendiente() {
         Flujo flujo = new Flujo();
-        String anterior = "¿Desde cuándo te duele la cabeza?";
+        String anterior = "¿Desde cuándo empezó la cefalea?";
         flujo.chat.agregarMensaje(new Mensaje(anterior, AutorMensaje.BOT, null));
         flujo.prepararRespuesta(question("¿Desde cuando te duele la cabeza?"),
-                question("¿Cuánto te limita la cefalea?"));
+                question("¿Qué intensidad tiene la cefalea?"));
 
         ChatTurnResponse response = flujo.enviar(NUEVO_MENSAJE);
 
-        assertEquals("¿Cuánto te limita la cefalea?", response.respuesta().contenido());
+        assertEquals("¿Qué intensidad tiene la cefalea?", response.respuesta().contenido());
         assertEquals(List.of("Hola. ¿Cuál es el motivo principal de tu consulta?", anterior,
-                "¿Cuánto te limita la cefalea?"), flujo.mensajesDe(AutorMensaje.BOT));
+                "¿Qué intensidad tiene la cefalea?"), flujo.mensajesDe(AutorMensaje.BOT));
         assertEquals(List.of(MOTIVO, NUEVO_MENSAJE), flujo.mensajesDe(AutorMensaje.PACIENTE));
         ArgumentCaptor<String> prompts = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<Duration> timeout = ArgumentCaptor.forClass(Duration.class);
         verify(flujo.provider, times(2)).consultarContinuacion(prompts.capture(), anyString(), timeout.capture());
-        assertTrue(prompts.getAllValues().get(1).contains("repeated_question"));
+        assertTrue(prompts.getAllValues().get(1).contains("DIMENSION_NO_COINCIDE"));
         assertTrue(timeout.getAllValues().stream().allMatch(value -> !value.isNegative()
                 && !value.isZero() && value.compareTo(Duration.ofSeconds(45)) <= 0));
         verify(flujo.provider, never()).consultar(anyString(), anyString(), anyBoolean());
@@ -133,12 +133,12 @@ class ChatQuestionFormatTest {
     }
 
     @Test
-    void devuelveErrorSiLaPreguntaRepetidaNoSePuedeCorregir() {
+    void devuelveErrorSiSiguePreguntandoPorElDatoYaResuelto() {
         Flujo flujo = new Flujo();
-        String anterior = "¿Desde cuándo te duele la cabeza?";
+        String anterior = "¿Desde cuándo empezó la cefalea?";
         flujo.chat.agregarMensaje(new Mensaje(anterior, AutorMensaje.BOT, null));
-        flujo.prepararRespuesta(question("¿Desde cuando te duele la cabeza?"),
-                question("¿Desde cuándo te duele la cabeza?"));
+        flujo.prepararRespuesta(question("¿Desde cuándo empezó la cefalea?"),
+                question("¿Desde cuándo empezó la cefalea?"));
 
         assertThrows(ProveedorIaException.class, () -> flujo.enviar(NUEVO_MENSAJE));
 

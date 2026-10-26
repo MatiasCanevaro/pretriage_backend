@@ -250,6 +250,266 @@ class ProgresoEntrevistaTest {
     }
 
     @Test
+    void objetivoYValidadorDePreguntaApuntanAlMismoDatoPendiente() {
+        var progreso = ProgresoEntrevista.evaluar(turnos(
+                p("Me duele la cabeza y tengo fiebre"),
+                b("¿Cuándo comenzaron ambos síntomas?"), p("Ambos comenzaron ayer"),
+                p("Tengo fiebre de 39 grados")));
+        assertEquals(new ProgresoEntrevista.ObjetivoTurno(ProgresoEntrevista.TipoObjetivo.DATO,
+                "dolor:cabeza", ProgresoEntrevista.Dimension.INTENSIDAD), progreso.objetivoDelTurno());
+        assertTrue(progreso.validarPreguntaPropuesta("Del 1 al 10, ¿cuánto te duele la cabeza?").isEmpty());
+        assertTrue(progreso.validarPreguntaPropuesta("¿Qué tan fuerte sentís el dolor de cabeza?").isEmpty(),
+                "La paráfrasis reconocible del mismo síntoma se delega al verifier objetivo");
+        assertTrue(progreso.validarPreguntaPropuesta("¿Te cuesta caminar por el dolor de cabeza?").isEmpty(),
+                "El impacto funcional del mismo dolor puede responder la dimensión de intensidad");
+        assertEquals("DIMENSION_NO_COINCIDE",
+                progreso.validarPreguntaPropuesta("¿Cuánto marcó el termómetro?").orElseThrow());
+        assertEquals("SINTOMA_NO_COINCIDE",
+                progreso.validarPreguntaPropuesta("¿Cuánto te duele la espalda?").orElseThrow());
+        assertEquals("PREGUNTA_PREMATURA",
+                progreso.validarPreguntaPropuesta("¿Hay algo más que quieras agregar?").orElseThrow());
+        assertTrue(progreso.validarPreguntaPropuesta("¿Podrías explicarme mejor lo que sientes?").isEmpty(),
+                "El phrasing no reconocido se delega al verifier semántico");
+    }
+
+    @Test
+    void preguntaNaturalDeFuerzaDeDolorRecibeLaEscalaSinTransferirAOtroDolor() {
+        var progreso = ProgresoEntrevista.evaluar(turnos(
+                p("Me duele la cabeza"), b("¿Qué tan fuerte sentís el dolor de cabeza?"), p("6/10")));
+        assertEquals("6", dato(progreso, "dolor:cabeza", ProgresoEntrevista.Dimension.INTENSIDAD).valor());
+
+        var separados = ProgresoEntrevista.evaluar(turnos(
+                p("Me duele la cabeza y la espalda"), b("¿Qué tan fuerte sentís el dolor de cabeza?"), p("6/10")));
+        assertEquals("6", dato(separados, "dolor:cabeza", ProgresoEntrevista.Dimension.INTENSIDAD).valor());
+        assertEquals(Estado.PENDIENTE,
+                dato(separados, "dolor:espalda", ProgresoEntrevista.Dimension.INTENSIDAD).estado());
+    }
+
+    @Test
+    void preguntaDeAlarmaRespiratoriaNoSeAsociaAlImpactoDelDolor() {
+        var progreso = ProgresoEntrevista.evaluar(turnos(
+                p("Me duele la cabeza"), b("¿Te cuesta respirar?"), p("No tengo otros síntomas")));
+        assertEquals(new ProgresoEntrevista.ObjetivoTurno(ProgresoEntrevista.TipoObjetivo.DATO,
+                "dolor:cabeza", ProgresoEntrevista.Dimension.INICIO), progreso.objetivoDelTurno());
+        assertTrue(progreso.instruccionSiguientePaso().contains("desde cuándo empezó"));
+    }
+
+    @Test
+    void objetivoInvitacionYObjetivoCierreNoAdelantanLaConversacion() {
+        var invitacion = ProgresoEntrevista.evaluar(turnos(p("Dolor de cabeza desde ayer, intensidad 5/10")));
+        assertEquals(ProgresoEntrevista.TipoObjetivo.INVITACION, invitacion.objetivoDelTurno().tipo());
+        assertTrue(invitacion.validarPreguntaPropuesta("¿Hay algo más que quieras contar?").isEmpty());
+        assertTrue(invitacion.validarPreguntaPropuesta(
+                "¿Hay algo más que quieras contar además del dolor de cabeza?").isEmpty(),
+                "La invitación puede referirse a un síntoma que el paciente ya mencionó");
+        assertEquals("SINTOMAS_SUGERIDOS",
+                invitacion.validarPreguntaPropuesta("¿Hay algo más, por ejemplo tos?").orElseThrow());
+        assertEquals("CIERRE_PREMATURO",
+                invitacion.validarPreguntaPropuesta("El caso ya fue registrado.").orElseThrow());
+
+        var cerrado = ProgresoEntrevista.evaluar(turnos(p("Dolor de cabeza desde ayer, intensidad 5/10"),
+                b("¿Hay algo más que quieras contar?"), p("No")));
+        assertEquals(ProgresoEntrevista.TipoObjetivo.CERRAR, cerrado.objetivoDelTurno().tipo());
+        assertEquals("PREGUNTA_TRAS_CIERRE",
+                cerrado.validarPreguntaPropuesta("¿Desde cuándo empezó el dolor de cabeza?").orElseThrow());
+
+        var aclaracion = ProgresoEntrevista.evaluar(turnos(p("No entiendo qué quieres decir")));
+        assertEquals(ProgresoEntrevista.TipoObjetivo.ACLARACION, aclaracion.objetivoDelTurno().tipo());
+        assertTrue(aclaracion.validarPreguntaPropuesta("¿Puedes explicar con tus palabras qué te ocurre?").isEmpty());
+        assertTrue(aclaracion.validarPreguntaPropuesta("¿Cómo describirías la molestia?").isEmpty(),
+                "Una aclaración abierta no introduce un síntoma solo por usar un sustantivo genérico");
+        assertEquals("ACLARACION_FUERA_DE_OBJETIVO",
+                aclaracion.validarPreguntaPropuesta("¿Tienes fiebre?").orElseThrow());
+        assertEquals("ACLARACION_FUERA_DE_OBJETIVO",
+                aclaracion.validarPreguntaPropuesta("¿Tienes tos?").orElseThrow());
+    }
+
+    @Test
+    void aclaracionTrasPreguntaDeImpactoConservaLaDimensionEfectivaDelDolor() {
+        var progreso = ProgresoEntrevista.evaluar(turnos(
+                p("Me duele la cabeza"),
+                b("¿Te cuesta caminar por el dolor de cabeza?"),
+                p("Quizás")));
+
+        assertTrue(progreso.requiereAclaracion());
+        assertEquals(new ProgresoEntrevista.ObjetivoTurno(ProgresoEntrevista.TipoObjetivo.ACLARACION,
+                "dolor:cabeza", ProgresoEntrevista.Dimension.IMPACTO), progreso.objetivoDelTurno());
+        assertTrue(progreso.validarPreguntaPropuesta(
+                "¿Qué tanto te afecta caminar por el dolor de cabeza?").isEmpty());
+        assertEquals("DIMENSION_NO_COINCIDE", progreso.validarPreguntaPropuesta(
+                "¿Del 1 al 10, cuánto te duele la cabeza?").orElseThrow());
+    }
+
+    @Test
+    void confirmacionDeMedicionEsSubpasoUnicoYNoGastaIntentosDeTemperatura() {
+        var confirmada = ProgresoEntrevista.evaluarConContexto(List.of(
+                pt("Tengo fiebre desde ayer", false),
+                bt("¿Pudiste medirte la fiebre con un termómetro o solo sientes temperatura alta?"),
+                pt("Sí, la medí", false)));
+        var temperatura = dato(confirmada, "fiebre", ProgresoEntrevista.Dimension.TEMPERATURA);
+        assertEquals(Estado.PENDIENTE, temperatura.estado());
+        assertEquals(0, temperatura.intentos());
+        assertEquals(new ProgresoEntrevista.ObjetivoTurno(ProgresoEntrevista.TipoObjetivo.DATO,
+                "fiebre", ProgresoEntrevista.Dimension.TEMPERATURA), confirmada.objetivoDelTurno());
+        assertEquals("CONFIRMACION_MEDICION_REPETIDA", confirmada.validarPreguntaPropuesta(
+                "¿Pudiste medirte la fiebre con un termómetro o solo sientes temperatura alta?").orElseThrow());
+
+        var noMedida = ProgresoEntrevista.evaluarConContexto(List.of(
+                pt("Tengo fiebre desde ayer", false),
+                bt("¿Pudiste medirte la fiebre con un termómetro o solo sientes temperatura alta?"),
+                pt("No la medí", false)));
+        assertEquals(Estado.DESCONOCIDO,
+                dato(noMedida, "fiebre", ProgresoEntrevista.Dimension.TEMPERATURA).estado());
+    }
+
+    @Test
+    void variantesComunesDeConfirmacionNoConsumenIntentosNiConfundenLaPreguntaPorElValor() {
+        List<String> preguntas = List.of("¿Mediste la temperatura?", "¿Pudiste medir la temperatura?",
+                "¿Te tomaste la temperatura?", "¿Pudiste tomar la temperatura?");
+        List<String> respuestas = List.of("Sí, me la medí", "Sí, me la medí", "Sí, me la tomé", "Sí");
+        for (int i = 0; i < preguntas.size(); i++) {
+            var progreso = ProgresoEntrevista.evaluarConContexto(List.of(
+                    pt("Tengo fiebre", false), bt(preguntas.get(i)), pt(respuestas.get(i), false)));
+            var temperatura = dato(progreso, "fiebre", ProgresoEntrevista.Dimension.TEMPERATURA);
+            assertEquals(Estado.PENDIENTE, temperatura.estado(), preguntas.get(i));
+            assertEquals(0, temperatura.intentos(), preguntas.get(i));
+        }
+
+        var afirmacionSinSi = ProgresoEntrevista.evaluarConContexto(List.of(
+                pt("Tengo fiebre", false), bt("¿Pudiste medir la temperatura?"), pt("Me la medí", false)));
+        var temperaturaConfirmada = dato(afirmacionSinSi, "fiebre", ProgresoEntrevista.Dimension.TEMPERATURA);
+        assertEquals(Estado.PENDIENTE, temperaturaConfirmada.estado());
+        assertEquals(0, temperaturaConfirmada.intentos());
+
+        var preguntaNumerica = ProgresoEntrevista.evaluarConContexto(List.of(
+                pt("Tengo fiebre", false), bt("¿Qué temperatura marcó el termómetro?"),
+                pt("Sí, me la medí", false)));
+        var temperatura = dato(preguntaNumerica, "fiebre", ProgresoEntrevista.Dimension.TEMPERATURA);
+        assertEquals(Estado.PENDIENTE, temperatura.estado());
+        assertEquals(1, temperatura.intentos(), "Una respuesta afirmativa no satisface la pregunta por grados");
+    }
+
+    @Test
+    void negativasDeConfirmacionDeMedicionQuedanComoDesconocidas() {
+        for (String respuesta : List.of("No tengo termómetro", "No me tomé la temperatura", "No me la medí")) {
+            var progreso = ProgresoEntrevista.evaluarConContexto(List.of(
+                    pt("Tengo fiebre", false), bt("¿Te tomaste la temperatura?"), pt(respuesta, false)));
+            assertEquals(Estado.DESCONOCIDO,
+                    dato(progreso, "fiebre", ProgresoEntrevista.Dimension.TEMPERATURA).estado(), respuesta);
+            assertEquals(0,
+                    dato(progreso, "fiebre", ProgresoEntrevista.Dimension.TEMPERATURA).intentos(), respuesta);
+
+            var preguntaDirecta = ProgresoEntrevista.evaluarConContexto(List.of(
+                    pt("Tengo fiebre", false), bt("¿Qué temperatura marcó el termómetro?"), pt(respuesta, false)));
+            assertEquals(Estado.DESCONOCIDO,
+                    dato(preguntaDirecta, "fiebre", ProgresoEntrevista.Dimension.TEMPERATURA).estado(), respuesta);
+        }
+    }
+
+    @Test
+    void confirmacionYaDadaNoSeRepiteDuranteLaAclaracionDelValor() {
+        var progreso = ProgresoEntrevista.evaluarConContexto(List.of(
+                pt("Tengo fiebre", false),
+                bt("¿Pudiste medir la temperatura?"), pt("Sí, me la medí", false),
+                bt("¿Qué temperatura marcó el termómetro?"), pt("38 kg", true)));
+        assertEquals(new ProgresoEntrevista.ObjetivoTurno(ProgresoEntrevista.TipoObjetivo.ACLARACION,
+                "fiebre", ProgresoEntrevista.Dimension.TEMPERATURA), progreso.objetivoDelTurno());
+        assertEquals("CONFIRMACION_MEDICION_REPETIDA", progreso.validarPreguntaPropuesta(
+                "¿Te tomaste la temperatura?").orElseThrow());
+    }
+
+    @Test
+    void chat21DosRespuestasInvalidasNoAgotanElValorYLaTerceraValidaSeRegistra() {
+        var progreso = ProgresoEntrevista.evaluarConContexto(List.of(
+                pt("Me duele la cabeza y tengo fiebre", false),
+                bt("¿Desde cuándo te duele la cabeza?"), pt("Desde ayer", false),
+                bt("¿Desde cuándo tienes fiebre?"), pt("Desde ayer también", false),
+                bt("¿Pudiste medirte la fiebre con un termómetro o solo sientes temperatura alta?"),
+                pt("Sí, la medí", false),
+                bt("¿Qué temperatura marcó el termómetro?"), pt("38 kg", true),
+                bt("¿Qué temperatura marcó el termómetro?"), pt("38 Calvin Klein", true)));
+        assertEquals(Estado.PENDIENTE, dato(progreso, "fiebre", ProgresoEntrevista.Dimension.TEMPERATURA).estado());
+        assertEquals(2, dato(progreso, "fiebre", ProgresoEntrevista.Dimension.TEMPERATURA).intentos());
+        assertEquals(0, dato(progreso, "dolor:cabeza", ProgresoEntrevista.Dimension.INTENSIDAD).intentos());
+
+        progreso = ProgresoEntrevista.evaluarConContexto(List.of(
+                pt("Me duele la cabeza y tengo fiebre", false),
+                bt("¿Desde cuándo te duele la cabeza?"), pt("Desde ayer", false),
+                bt("¿Desde cuándo tienes fiebre?"), pt("Desde ayer también", false),
+                bt("¿Pudiste medirte la fiebre con un termómetro o solo sientes temperatura alta?"),
+                pt("Sí, la medí", false),
+                bt("¿Qué temperatura marcó el termómetro?"), pt("38 kg", true),
+                bt("¿Qué temperatura marcó el termómetro?"), pt("38 Calvin Klein", true),
+                bt("¿Qué temperatura marcó el termómetro?"), pt("38", false)));
+        var temperaturaRecuperada = dato(progreso, "fiebre", ProgresoEntrevista.Dimension.TEMPERATURA);
+        assertEquals(Estado.RESPONDIDO, temperaturaRecuperada.estado());
+        assertEquals("38", temperaturaRecuperada.valor());
+        assertEquals(3, temperaturaRecuperada.intentos());
+    }
+
+    @Test
+    void valorExcluidoMantieneAclaracionLigadaAlDatoDeTemperatura() {
+        var progreso = ProgresoEntrevista.evaluarConContexto(List.of(
+                pt("Tengo fiebre desde ayer", false),
+                bt("¿Qué temperatura marcó el termómetro?"),
+                pt("38 kg", true)));
+        assertTrue(progreso.requiereAclaracion());
+        assertEquals(new ProgresoEntrevista.ObjetivoTurno(ProgresoEntrevista.TipoObjetivo.ACLARACION,
+                "fiebre", ProgresoEntrevista.Dimension.TEMPERATURA), progreso.objetivoDelTurno());
+        assertTrue(progreso.instruccionSiguientePaso().toLowerCase(java.util.Locale.ROOT).contains("temperatura"));
+    }
+
+    @Test
+    void datoAgotadoPuedeRecuperarseSoloConRespuestaValidaAUnaPreguntaExplicita() {
+        List<ProgresoEntrevista.Turno> base = List.of(
+                pt("Tengo fiebre desde ayer", false),
+                bt("¿Qué temperatura marcó el termómetro?"), pt("38 kg", true),
+                bt("¿Qué temperatura marcó el termómetro?"), pt("38 Calvin Klein", true),
+                bt("¿Qué temperatura marcó el termómetro?"), pt("Messi 8", true));
+        var agotado = ProgresoEntrevista.evaluarConContexto(base);
+        assertEquals(Estado.AGOTADO, dato(agotado, "fiebre", ProgresoEntrevista.Dimension.TEMPERATURA).estado());
+        assertEquals(3, dato(agotado, "fiebre", ProgresoEntrevista.Dimension.TEMPERATURA).intentos());
+
+        var bareSinPregunta = new java.util.ArrayList<>(base);
+        bareSinPregunta.add(pt("38", false));
+        assertEquals(Estado.AGOTADO, dato(ProgresoEntrevista.evaluarConContexto(bareSinPregunta), "fiebre",
+                ProgresoEntrevista.Dimension.TEMPERATURA).estado());
+
+        var excluidaEnRecuperacion = new java.util.ArrayList<>(base);
+        excluidaEnRecuperacion.add(bt("¿Qué temperatura marcó el termómetro?"));
+        excluidaEnRecuperacion.add(pt("38", true));
+        assertEquals(Estado.AGOTADO, dato(ProgresoEntrevista.evaluarConContexto(excluidaEnRecuperacion), "fiebre",
+                ProgresoEntrevista.Dimension.TEMPERATURA).estado());
+
+        var recuperada = new java.util.ArrayList<>(base);
+        recuperada.add(bt("¿Qué temperatura marcó el termómetro?"));
+        recuperada.add(pt("38", false));
+        var temperatura = dato(ProgresoEntrevista.evaluarConContexto(recuperada), "fiebre", ProgresoEntrevista.Dimension.TEMPERATURA);
+        assertEquals(Estado.RESPONDIDO, temperatura.estado());
+        assertEquals("38", temperatura.valor());
+        assertEquals(3, temperatura.intentos());
+
+        var espontanea = new java.util.ArrayList<>(base);
+        espontanea.add(pt("Tengo fiebre de 38 grados", false));
+        assertEquals(Estado.RESPONDIDO, dato(ProgresoEntrevista.evaluarConContexto(espontanea), "fiebre",
+                ProgresoEntrevista.Dimension.TEMPERATURA).estado());
+    }
+
+    @Test
+    void dolorAgotadoSeRecuperaConUnDatoEspontaneoExplicitoDelMismoDolor() {
+        var progreso = ProgresoEntrevista.evaluarConContexto(List.of(
+                pt("Me duele la cabeza desde ayer", false),
+                bt("Del 1 al 10, ¿cuánto te duele la cabeza?"), pt("Messi 8", true),
+                bt("Del 1 al 10, ¿cuánto te duele la cabeza?"), pt("Messi 8", true),
+                bt("Del 1 al 10, ¿cuánto te duele la cabeza?"), pt("Messi 8", true),
+                pt("El dolor de cabeza sigue igual y es 6/10", false)));
+        var intensidad = dato(progreso, "dolor:cabeza", ProgresoEntrevista.Dimension.INTENSIDAD);
+        assertEquals(Estado.RESPONDIDO, intensidad.estado());
+        assertEquals("6", intensidad.valor());
+        assertEquals(3, intensidad.intentos());
+    }
+
+    @Test
     void unDatoAgotadoNoImpideContinuarConLosSiguientesObjetivos() {
         var progreso = ProgresoEntrevista.evaluar(turnos(p("Tengo tos"),
                 b("¿Desde cuándo empezó la tos?"), p("Messi 8"),
@@ -346,4 +606,10 @@ class ProgresoEntrevistaTest {
     private static List<TurnoVoz> turnos(TurnoVoz... turnos) { return List.of(turnos); }
     private static TurnoVoz p(String text) { return new TurnoVoz(AutorMensaje.PACIENTE, text); }
     private static TurnoVoz b(String text) { return new TurnoVoz(AutorMensaje.BOT, text); }
+    private static ProgresoEntrevista.Turno pt(String text, boolean excluido) {
+        return new ProgresoEntrevista.Turno(AutorMensaje.PACIENTE, text, excluido);
+    }
+    private static ProgresoEntrevista.Turno bt(String text) {
+        return new ProgresoEntrevista.Turno(AutorMensaje.BOT, text, false);
+    }
 }

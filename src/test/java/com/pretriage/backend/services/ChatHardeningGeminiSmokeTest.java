@@ -219,6 +219,98 @@ class ChatHardeningGeminiSmokeTest {
                 .generar(anyString(), anyString(), any(), any(Duration.class));
     }
 
+    @Test
+    void chatRealPreguntaObjetivoDeDolorYClasificaTrasLaRespuesta() {
+        Paciente paciente = new Paciente();
+        Chat chat = new Chat(paciente);
+        chat.setId(8L);
+        addBot(chat, "Hola. Contame qué te pasa.");
+        addPatient(chat, "Tengo fiebre desde ayer y me duele la cabeza desde ayer.", false);
+        addBot(chat, "¿Te mediste la temperatura?");
+        addPatient(chat, "Sí, me medí.", false);
+        addBot(chat, "¿Qué temperatura te marcó el termómetro?");
+        addPatient(chat, "38 kg", true);
+        addBot(chat, "¿Qué temperatura te marcó el termómetro?");
+        addPatient(chat, "38 cm", true);
+        addBot(chat, "¿Qué temperatura te marcó el termómetro?");
+        addPatient(chat, "38", false);
+        addBot(chat, "¿Hay algo más que quieras contar sobre lo que te pasa?");
+
+        RepoChat chats = mock(RepoChat.class);
+        RepoPacientes patients = mock(RepoPacientes.class);
+        RepoConsultasMedicas consultations = mock(RepoConsultasMedicas.class);
+        RepoEntradasCola entries = mock(RepoEntradasCola.class);
+        AtencionHospitalService queue = mock(AtencionHospitalService.class);
+        List<String> providerInputs = new CopyOnWriteArrayList<>();
+        var providerCalls = new AtomicInteger();
+        var realGenerator = generator();
+        var delegatedGenerator = mock(GeminiJsonClient.class);
+        when(delegatedGenerator.generar(anyString(), anyString(), any(), any(Duration.class)))
+                .thenAnswer(invocation -> {
+                    providerCalls.incrementAndGet();
+                    providerInputs.add(invocation.getArgument(1));
+                    return realGenerator.generar(invocation.getArgument(0), invocation.getArgument(1),
+                            invocation.getArgument(2), invocation.getArgument(3));
+                });
+        var service = new ChatService(chats, patients, consultations, entries, queue,
+                new TriageIaClient(delegatedGenerator, mapper), mapper);
+        when(chats.findByIdAndPacienteUsuarioAuthId(8L, "auth0|synthetic-smoke"))
+                .thenReturn(java.util.Optional.of(chat));
+        when(chats.save(any(Chat.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(queue.finalizarTriageEIngresarACola(anyString(), any(), anyString(), any(Chat.class)))
+                .thenReturn(new com.pretriage.backend.controllers.dtos.TiempoEstimadoAtencionResponse());
+
+        var beforeResponse = progress(chat);
+        assertEquals("RESPONDIDO", beforeResponse.datos().stream()
+                .filter(d -> d.sintomaId().equals("fiebre")
+                        && d.dimension() == ProgresoEntrevista.Dimension.TEMPERATURA)
+                .findFirst().orElseThrow().estado().name());
+        assertEquals(ProgresoEntrevista.MotivoCierre.EN_CURSO, beforeResponse.motivoCierre());
+
+        var nextQuestion = service.enviarMensaje("8", "auth0|synthetic-smoke", "No, nada más.");
+        assertFalse(chat.isFinalizado());
+        assertEquals(EstadoClasificacionChat.NO_SOLICITADA, chat.getEstadoClasificacion());
+        String question = Normalizer.normalize(nextQuestion.respuesta().contenido(), Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "").toLowerCase(Locale.ROOT);
+        assertFalse(question.contains("temperatura"), question);
+        assertFalse(question.contains("finalizar"), question);
+
+        var firstRequest = mapper.readTree(providerInputs.getFirst());
+        var objective = firstRequest.path("objetivoDelTurno");
+        assertEquals("DATO", objective.path("tipo").asText());
+        assertEquals("dolor:cabeza", objective.path("sintomaId").asText());
+        assertEquals("INTENSIDAD", objective.path("dimension").asText());
+
+        var objetivoSeleccionado = progress(chat).datos().stream()
+                .filter(d -> d.sintomaId().equals("dolor:cabeza")
+                        && d.estado() == ProgresoEntrevista.Estado.PENDIENTE)
+                .findFirst().orElseThrow();
+        if (objetivoSeleccionado.dimension() == ProgresoEntrevista.Dimension.INTENSIDAD) {
+            assertTrue(question.contains("dolor") || question.contains("cabeza"), question);
+        } else if (objetivoSeleccionado.dimension() == ProgresoEntrevista.Dimension.IMPACTO) {
+            assertTrue(question.matches("(?s).*(dificult|cuesta|molesta|limita|impide|caminar|dormir|comer|actividad|afecta).*"),
+                    question);
+        }
+        String respuesta = switch (objetivoSeleccionado.dimension()) {
+            case INTENSIDAD -> "6/10";
+            case IMPACTO -> "Me cuesta caminar por el dolor de cabeza.";
+            default -> throw new AssertionError("Gemini eligió un objetivo incompatible: "
+                    + objetivoSeleccionado.dimension());
+        };
+        service.enviarMensaje("8", "auth0|synthetic-smoke", respuesta);
+
+        assertTrue(chat.isFinalizado());
+        assertEquals(EstadoClasificacionChat.COMPLETADA, chat.getEstadoClasificacion());
+        assertEquals("DATOS_RESUELTOS", mapper.readTree(chat.getResultadoTriageJson())
+                .path("seguimientoEntrevista").path("motivoCierre").asText());
+        verify(queue, times(1)).finalizarTriageEIngresarACola(anyString(), any(), anyString(), any(Chat.class));
+        String allProviderInput = String.join("\n", providerInputs);
+        assertFalse(allProviderInput.contains("38 kg"));
+        assertFalse(allProviderInput.contains("38 cm"));
+        assertTrue(providerCalls.get() <= 8,
+                "máximo una corrección por operación, con generación y verificación en pregunta y clasificación");
+    }
+
     private static void addBot(Chat chat, String contenido) {
         chat.agregarMensaje(new Mensaje(contenido, AutorMensaje.BOT, null));
     }

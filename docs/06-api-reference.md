@@ -422,7 +422,11 @@ limits, but is not resent as provider context or accepted as clinical evidence.
 Provider failures and invalid model responses
 return HTTP 500 with an `error` message; no local classification is created.
 During interviewing, Gemini receives a question schema (`mensaje`, `estadoEntrada`); the
-backend decides when to request final classification. A relevant candidate is
+backend decides when to request final classification. The internal continuation
+input also carries backend-generated `objetivoDelTurno` (type, canonical symptom
+ID and dimension, without values or excluded text). Both generation and semantic
+verification use it; recognizable local mismatches permit one correction. This
+does not add fields to the public `ChatTurnResponse`. A relevant or ambiguous candidate is
 checked independently for scope and consistency with patient facts before it is
 shown. A malformed, out-of-scope or repeated question permits one remote correction.
 A successful question returns a normal

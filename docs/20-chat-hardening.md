@@ -77,6 +77,13 @@ registro), `INFERENCIA` (asunción no respaldada), `SIN_RESPALDO` (afirmación c
 expresada), `NEGACION` (contradicción de una negación concreta) e `INTENSIDAD_NO_DOLOR`
 (equiparar otra sensación con dolor). El booleano legado sigue siendo válido.
 
+La continuación incluye `objetivoDelTurno` como control generado por el backend
+en el nivel superior de la entrada JSON. El verificador exige que la pregunta
+corresponda a ese objetivo, además de ser segura y pertinente al relato; el texto
+del paciente no puede sustituir ese campo. Las propuestas `AMBIGUO` no omiten la
+validación local del objetivo ni el límite de repetición. El control contiene
+únicamente tipo, síntoma canónico y dimensión, sin reenviar texto excluido.
+
 `Mensaje.excluidoDelTriage` es un `Boolean` nullable interno. `true` marca el turno
 de texto rechazado; `null` en registros anteriores equivale a no excluido. El texto
 original sigue en el historial visible. La columna se añade con `ddl-auto=update`;

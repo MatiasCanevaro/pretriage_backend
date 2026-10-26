@@ -207,7 +207,8 @@ class ChatServiceTest {
                 .thenReturn(new TriageAiResponse(false, "¿Hay algo más que quieras contar sobre lo que te pasa?", null));
 
         int mensajesPrevios = chat.getMensajes().size();
-        var respuesta = chatService.enviarMensaje("1", "auth0|paciente", "Tengo fiebre de 39 grados desde ayer y dolor fuerte de cabeza.");
+        var respuesta = chatService.enviarMensaje("1", "auth0|paciente",
+                "Tengo fiebre de 39 grados desde ayer y dolor de cabeza desde ayer, 8 de 10.");
         assertFalse(chat.isFinalizado());
         assertNull(chat.getResultadoTriageJson());
         assertEquals(mensajesPrevios + 2, chat.getMensajes().size());
@@ -1035,12 +1036,12 @@ class ChatServiceTest {
         chat.agregarMensaje(new Mensaje("Me duele la cabeza", AutorMensaje.PACIENTE, chat.getPaciente()));
         chat.agregarMensaje(new Mensaje("¿Tenés alergias?", AutorMensaje.BOT, null));
         when(triageIaClient.consultarContinuacion(anyString(), anyString(), any()))
-                .thenReturn(new TriageAiResponse(false, "¿Hay algo más que quieras contar sobre lo que te pasa?", null));
+                .thenReturn(new TriageAiResponse(false, "¿Desde cuándo empezó el dolor de cabeza?", null));
 
         var respuesta = chatService.enviarMensaje("1", "auth0|paciente", "No.");
 
         assertFalse(chat.isFinalizado());
-        assertEquals("¿Hay algo más que quieras contar sobre lo que te pasa?", respuesta.respuesta().contenido());
+        assertEquals("¿Desde cuándo empezó el dolor de cabeza?", respuesta.respuesta().contenido());
         verify(triageIaClient, never()).consultar(anyString(), anyString(), eq(true));
     }
 

@@ -43,16 +43,20 @@ class HardeningIaClientTest {
                         "{\"valido\":true}");
 
         var result = client.consultarContinuacion("reglas",
-                "{\"turnos\":[{\"autor\":\"PACIENTE\",\"contenido\":\"me duele la harina de trigo\"}]}",
+                "{\"turnos\":[{\"autor\":\"PACIENTE\",\"contenido\":\"me duele la harina de trigo\"}],"
+                        + "\"objetivoDelTurno\":{\"tipo\":\"ACLARACION\",\"sintomaId\":null,\"dimension\":null}}",
                 java.time.Duration.ofSeconds(2));
 
         assertFalse(result.finalizado());
         assertNull(result.resultado());
         assertEquals(EstadoEntradaChat.AMBIGUO, result.estadoEntrada());
         ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> payload = ArgumentCaptor.forClass(String.class);
         @SuppressWarnings("rawtypes") ArgumentCaptor<Map> schema = ArgumentCaptor.forClass(Map.class);
-        verify(gemini, times(2)).generar(prompt.capture(), anyString(), schema.capture(), any());
+        verify(gemini, times(2)).generar(prompt.capture(), payload.capture(), schema.capture(), any());
         assertTrue(prompt.getAllValues().get(0).contains("recetas"));
+        assertTrue(prompt.getAllValues().get(0).contains("objetivoDelTurno"));
+        assertTrue(payload.getAllValues().get(1).contains("\"tipo\":\"ACLARACION\""));
         assertEquals(java.util.Set.of("mensaje", "estadoEntrada"),
                 ((Map<?, ?>) schema.getAllValues().get(0).get("properties")).keySet());
         assertEquals(2, ((Map<?, ?>) schema.getAllValues().get(0).get("properties")).size());
@@ -99,6 +103,32 @@ class HardeningIaClientTest {
         ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
         verify(gemini, times(2)).generar(prompt.capture(), anyString(), any(), any());
         assertTrue(prompt.getAllValues().get(1).contains("Una continuación no puede anunciar el registro"));
+    }
+
+    @Test
+    void verificadorPreguntaRecibeObjetivoCanonicoParaRechazarOtraDimensionPendiente() {
+        String input = """
+                {"turnos":[
+                  {"autor":"PACIENTE","contenido":"Tengo cefalea y fiebre. Desde ayer."},
+                  {"autor":"BOT","contenido":"¿Pudiste medir la temperatura?"}],
+                 "objetivoDelTurno":{"tipo":"DATO","sintomaId":"dolor:cabeza","dimension":"INTENSIDAD"}}
+                """;
+        when(gemini.generar(anyString(), anyString(), any(), any()))
+                .thenReturn("{\"mensaje\":\"¿Pudiste medir la temperatura?\",\"estadoEntrada\":\"RELEVANTE\"}",
+                        "{\"valido\":false,\"motivo\":\"INFERENCIA\"}");
+
+        var error = assertThrows(ProveedorIaException.class, () -> client.consultarContinuacion(
+                "Pregunta solamente por el objetivo del turno.", input, java.time.Duration.ofSeconds(3)));
+
+        assertEquals(java.util.Optional.of(TriageIaClient.MotivoRechazoSemantico.INFERENCIA),
+                TriageIaClient.motivoRechazo(error));
+        ArgumentCaptor<String> prompts = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> payloads = ArgumentCaptor.forClass(String.class);
+        verify(gemini, times(2)).generar(prompts.capture(), payloads.capture(), any(), any());
+        assertTrue(prompts.getAllValues().get(0).contains("objetivoDelTurno"));
+        assertTrue(prompts.getAllValues().get(1).contains("Rechaza proponer otro dato aunque también esté pendiente"));
+        assertTrue(payloads.getAllValues().get(1).contains("\"dimension\":\"INTENSIDAD\""));
+        assertTrue(payloads.getAllValues().get(1).contains("¿Pudiste medir la temperatura?"));
     }
 
     @Test

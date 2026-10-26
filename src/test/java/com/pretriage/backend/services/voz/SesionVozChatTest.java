@@ -729,6 +729,92 @@ class SesionVozChatTest {
     }
 
     @Test
+    void temperaturaRespondidaNoOcultaIntensidadPendienteNiAutorizaAvisoDeCierre() {
+        List<ProgresoEntrevista.Turno> snapshot = List.of(
+                turno(AutorMensaje.PACIENTE, "Tengo fiebre desde ayer y me duele la cabeza desde ayer.", false),
+                turno(AutorMensaje.BOT, "¿Te mediste la temperatura?", false),
+                turno(AutorMensaje.PACIENTE, "Sí, me medí.", false),
+                turno(AutorMensaje.BOT, "¿Qué temperatura te marcó el termómetro?", false),
+                turno(AutorMensaje.PACIENTE, "38 kg", true),
+                turno(AutorMensaje.BOT, "¿Qué temperatura te marcó el termómetro?", false),
+                turno(AutorMensaje.PACIENTE, "38 cm", true),
+                turno(AutorMensaje.BOT, "¿Qué temperatura te marcó el termómetro?", false),
+                turno(AutorMensaje.PACIENTE, "38", false));
+        when(chatService.obtenerTurnosParaProgresoVoz("7", "auth0|paciente")).thenReturn(snapshot);
+        List<MensajeDTO> historialClinico = historialClinico(snapshot);
+        var progreso = ProgresoEntrevista.evaluarConContexto(snapshot);
+        var temperatura = progreso.datos().stream()
+                .filter(d -> d.sintomaId().equals("fiebre")
+                        && d.dimension() == ProgresoEntrevista.Dimension.TEMPERATURA)
+                .findFirst().orElseThrow();
+        var intensidadPendiente = progreso.datos().stream()
+                .filter(d -> d.sintomaId().equals("dolor:cabeza")
+                        && d.dimension() == ProgresoEntrevista.Dimension.INTENSIDAD)
+                .findFirst().orElseThrow();
+
+        assertFalse(progreso.puedeCerrar());
+        assertEquals(ProgresoEntrevista.MotivoCierre.EN_CURSO, progreso.motivoCierre());
+        assertEquals(ProgresoEntrevista.Estado.RESPONDIDO, temperatura.estado());
+        assertEquals("38", temperatura.valor());
+        assertEquals(ProgresoEntrevista.Estado.PENDIENTE, intensidadPendiente.estado());
+        assertTrue(progreso.instruccionSiguientePaso().toLowerCase().contains("intensidad del dolor"));
+        assertEquals(ProgresoEntrevista.TipoObjetivo.DATO, progreso.objetivoDelTurno().tipo());
+        assertEquals("dolor:cabeza", progreso.objetivoDelTurno().sintomaId());
+        assertEquals(ProgresoEntrevista.Dimension.INTENSIDAD, progreso.objetivoDelTurno().dimension());
+
+        SesionVozChat sesion = sesion(historialClinico);
+        sesion.iniciar();
+        sesion.alRecibir("{\"setupComplete\":{}}");
+
+        String contenidoInicial = conexion.enviados.stream().filter(m -> m.contains("clientContent"))
+                .map(this::textoCliente).reduce("", (a, b) -> a + "\n" + b).toLowerCase();
+        assertTrue(contenidoInicial.contains("intensidad del dolor"));
+        assertFalse(contenidoInicial.contains("falta de avance"));
+        assertFalse(contenidoInicial.contains("finalizar_entrevista"));
+        assertFalse(contenidoInicial.contains("38 kg"));
+        assertFalse(contenidoInicial.contains("38 cm"));
+        verify(chatService, never()).finalizarEntrevistaVoz(anyString(), anyString(), anyList(), any());
+    }
+
+    @Test
+    void respuestaTardiaRecuperaDatoAgotadoEnSnapshotDeVoz() {
+        List<ProgresoEntrevista.Turno> snapshot = List.of(
+                turno(AutorMensaje.PACIENTE, "Me duele la cabeza desde ayer.", false),
+                turno(AutorMensaje.BOT, "Del 0 al 10, ¿cuánto te duele la cabeza?", false),
+                turno(AutorMensaje.PACIENTE, "Messi 8", true),
+                turno(AutorMensaje.BOT, "Del 0 al 10, ¿cuánto te duele la cabeza?", false),
+                turno(AutorMensaje.PACIENTE, "Messi 8", true),
+                turno(AutorMensaje.BOT, "Del 0 al 10, ¿cuánto te duele la cabeza?", false),
+                turno(AutorMensaje.PACIENTE, "Messi 8", true),
+                turno(AutorMensaje.BOT, "¿Hay algo más que quieras contar sobre lo que te pasa?", false),
+                turno(AutorMensaje.PACIENTE, "No, nada más.", false),
+                turno(AutorMensaje.PACIENTE, "El dolor de cabeza sigue igual y es 6/10.", false));
+        when(chatService.obtenerTurnosParaProgresoVoz("7", "auth0|paciente")).thenReturn(snapshot);
+        var progreso = ProgresoEntrevista.evaluarConContexto(snapshot);
+        var intensidad = progreso.datos().stream()
+                .filter(d -> d.sintomaId().equals("dolor:cabeza")
+                        && d.dimension() == ProgresoEntrevista.Dimension.INTENSIDAD)
+                .findFirst().orElseThrow();
+
+        assertEquals(ProgresoEntrevista.Estado.RESPONDIDO, intensidad.estado());
+        assertEquals("6", intensidad.valor());
+        assertEquals(3, intensidad.intentos(), "la respuesta tardía recupera el dato sin reabrir intentos");
+        assertEquals(ProgresoEntrevista.MotivoCierre.DATOS_RESUELTOS, progreso.motivoCierre());
+        assertEquals(ProgresoEntrevista.TipoObjetivo.CERRAR, progreso.objetivoDelTurno().tipo());
+
+        SesionVozChat sesion = sesion(historialClinico(snapshot));
+        sesion.iniciar();
+        sesion.alRecibir("{\"setupComplete\":{}}");
+
+        String contenidoInicial = conexion.enviados.stream().filter(m -> m.contains("clientContent"))
+                .map(this::textoCliente).reduce("", (a, b) -> a + "\n" + b).toLowerCase();
+        assertTrue(contenidoInicial.contains("llama ahora a finalizar_entrevista"));
+        assertFalse(contenidoInicial.contains("pregunta en un turno la intensidad del dolor"));
+        assertFalse(contenidoInicial.contains("messi 8"));
+        verify(chatService, never()).finalizarEntrevistaVoz(anyString(), anyString(), anyList(), any());
+    }
+
+    @Test
     void falloDeConexionInformaErrorYCierraElCanal() {
         when(geminiLiveCliente.conectar(any()))
                 .thenReturn(CompletableFuture.failedFuture(new IllegalStateException("sin red")));
@@ -744,6 +830,16 @@ class SesionVozChatTest {
                 "clave", "models/gemini-3.8-live", "wss://gemini.test", "Kore", "es-US", Duration.ofSeconds(1));
         return new SesionVozChat("7", "auth0|paciente", historial, chatService,
                 geminiLiveCliente, properties, objectMapper, canal);
+    }
+
+    private static ProgresoEntrevista.Turno turno(AutorMensaje autor, String contenido, boolean excluido) {
+        return new ProgresoEntrevista.Turno(autor, contenido, excluido);
+    }
+
+    private static List<MensajeDTO> historialClinico(List<ProgresoEntrevista.Turno> snapshot) {
+        return snapshot.stream().filter(turno -> !turno.excluido())
+                .map(turno -> new MensajeDTO(turno.contenido(), turno.autor().name(), LocalDateTime.now()))
+                .toList();
     }
 
     private SesionVozChat sesion(List<MensajeDTO> historial,

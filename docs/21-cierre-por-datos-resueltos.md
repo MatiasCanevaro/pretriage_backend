@@ -42,6 +42,22 @@ establecen una temperatura; «8» después de la escala de dolor sí puede estab
 su intensidad, mientras que una cifra acompañada de una unidad o asociación
 incoherente requiere aclaración.
 
+La confirmación de que la persona se midió es un subpaso distinto del valor de
+temperatura. «Sí, la medí» responde a esa confirmación y constituye avance una sola
+vez; no consume un intento de obtener los grados ni completa el valor. Un «no» a
+esa confirmación deja la temperatura desconocida. Repetir una confirmación ya
+conocida no reinicia los presupuestos.
+Se reconocen formas habituales como «¿mediste la temperatura?» o «¿te tomaste
+la temperatura?». «No tengo termómetro» y «no me la tomé» dejan el valor desconocido
+tanto ante la confirmación como ante una pregunta directa por los grados.
+
+`AGOTADO` impide seguir proponiendo preguntas sobre el dato, pero no invalida una
+corrección válida aportada después. Si la persona responde «38» a una pregunta
+explícita de temperatura, el valor puede recuperar ese dato
+sin sumar intentos nuevos; no se aplica a otro síntoma ni a una escala de dolor.
+Un valor admitido correctamente reinicia el contador de falta de avance. Los
+turnos excluidos nunca recuperan un dato ni se convierten en evidencia.
+
 La invitación abierta a agregar información se ofrece una sola vez cuando
 corresponde. Si aparecen más síntomas, se completan sus datos pertinentes sin
 repetir esa invitación. «No tengo otros síntomas» evita explorar síntomas nuevos,
@@ -63,6 +79,28 @@ Una repetición no resuelve un dato ni reinicia sus intentos. Los intentos de
 transporte y corrección contra Gemini no crean nuevos mensajes ni nuevos objetivos;
 mantienen sus límites anteriores y comparten los 45 segundos de cada operación.
 El cálculo del progreso no necesita una llamada adicional a un modelo.
+
+## Objetivo del próximo turno
+
+La misma selección que genera la instrucción de entrevista produce
+`objetivoDelTurno`: tipo (`DATO`, `INVITACION`, `ACLARACION` o `CERRAR`), identificador
+canónico del síntoma y dimensión cuando corresponda. Este control del backend
+acompaña el historial admitido en la continuación de texto; no contiene valores,
+citas ni texto excluido y no forma parte del resultado clínico.
+
+El backend comprueba los desvíos reconocibles de la pregunta propuesta y el
+verificador remoto recibe el mismo objetivo. Una pregunta de temperatura no
+sustituye a la intensidad pendiente del dolor. Para ese mismo dolor se conserva
+la alternativa de preguntar por su impacto funcional. Una paráfrasis no reconocida
+localmente pasa a la verificación semántica, sin imponer una puntuación particular.
+Una aclaración conserva la dimensión efectiva preguntada: si se eligió impacto
+funcional para ese dolor, no vuelve a exigir una escala de intensidad. La
+invitación puede referirse a síntomas ya aportados, pero no sugerir otros nuevos.
+
+Las aclaraciones `AMBIGUO` también respetan el objetivo y los límites de repetición;
+no pueden volver a un dato agotado. La redirección fija `FUERA_DE_CONTEXTO` conserva
+su tratamiento administrativo. Un desvío permite una sola corrección remota con
+feedback fijo del backend, dentro del mismo plazo de 45 segundos.
 
 ## Motivos de cierre
 
@@ -126,7 +164,7 @@ negaciones, correcciones de Gemini, procesamiento fallido y transcripciones tard
 La suite completa se ejecuta con `python -B scripts/test_backend_isolated.py` en
 una base temporal, con Docker Compose desactivado. Nunca contra la base de la app.
 
-Verificación del 25 de octubre de 2026:
+Verificación inicial del 25 de octubre de 2026:
 
 - Suite backend: 624 pruebas registradas, sin fallos ni errores, siete omitidas.
 - Foco de progreso, validador y conversación: 133 pruebas, todas aprobadas.
@@ -143,6 +181,20 @@ La prueba real es opcional y consume solicitudes del proveedor. Con
 
 ```powershell
 ./mvnw.cmd "-Dtest=ChatHardeningGeminiSmokeTest#flujoRealCierraTrasMasDeOchoRespuestasYFiltraLosDatosExcluidos" "-Dpretriage.gemini.hardening.live=true" "-Dspring.docker.compose.enabled=false" test
+```
+
+La regresión posterior de fiebre y dolor de cabeza conserva las dos unidades
+inválidas como turnos excluidos, reconoce el valor válido posterior y exige
+cuantificar el dolor aún pendiente antes de cerrar. Se verificó también con
+Gemini real: después de la respuesta al dato pendiente se guarda
+`DATOS_RESUELTOS`, se completa la clasificación y se ingresa a cola una sola vez.
+No se envían las unidades excluidas al proveedor. La suite final del backend
+registró 642 pruebas, sin fallos ni errores y con ocho omitidas. No se modificó
+mobile para esta corrección ni se necesitó otra compilación de Android.
+Para repetir solo el caso real:
+
+```powershell
+./mvnw.cmd "-Dtest=ChatHardeningGeminiSmokeTest#chatRealPreguntaObjetivoDeDolorYClasificaTrasLaRespuesta" "-Dpretriage.gemini.hardening.live=true" "-Dspring.docker.compose.enabled=false" test
 ```
 
 Las pruebas de voz usan transporte simulado. Esta validación no incluye una

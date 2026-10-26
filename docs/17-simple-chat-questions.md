@@ -53,6 +53,11 @@ indica que no desea agregar información. Ninguna negativa permite inferir que s
 descartaron alarmas que no se mencionaron. Los datos no informados permanecen
 desconocidos en la clasificación.
 
+Confirmar «sí, la medí» constituye un subpaso distinto de informar los grados:
+cuenta como avance una sola vez y no consume intentos del valor. Una corrección
+válida posterior puede recuperar un dato agotado cuando se vincula a la pregunta
+o al síntoma correcto; no habilita a insistir indefinidamente en ese dato.
+
 ## Implementación
 
 - `LenguajeClinicoChat` agrupa las instrucciones de entrevista y comunicación;
@@ -64,6 +69,8 @@ desconocidos en la clasificación.
   alteran el mensaje que devuelve Gemini.
 - Las respuestas intermedias de texto contienen `mensaje` y `estadoEntrada`; Gemini genera
   cada pregunta y el backend decide si continúa o solicita la clasificación final.
+  La entrada lleva un `objetivoDelTurno` controlado, compartido por el generador y
+  el verificador; las aclaraciones ambiguas también deben respetarlo.
 - Las entradas ambiguas reciben una aclaración verificada y pertinente al dato
   pendiente; las ajenas al triage mantienen una redirección breve. Ambas quedan
   excluidas como evidencia clínica, pero cuentan para los resguardos de recursos.

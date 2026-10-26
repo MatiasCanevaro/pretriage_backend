@@ -40,21 +40,24 @@ class ChatCuantificacionFlowTest {
         chat.agregarMensaje(new Mensaje("Me duele la cabeza y tengo fiebre", AutorMensaje.PACIENTE, chat.getPaciente()));
         chat.agregarMensaje(new Mensaje("¿Hay algo más que quieras contar?", AutorMensaje.BOT, null));
         when(provider.consultarContinuacion(anyString(), anyString(), any()))
-                .thenReturn(question("¿Desde cuándo empezó el dolor de cabeza y la fiebre?"),
+                .thenReturn(question("¿Desde cuándo empezó el dolor de cabeza?"),
+                        question("¿Desde cuándo empezó la fiebre?"),
                         question("Del 0 al 10, ¿cuánto te duele la cabeza?"),
                         question("¿Qué temperatura marcó el termómetro?"));
 
         send("No tengo otros síntomas");
         assertFalse(chat.isFinalizado(), "Negar otros síntomas no aporta duración ni intensidad");
-        send("Los dos empezaron ayer");
-        assertFalse(chat.isFinalizado(), "Sigue pendiente la afectación");
+        send("El dolor de cabeza empezó ayer");
+        assertFalse(chat.isFinalizado(), "La fiebre sigue sin inicio informado");
+        send("La fiebre empezó ayer");
+        assertFalse(chat.isFinalizado(), "Sigue pendiente la intensidad del dolor");
         send("8 de 10");
         assertFalse(chat.isFinalizado(), "La escala de dolor no mide la fiebre");
         send("No me medí la temperatura");
 
         assertTrue(chat.isFinalizado());
         assertEquals(EstadoClasificacionChat.COMPLETADA, chat.getEstadoClasificacion());
-        verify(provider, times(3)).consultarContinuacion(anyString(), anyString(), any());
+        verify(provider, times(4)).consultarContinuacion(anyString(), anyString(), any());
         verify(provider, times(1)).consultar(anyString(), anyString(), eq(true));
         verify(queue, times(1)).finalizarTriageEIngresarACola(eq("synthetic"), any(), anyString(), same(chat));
         assertEquals(1, chat.getMensajes().stream().filter(message -> message.getContenido()
@@ -103,7 +106,7 @@ class ChatCuantificacionFlowTest {
             chat.agregarMensaje(new Mensaje(symptom, AutorMensaje.PACIENTE, chat.getPaciente()));
         }
         when(provider.consultarContinuacion(anyString(), anyString(), any()))
-                .thenReturn(question("¿Desde cuándo tenés esos síntomas?"));
+                .thenReturn(question("¿Desde cuándo empezó la fiebre?"));
 
         send("Tengo picazón");
 

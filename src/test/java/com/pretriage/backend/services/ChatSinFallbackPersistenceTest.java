@@ -47,7 +47,7 @@ class ChatSinFallbackPersistenceTest {
     void falloTextoRevierteElMensajeYReintentoNoDuplicaHistorial() {
         when(proveedor.consultarContinuacion(anyString(), anyString(), any()))
                 .thenThrow(new ProveedorIaException(null))
-                .thenReturn(new TriageAiResponse(false, "¿Querés agregar algo más?", null));
+                .thenReturn(new TriageAiResponse(false, "¿Desde cuándo empezó la fiebre?", null));
         assertThrows(ProveedorIaException.class, () -> chatService.enviarMensaje(chatId, pacienteAuth, "Tengo fiebre"));
         assertSinResultadoNiMensajesNuevos();
 
@@ -108,13 +108,13 @@ class ChatSinFallbackPersistenceTest {
                 List.of(), List.of(), List.of(), List.of(), "no informado", "no informado", 3, false, "Consultar si empeora");
         when(proveedor.consultarContinuacion(anyString(), anyString(), any()))
                 .thenReturn(new TriageAiResponse(true, "Listo", resultado),
-                        new TriageAiResponse(false, "¿Querés agregar algo más?", null));
+                        new TriageAiResponse(false, "¿Desde cuándo empezó la fiebre?", null));
         var respuesta = chatService.enviarMensaje(chatId, pacienteAuth, "Tengo fiebre");
         assertEquals("GEMINI", respuesta.origenRespuesta());
         var chat = chatService.obtenerChat(chatId, pacienteAuth);
         assertFalse(chat.finalizado());
         assertEquals(3, chat.mensajes().size());
-        assertEquals("¿Querés agregar algo más?", chat.mensajes().getLast().contenido());
+        assertEquals("¿Desde cuándo empezó la fiebre?", chat.mensajes().getLast().contenido());
         assertNull(db.queryForObject("SELECT resultado_triage_json FROM chat WHERE id=?", String.class, Long.valueOf(chatId)));
         verify(proveedor, times(2)).consultarContinuacion(anyString(), anyString(), any());
         verify(proveedor, never()).consultar(anyString(), anyString(), anyBoolean());

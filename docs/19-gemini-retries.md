@@ -35,6 +35,11 @@ vuelve a fallar la verificación, el turno se rechaza y no se persiste una respu
 bot ni se crea una entrada de cola. La generación y su verificación, más esa corrección
 y su verificación, comparten el presupuesto de 45 segundos.
 
+Una propuesta que se desvía del `objetivoDelTurno` también consume esa única
+corrección; no abre un presupuesto ni un bucle nuevos. `AMBIGUO` no omite el control
+local del objetivo ni la repetición. Las paráfrasis no reconocidas localmente se
+evalúan semánticamente con el objetivo canónico, sin imponer un formato rígido.
+
 Una aclaración necesaria puede repetir la última pregunta si el dato sigue
 pendiente y conserva intentos disponibles. Esto no permite repetir preguntas
 antiguas ni reinicia los presupuestos de

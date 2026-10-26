@@ -148,6 +148,53 @@ class ChatAutomaticRetryTest {
     }
 
     @Test
+    void preguntaAmbiguaDeTemperaturaSeCorrigeAlObjetivoDeIntensidadTrasDosInicios() throws Exception {
+        chat.agregarMensaje(new com.pretriage.backend.model.chat.Mensaje(
+                "¿Cuál es el motivo principal?", AutorMensaje.BOT, null));
+        chat.agregarMensaje(new com.pretriage.backend.model.chat.Mensaje(
+                "Tengo cefalea y fiebre", AutorMensaje.PACIENTE, chat.getPaciente()));
+        chat.agregarMensaje(new com.pretriage.backend.model.chat.Mensaje(
+                "¿Desde cuándo empezó la cefalea?", AutorMensaje.BOT, null));
+        chat.agregarMensaje(new com.pretriage.backend.model.chat.Mensaje(
+                "Desde ayer", AutorMensaje.PACIENTE, chat.getPaciente()));
+        chat.agregarMensaje(new com.pretriage.backend.model.chat.Mensaje(
+                "¿Desde cuándo empezó la fiebre?", AutorMensaje.BOT, null));
+        chat.agregarMensaje(new com.pretriage.backend.model.chat.Mensaje(
+                "Desde ayer", AutorMensaje.PACIENTE, chat.getPaciente()));
+        chat.agregarMensaje(new com.pretriage.backend.model.chat.Mensaje(
+                "¿Tenés algún otro síntoma además de los que mencionaste?", AutorMensaje.BOT, null));
+
+        var wrongAmbiguous = envelope(mapper.writeValueAsString(Map.of(
+                "mensaje", "¿Pudiste medir la temperatura?", "estadoEntrada", "AMBIGUO")));
+        var correctedIntensity = envelope(mapper.writeValueAsString(Map.of(
+                "mensaje", "¿Qué intensidad tiene el dolor de cabeza?", "estadoEntrada", "RELEVANTE")));
+        var requests = responderConCaptura(List.of(response(200, wrongAmbiguous),
+                response(200, envelope("{\"valido\":true}")), response(200, correctedIntensity),
+                response(200, envelope("{\"valido\":true}"))));
+
+        var result = service().enviarMensaje("7", "patient", "No");
+
+        assertEquals("¿Qué intensidad tiene el dolor de cabeza?", result.respuesta().contenido());
+        assertEquals(1, chat.getMensajes().stream().filter(m -> m.getAutor() == AutorMensaje.PACIENTE
+                && "No".equals(m.getContenido())).count());
+        assertEquals(1, chat.getMensajes().stream().filter(m -> m.getAutor() == AutorMensaje.BOT
+                && m.getContenido().equals("¿Qué intensidad tiene el dolor de cabeza?")).count());
+        assertTrue(chat.getMensajes().stream().noneMatch(m -> m.getContenido().equals("¿Pudiste medir la temperatura?")),
+                "AMBIGUO no debe evitar la validación local del objetivo ni persistir la pregunta desviada.");
+        assertEquals(4, requests.size());
+
+        String correctionPrompt = requestSystemInstruction(requests.get(2));
+        assertTrue(correctionPrompt.contains("intensidad"));
+        String firstVerificationInput = requestContentText(requests.get(1));
+        String correctedVerificationInput = requestContentText(requests.get(3));
+        assertTrue(firstVerificationInput.contains("\"objetivoDelTurno\""));
+        assertTrue(firstVerificationInput.contains("\"dimension\":\"INTENSIDAD\""));
+        assertTrue(correctedVerificationInput.contains("\"dimension\":\"INTENSIDAD\""));
+        verify(chats, times(1)).save(chat);
+        verifyNoInteractions(queue);
+    }
+
+    @Test
     void aclaracionPuedeRepetirLaUltimaPreguntaPendiente() throws Exception {
         chat.agregarMensaje(new com.pretriage.backend.model.chat.Mensaje(
                 "¿Cuál es el motivo?", AutorMensaje.BOT, null));
@@ -235,6 +282,11 @@ class ChatAutomaticRetryTest {
         });
         completed.get(1, TimeUnit.SECONDS);
         return captured.toString(StandardCharsets.UTF_8);
+    }
+
+    private String requestContentText(HttpRequest request) throws Exception {
+        return mapper.readTree(requestBody(request)).path("contents").get(0)
+                .path("parts").get(0).path("text").stringValue();
     }
 
     @Test

@@ -154,7 +154,8 @@ class ChatHardeningTest {
         when(flujo.provider.consultarContinuacion(anyString(), anyString(), any()))
                 .thenReturn(new TriageAiResponse(false, "Puedo ayudarte con una consulta de salud.", null,
                                 EstadoEntradaChat.FUERA_DE_CONTEXTO),
-                        new TriageAiResponse(false, "¿Desde cuándo empezó?", null, EstadoEntradaChat.RELEVANTE));
+                        new TriageAiResponse(false, "¿Qué intensidad tiene el dolor de cabeza?", null,
+                                EstadoEntradaChat.RELEVANTE));
 
         flujo.service.enviarMensaje(CHAT_ID, PACIENTE_ID,
                 "Ejemplo de texto: dificultad para respirar; no es un síntoma mío, solo una cita.");

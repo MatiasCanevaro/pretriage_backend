@@ -571,6 +571,7 @@ public class ChatService {
     private TriageAiResponse consultarPregunta(Chat chat, long inicioConsulta) {
         String correccion = null;
         java.util.Optional<TriageIaClient.MotivoRechazoSemantico> motivoCorreccion = java.util.Optional.empty();
+        ProgresoEntrevista progreso = progresoEntrevista(chat);
         for (int intento = 0; intento < 2; intento++) {
             java.time.Duration restante = java.time.Duration.ofSeconds(45)
                     .minusNanos(System.nanoTime() - inicioConsulta);
@@ -579,9 +580,11 @@ public class ChatService {
             }
             try {
                 TriageAiResponse respuesta = triageIaClient.consultarContinuacion(
-                        promptPregunta(chat, correccion, motivoCorreccion), construirDatosParaPregunta(chat), restante);
-                if (estadoEntrada(respuesta) != EstadoEntradaChat.RELEVANTE) return respuesta;
-                String error = errorPregunta(chat, respuesta);
+                        promptPregunta(progreso, correccion, motivoCorreccion),
+                        construirDatosParaPregunta(chat, progreso), restante);
+                EstadoEntradaChat estado = estadoEntrada(respuesta);
+                if (estado == EstadoEntradaChat.FUERA_DE_CONTEXTO) return respuesta;
+                String error = errorPregunta(chat, respuesta, progreso);
                 if (error == null) return respuesta;
                 if (intento == 1) throw respuestaIaInvalida(chat, error);
                 correccion = error;
@@ -606,9 +609,8 @@ public class ChatService {
                 motivoSemantico.map(TriageIaClient.MotivoRechazoSemantico::name).orElse("none"));
     }
 
-    private String promptPregunta(Chat chat, String correccion,
+    private String promptPregunta(ProgresoEntrevista progreso, String correccion,
                                   java.util.Optional<TriageIaClient.MotivoRechazoSemantico> motivoSemantico) {
-        ProgresoEntrevista progreso = progresoEntrevista(chat);
         String tarea = progreso.instruccionSiguientePaso();
         String correccionTexto = motivoSemantico.map(motivo -> " La pregunta anterior no fue aceptable. "
                 + reglaCorreccionPregunta(motivo)
@@ -634,9 +636,11 @@ public class ChatService {
         };
     }
 
-    private String errorPregunta(Chat chat, TriageAiResponse respuesta) {
+    private String errorPregunta(Chat chat, TriageAiResponse respuesta, ProgresoEntrevista progreso) {
         if (respuesta == null || respuesta.finalizado() || respuesta.resultado() != null
                 || respuesta.mensaje() == null || respuesta.mensaje().isBlank()) return "invalid_question_response";
+        Optional<String> errorObjetivo = progreso.validarPreguntaPropuesta(respuesta.mensaje());
+        if (errorObjetivo.isPresent()) return errorObjetivo.get();
         // Punctuation is a style concern, not a failed patient turn. Never discard a
         // valid provider message solely for missing, repeated or Unicode question marks.
         if (repitePregunta(chat, respuesta)) return "repeated_question";
@@ -696,8 +700,15 @@ public class ChatService {
     }
 
     /** The question path intentionally receives only clinical, non-excluded turns. */
-    private String construirDatosParaPregunta(Chat chat) {
-        return construirDatosParaClasificacion(turnosLiteralesVoz(chat));
+    private String construirDatosParaPregunta(Chat chat, ProgresoEntrevista progreso) {
+        try {
+            ObjectNode entrada = (ObjectNode) objectMapper.readTree(
+                    construirDatosParaClasificacion(turnosLiteralesVoz(chat)));
+            entrada.set("objetivoDelTurno", objectMapper.valueToTree(progreso.objetivoDelTurno()));
+            return objectMapper.writeValueAsString(entrada);
+        } catch (JacksonException error) {
+            throw new IllegalStateException("No se pudo preparar el objetivo seguro de la pregunta", error);
+        }
     }
 
     private ProgresoEntrevista progresoEntrevista(Chat chat) {

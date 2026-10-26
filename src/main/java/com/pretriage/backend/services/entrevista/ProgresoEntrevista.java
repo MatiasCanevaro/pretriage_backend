@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -22,6 +23,7 @@ public final class ProgresoEntrevista {
     public enum Dimension { INICIO, INTENSIDAD, IMPACTO, TEMPERATURA }
     public enum Estado { PENDIENTE, RESPONDIDO, DESCONOCIDO, RECHAZADO, AGOTADO }
     public enum MotivoCierre { EN_CURSO, DATOS_RESUELTOS, ALARMA, SOLICITUD_PACIENTE, LIMITE_RECURSOS, SIN_AVANCE }
+    public enum TipoObjetivo { DATO, INVITACION, ACLARACION, CERRAR }
 
     /** A turn excluded from triage remains visible for resource accounting and response context only. */
     public record Turno(AutorMensaje autor, String contenido, boolean excluido) { }
@@ -29,11 +31,15 @@ public final class ProgresoEntrevista {
     /** Value is a literal, narrowly extracted patient answer; it is null for all unresolved/unknown states. */
     public record Dato(String sintomaId, Dimension dimension, Estado estado, int intentos, String valor) { }
 
-    private enum TipoTarea { NINGUNA, DATO, INVITACION, ACLARACION }
+    /** The next conversational action, derived from the same pending-datum selection as the instruction. */
+    public record ObjetivoTurno(TipoObjetivo tipo, String sintomaId, Dimension dimension) { }
+
+    private enum TipoTarea { NINGUNA, DATO, CONFIRMACION_MEDICION, INVITACION, ACLARACION }
     private record Clave(String sintomaId, Dimension dimension) { }
     private record Hallazgo(String sintomaId, String etiqueta, boolean fiebre,
                             int inicio, int fin, String segmento) { }
     private record Tarea(TipoTarea tipo, List<Clave> claves, String contenidoBot) { }
+    private record SeleccionObjetivo(ObjetivoTurno objetivo, String etiqueta, int intentos, boolean medicionConfirmada) { }
 
     private static final Pattern NEGACION = Pattern.compile("\\b(?:no|sin|niega|niego|descarta|descarto|ningun[oa]s?)\\b");
     private static final Pattern AFIRMACION = Pattern.compile("(?:\\b(?:pero|aunque|si|y)\\s+|[,;]\\s*)(?:me|tengo|siento|presento|aparecio|aparecen|noto)\\b");
@@ -77,16 +83,21 @@ public final class ProgresoEntrevista {
     private final boolean requiereAclaracion;
     private final boolean tieneHechosClinicos;
     private final boolean ultimoTurnoPacienteTieneHechos;
+    private final ObjetivoTurno objetivoTurno;
+    private final boolean medicionConfirmadaObjetivo;
 
     private ProgresoEntrevista(List<Dato> datos, MotivoCierre motivoCierre,
                                String instruccionSiguientePaso, boolean requiereAclaracion,
-                               boolean tieneHechosClinicos, boolean ultimoTurnoPacienteTieneHechos) {
+                               boolean tieneHechosClinicos, boolean ultimoTurnoPacienteTieneHechos,
+                               ObjetivoTurno objetivoTurno, boolean medicionConfirmadaObjetivo) {
         this.datos = List.copyOf(datos);
         this.motivoCierre = Objects.requireNonNull(motivoCierre);
         this.instruccionSiguientePaso = Objects.requireNonNull(instruccionSiguientePaso);
         this.requiereAclaracion = requiereAclaracion;
         this.tieneHechosClinicos = tieneHechosClinicos;
         this.ultimoTurnoPacienteTieneHechos = ultimoTurnoPacienteTieneHechos;
+        this.objetivoTurno = Objects.requireNonNull(objetivoTurno);
+        this.medicionConfirmadaObjetivo = medicionConfirmadaObjetivo;
     }
 
     public static ProgresoEntrevista evaluar(List<TurnoVoz> historial) {
@@ -107,6 +118,115 @@ public final class ProgresoEntrevista {
     public boolean requiereAclaracion() { return requiereAclaracion; }
     public boolean tieneHechosClinicos() { return tieneHechosClinicos; }
     public boolean ultimoTurnoPacienteTieneHechos() { return ultimoTurnoPacienteTieneHechos; }
+    public ObjetivoTurno objetivoDelTurno() { return objetivoTurno; }
+
+    /** Returns only fixed, non-sensitive local validation codes; unrecognized phrasing is delegated remotely. */
+    public Optional<String> validarPreguntaPropuesta(String pregunta) {
+        return validarPreguntaPropuesta(objetivoTurno, pregunta, medicionConfirmadaObjetivo);
+    }
+
+    private Optional<String> validarPreguntaPropuesta(ObjetivoTurno objetivo, String pregunta,
+                                                       boolean medicionConfirmada) {
+        if (pregunta == null || pregunta.isBlank()) return Optional.empty();
+        String text = norm(pregunta);
+        boolean invitacion = INVITATION.matcher(text).find();
+        boolean cierre = containsClosingPhrase(text);
+        Dimension proposedDimension = askedDimension(text);
+        List<String> mentioned = symptoms(text).stream().map(Hallazgo::sintomaId).distinct().toList();
+        if (objetivo.tipo() == TipoObjetivo.CERRAR) {
+            return hasQuestionForm(text) || proposedDimension != null || invitacion
+                    ? Optional.of("PREGUNTA_TRAS_CIERRE") : Optional.empty();
+        }
+        if (objetivo.tipo() == TipoObjetivo.DATO) {
+            if (cierre || invitacion) return Optional.of("PREGUNTA_PREMATURA");
+            boolean medicionSubpaso = objetivo.dimension() == Dimension.TEMPERATURA
+                    && isMeasurementConfirmationQuestion(text);
+            if (medicionSubpaso) return medicionConfirmada
+                    ? Optional.of("CONFIRMACION_MEDICION_REPETIDA") : Optional.empty();
+            if (proposedDimension == null) {
+                return mentioned.isEmpty() || preguntaMencionaSoloObjetivo(mentioned, objetivo.sintomaId())
+                        ? Optional.empty() : Optional.of("SINTOMA_NO_COINCIDE");
+            }
+            boolean impactoDelMismoDolor = objetivo.dimension() == Dimension.INTENSIDAD
+                    && proposedDimension == Dimension.IMPACTO
+                    && objetivo.sintomaId() != null && objetivo.sintomaId().startsWith("dolor:");
+            if (proposedDimension != objetivo.dimension() && !impactoDelMismoDolor) {
+                return Optional.of("DIMENSION_NO_COINCIDE");
+            }
+            if (!mentioned.isEmpty() && !preguntaMencionaSoloObjetivo(mentioned, objetivo.sintomaId())) {
+                return Optional.of("SINTOMA_NO_COINCIDE");
+            }
+            if (mentioned.isEmpty() && hayVariosCandidatosParaPregunta(objetivo, proposedDimension)) {
+                return Optional.of("OBJETIVO_AMBIGUO");
+            }
+            Dato actual = datos.stream().filter(d -> Objects.equals(d.sintomaId(), objetivo.sintomaId())
+                    && d.dimension() == objetivo.dimension()).findFirst().orElse(null);
+            if (actual != null && actual.estado() == Estado.AGOTADO) return Optional.of("DATO_AGOTADO");
+            return Optional.empty();
+        }
+        if (objetivo.tipo() == TipoObjetivo.INVITACION) {
+            if (cierre) return Optional.of("CIERRE_PREMATURO");
+            if (!invitacion) return proposedDimension != null || !mentioned.isEmpty()
+                    ? Optional.of("PREGUNTA_PREMATURA") : Optional.empty();
+            return mentioned.isEmpty() || preguntaMencionaSoloSintomasConocidos(mentioned)
+                    ? Optional.empty() : Optional.of("SINTOMAS_SUGERIDOS");
+        }
+        if (objetivo.tipo() == TipoObjetivo.ACLARACION && objetivo.dimension() == Dimension.TEMPERATURA
+                && medicionConfirmada && isMeasurementConfirmationQuestion(text)) {
+            return Optional.of("CONFIRMACION_MEDICION_REPETIDA");
+        }
+        // ACLARACION may restate the current datum or ask an open clarification, but may not change topic.
+        if (cierre || invitacion) return Optional.of("ACLARACION_FUERA_DE_OBJETIVO");
+        if (objetivo.sintomaId() == null && proposedDimension != null) return Optional.of("ACLARACION_FUERA_DE_OBJETIVO");
+        if (objetivo.sintomaId() == null) {
+            boolean soloMolestiaGenerica = !mentioned.isEmpty()
+                    && mentioned.stream().allMatch("sintoma:molestia"::equals);
+            return mentioned.isEmpty() || soloMolestiaGenerica
+                    ? Optional.empty() : Optional.of("ACLARACION_FUERA_DE_OBJETIVO");
+        }
+        if (!mentioned.isEmpty() && !preguntaMencionaSoloObjetivo(mentioned, objetivo.sintomaId())) {
+            return Optional.of("SINTOMA_NO_COINCIDE");
+        }
+        if (proposedDimension != null && objetivo.dimension() != null && proposedDimension != objetivo.dimension()) {
+            return Optional.of("DIMENSION_NO_COINCIDE");
+        }
+        return Optional.empty();
+    }
+
+    private boolean preguntaMencionaSoloSintomasConocidos(List<String> mentioned) {
+        long knownPainIds = datos.stream().map(Dato::sintomaId).filter(id -> id.startsWith("dolor:")).distinct().count();
+        return mentioned.stream().allMatch(id -> datos.stream().anyMatch(d -> d.sintomaId().equals(id))
+                || (id.equals("dolor:general") && knownPainIds == 1));
+    }
+
+    private boolean preguntaMencionaSoloObjetivo(List<String> mentioned, String objetivoId) {
+        if (objetivoId == null) return false;
+        if (mentioned.stream().allMatch(objetivoId::equals)) return true;
+        boolean genericPainAlias = mentioned.size() == 1 && mentioned.contains("dolor:general")
+                && objetivoId.startsWith("dolor:") && !objetivoId.equals("dolor:general");
+        long distinctPainIds = datos.stream().map(Dato::sintomaId).filter(id -> id.startsWith("dolor:")).distinct().count();
+        return genericPainAlias && distinctPainIds == 1;
+    }
+
+    private boolean hayVariosCandidatosParaPregunta(ObjetivoTurno objetivo, Dimension dimension) {
+        long candidatos = datos.stream().filter(d -> d.estado() == Estado.PENDIENTE && d.dimension() == dimension)
+                .map(Dato::sintomaId).distinct().count();
+        if (dimension == Dimension.IMPACTO && objetivo.dimension() == Dimension.INTENSIDAD
+                && objetivo.sintomaId() != null && objetivo.sintomaId().startsWith("dolor:")) {
+            candidatos += datos.stream().filter(d -> d.estado() == Estado.PENDIENTE
+                            && d.dimension() == Dimension.INTENSIDAD && d.sintomaId().equals(objetivo.sintomaId()))
+                    .count();
+        }
+        return candidatos > 1;
+    }
+
+    private static boolean hasQuestionForm(String text) {
+        return text.contains("?") || text.matches("(?s)^\\s*(?:que|como|cuando|desde cuando|cuanto|cual|tenes|tienes|pudiste|podrias|quieres|queres)\\b.*");
+    }
+
+    private static boolean containsClosingPhrase(String text) {
+        return text.matches("(?s).*\\b(?:ya se registro|caso(?:\\s+ya)?(?:\\s+(?:se|fue|ha sido))?\\s+registrado|entrevista finalizada|hemos terminado|gracias por responder|listo,? ya esta)\\b.*");
+    }
 
     private record SymptomSpec(String id, String label, boolean fever, String regex) { }
 
@@ -117,6 +237,7 @@ public final class ProgresoEntrevista {
         private Estado estado = Estado.PENDIENTE;
         private int intentos;
         private String valor;
+        private boolean medicionConfirmada;
         private Tracker(Clave clave, String etiqueta) {
             this.clave = clave;
             this.etiqueta = etiqueta;
@@ -151,12 +272,13 @@ public final class ProgresoEntrevista {
         private ProgresoEntrevista build() {
             for (Turno turn : history) process(turn);
             MotivoCierre reason = determineReason();
-            String instruction = instruction(reason);
+            SeleccionObjetivo selection = seleccionarObjetivo(reason);
+            String instruction = instruction(reason, selection);
             List<Dato> output = trackers.values().stream()
                     .map(t -> new Dato(t.clave.sintomaId(), t.dimension, t.estado, t.intentos, t.valor))
                     .toList();
             return new ProgresoEntrevista(output, reason, instruction, requiereAclaracion, hechosClinicos,
-                    ultimoTurnoPacienteTieneHechos);
+                    ultimoTurnoPacienteTieneHechos, selection.objetivo(), selection.medicionConfirmada());
         }
 
         private void process(Turno turn) {
@@ -201,12 +323,34 @@ public final class ProgresoEntrevista {
                 respondioInvitacion |= !turn.excluido();
                 if (isNoMoreSymptoms(text)) yaDijoQueNoAgrega = true;
                 if (!turn.excluido()) advanced = true;
+            } else if (tarea.tipo() == TipoTarea.CONFIRMACION_MEDICION && !tarea.claves().isEmpty()) {
+                for (Clave key : tarea.claves()) {
+                    Tracker target = trackers.get(key);
+                    if (target == null || target.estado != Estado.PENDIENTE || turn.excluido()) continue;
+                    String valor = extractTemperature(text, true);
+                    if (valor != null) {
+                        target.set(Estado.RESPONDIDO, valor);
+                        target.medicionConfirmada = true;
+                        tareaAclarar = null;
+                        advanced = true;
+                    } else if (UNKNOWN.matcher(text).find() || isNegativeMeasurementConfirmation(text)
+                            || text.matches("^no[.!]?$")) {
+                        target.set(Estado.DESCONOCIDO, null);
+                        tareaAclarar = null;
+                        advanced = true;
+                    } else if (isPositiveMeasurementConfirmation(text) && !target.medicionConfirmada) {
+                        target.medicionConfirmada = true;
+                        tareaAclarar = null;
+                        advanced = true;
+                    }
+                }
             } else if (tarea.tipo() == TipoTarea.DATO && !tarea.claves().isEmpty()) {
                 for (Clave key : tarea.claves()) {
                     Tracker target = trackers.get(key);
-                    if (target != null && target.estado == Estado.PENDIENTE) {
+                    if (target != null && (target.estado == Estado.PENDIENTE || target.estado == Estado.AGOTADO)) {
                         if (turn.excluido()) {
                             invalidAnswer(target);
+                            tareaAclarar = tarea;
                         } else {
                             ResultadoRespuesta result = answer(target, text);
                             if (result.estado() != null) {
@@ -259,11 +403,26 @@ public final class ProgresoEntrevista {
                 tarea = new Tarea(TipoTarea.ACLARACION, List.of(), text);
                 return;
             }
+            if (isMeasurementConfirmationQuestion(text)) {
+                List<Tracker> temperatures = trackers.values().stream()
+                        .filter(t -> t.estado == Estado.PENDIENTE && t.dimension == Dimension.TEMPERATURA).toList();
+                List<String> mentioned = symptoms(text).stream().map(Hallazgo::sintomaId).distinct().toList();
+                List<Tracker> named = temperatures.stream().filter(t -> mentioned.contains(t.clave.sintomaId())).toList();
+                List<Tracker> targets = named.size() == 1 ? named : (mentioned.isEmpty() && temperatures.size() == 1 ? temperatures : List.of());
+                if (targets.size() == 1) {
+                    tarea = new Tarea(TipoTarea.CONFIRMACION_MEDICION,
+                            targets.stream().map(t -> t.clave).toList(), text);
+                } else {
+                    tarea = new Tarea(TipoTarea.NINGUNA, List.of(), text);
+                }
+                return;
+            }
             Dimension dimension = askedDimension(text);
             if (dimension == null) {
                 tarea = new Tarea(TipoTarea.NINGUNA, List.of(), text);
                 return;
             }
+            List<String> mentioned = symptoms(text).stream().map(Hallazgo::sintomaId).toList();
             List<Tracker> candidates = trackers.values().stream()
                     .filter(t -> t.estado == Estado.PENDIENTE && t.dimension == dimension)
                     .toList();
@@ -276,11 +435,18 @@ public final class ProgresoEntrevista {
                 candidates = trackers.values().stream().filter(t -> t.estado == Estado.PENDIENTE
                         && t.dimension == Dimension.IMPACTO).toList();
             }
+            if (dimension != null) {
+                List<Tracker> agotados = trackers.values().stream()
+                        .filter(t -> t.estado == Estado.AGOTADO && t.dimension == dimension).toList();
+                List<Tracker> agotadoNombrado = agotados.stream()
+                        .filter(t -> mentioned.contains(t.clave.sintomaId())).toList();
+                if (agotadoNombrado.size() == 1) candidates = agotadoNombrado;
+                else if (candidates.isEmpty() && mentioned.isEmpty() && agotados.size() == 1) candidates = agotados;
+            }
             if (candidates.isEmpty()) {
                 tarea = new Tarea(TipoTarea.NINGUNA, List.of(), text);
                 return;
             }
-            List<String> mentioned = symptoms(text).stream().map(Hallazgo::sintomaId).toList();
             List<Tracker> explicitlyMentioned = candidates.stream()
                     .filter(t -> mentioned.contains(t.clave.sintomaId())).toList();
             if (mentioned.contains("dolor:general")) {
@@ -495,6 +661,9 @@ public final class ProgresoEntrevista {
                     && !text.matches(".*\\b(?:ambos|ambas|los dos|las dos)\\b.*");
             if (explicitlyMentionsOther) return new ResultadoRespuesta(null, null);
             if (UNKNOWN.matcher(text).find()) return new ResultadoRespuesta(Estado.DESCONOCIDO, null);
+            if (target.dimension == Dimension.TEMPERATURA && isNegativeMeasurementConfirmation(text)) {
+                return new ResultadoRespuesta(Estado.DESCONOCIDO, null);
+            }
             if (REFUSAL.matcher(text).find()) return new ResultadoRespuesta(Estado.RECHAZADO, null);
             String value = switch (target.dimension) {
                 case INICIO -> extractTime(text);
@@ -521,7 +690,38 @@ public final class ProgresoEntrevista {
 
         private boolean agotado() { return trackers.values().stream().anyMatch(t -> t.estado == Estado.AGOTADO); }
 
-        private String instruction(MotivoCierre reason) {
+        private SeleccionObjetivo seleccionarObjetivo(MotivoCierre reason) {
+            if (reason != MotivoCierre.EN_CURSO) return new SeleccionObjetivo(new ObjetivoTurno(TipoObjetivo.CERRAR, null, null), null, 0, false);
+            if (requiereAclaracion) {
+                Tarea aclaracion = tareaAclarar == null ? tarea : tareaAclarar;
+                Clave key = aclaracion.claves().stream().findFirst().orElse(null);
+                Tracker target = key == null ? null : trackers.get(key);
+                return new SeleccionObjetivo(new ObjetivoTurno(TipoObjetivo.ACLARACION,
+                        key == null ? null : key.sintomaId(),
+                        target == null ? (key == null ? null : key.dimension()) : target.dimension),
+                        target == null ? null : target.etiqueta, target == null ? 0 : target.intentos,
+                        target != null && target.medicionConfirmada);
+            }
+            if (tarea.tipo() == TipoTarea.DATO || tarea.tipo() == TipoTarea.CONFIRMACION_MEDICION
+                    || tarea.tipo() == TipoTarea.INVITACION || tarea.tipo() == TipoTarea.ACLARACION) {
+                return new SeleccionObjetivo(new ObjetivoTurno(TipoObjetivo.CERRAR, null, null), null, 0, false);
+            }
+            if (!motivoClinico && !emocional) return new SeleccionObjetivo(new ObjetivoTurno(TipoObjetivo.ACLARACION, null, null), null, 0, false);
+            Tracker next = siguienteTrackerPendiente();
+            if (next != null) return new SeleccionObjetivo(new ObjetivoTurno(TipoObjetivo.DATO,
+                    next.clave.sintomaId(), next.dimension), next.etiqueta, next.intentos, next.medicionConfirmada);
+            if (yaDijoQueNoAgrega || (invitacionAbierta && respondioInvitacion)) {
+                return new SeleccionObjetivo(new ObjetivoTurno(TipoObjetivo.CERRAR, null, null), null, 0, false);
+            }
+            return new SeleccionObjetivo(new ObjetivoTurno(TipoObjetivo.INVITACION, null, null), null, 0, false);
+        }
+
+        private Tracker siguienteTrackerPendiente() {
+            return trackers.values().stream().filter(t -> t.estado == Estado.PENDIENTE)
+                    .min(java.util.Comparator.comparingInt(t -> dimensionPriority(t.dimension))).orElse(null);
+        }
+
+        private String instruction(MotivoCierre reason, SeleccionObjetivo selection) {
             if (reason == MotivoCierre.ALARMA) return "La entrevista requiere cierre inmediato por una alarma literal afirmada; conserva solo los hechos del paciente.";
             if (reason == MotivoCierre.SOLICITUD_PACIENTE) return "La persona pidió terminar; cierra la entrevista y conserva los datos desconocidos sin completarlos.";
             if (reason == MotivoCierre.LIMITE_RECURSOS) return "Cierra como entrevista parcial por límite de recursos. Conserva pendientes y valores desconocidos; no los declares resueltos.";
@@ -536,17 +736,16 @@ public final class ProgresoEntrevista {
                 }
             }
             if (tarea.tipo() == TipoTarea.DATO) return "Espera la respuesta al único dato pendiente preguntado; no avances a otro objetivo en este turno.";
+            if (tarea.tipo() == TipoTarea.CONFIRMACION_MEDICION) return "Espera la respuesta a si pudo medirse la temperatura; una confirmación no sustituye el valor numérico.";
             if (tarea.tipo() == TipoTarea.INVITACION) return "Espera la respuesta a la única invitación abierta; no vuelvas a preguntar por síntomas nuevos.";
             if (tarea.tipo() == TipoTarea.ACLARACION) return "Espera la aclaración del paciente; no infieras una sensación física ni una causa emocional.";
             if (!motivoClinico && !emocional) return "Pide una aclaración abierta sobre qué le ocurre; no enumeres síntomas ni conviertas una frase incoherente en síntoma.";
-            Tracker next = trackers.values().stream().filter(t -> t.estado == Estado.PENDIENTE)
-                    .min(java.util.Comparator.comparingInt(t -> dimensionPriority(t.dimension))).orElse(null);
-            if (next != null) {
-                if (next.intentos >= MAX_INTENTOS_POR_DATO) return "No insistas en el dato agotado. Continúa con el próximo objetivo pendiente y conserva este valor como desconocido.";
-                return switch (next.dimension) {
-                    case INICIO -> "Pregunta desde cuándo empezó " + next.etiqueta + "; no transfieras el inicio de otro síntoma.";
-                    case INTENSIDAD -> "Pregunta en un turno la intensidad del dolor" + (next.etiqueta.startsWith("dolor ") ? " " + next.etiqueta.substring("dolor ".length()) : "") + "; solo registra una escala explícitamente referida a dolor.";
-                    case IMPACTO -> "Pregunta en un turno el impacto funcional de " + next.etiqueta + "; una respuesta a otro síntoma no resuelve este dato.";
+            if (selection.objetivo().tipo() == TipoObjetivo.DATO) {
+                if (selection.intentos() >= MAX_INTENTOS_POR_DATO) return "No insistas en el dato agotado. Continúa con el próximo objetivo pendiente y conserva este valor como desconocido.";
+                return switch (selection.objetivo().dimension()) {
+                    case INICIO -> "Pregunta desde cuándo empezó " + selection.etiqueta() + "; no transfieras el inicio de otro síntoma.";
+                    case INTENSIDAD -> "Pregunta en un turno la intensidad del dolor" + (selection.etiqueta().startsWith("dolor ") ? " " + selection.etiqueta().substring("dolor ".length()) : "") + "; solo registra una escala explícitamente referida a dolor.";
+                    case IMPACTO -> "Pregunta en un turno el impacto funcional de " + selection.etiqueta() + "; una respuesta a otro síntoma no resuelve este dato.";
                     case TEMPERATURA -> "Pregunta cuántos grados de temperatura marcó el termómetro; acepta que no se midió o que se desconoce, y no infieras un valor.";
                 };
             }
@@ -566,10 +765,46 @@ public final class ProgresoEntrevista {
                 || text.contains("cuanto marco") || text.contains("que marco el termometro")) return Dimension.TEMPERATURA;
         if (text.contains("intensidad") && (text.contains("vacio") || text.contains("sensacion"))) return Dimension.IMPACTO;
         if (text.contains("impacto") || text.contains("te impide") || text.contains("limita") || text.contains("funcional")
-                || text.contains("afecta") || text.contains("actividades") || text.contains("hacer tus cosas")) return Dimension.IMPACTO;
+                || text.contains("afecta") || text.contains("actividades") || text.contains("hacer tus cosas")
+                || esPreguntaDeImpactoFuncional(text)) return Dimension.IMPACTO;
+        if (Pattern.compile("\\bque tan (?:fuerte|intens[oa])\\b").matcher(text).find()
+                && Pattern.compile("\\b(?:dolor|doli\\w*|duele(?:n)?|cefalea)\\b").matcher(text).find()) return Dimension.INTENSIDAD;
         if (text.contains("intensidad") || text.contains("cuanto te duele") || text.contains("0 al 10")
                 || text.contains("1 al 10") || text.contains("escala")) return Dimension.INTENSIDAD;
         return null;
+    }
+
+    private static boolean esPreguntaDeImpactoFuncional(String text) {
+        boolean verboImpacto = text.contains("te molesta") || text.contains("te cuesta") || text.contains("te dificulta");
+        boolean actividad = Pattern.compile("\\b(?:caminar|trabajar|dormir|comer|moverte|levantarte|hacer tus actividades|actividades diarias)\\b")
+                .matcher(text).find();
+        return verboImpacto && actividad && !text.contains("respirar");
+    }
+
+    private static boolean isMeasurementConfirmationQuestion(String text) {
+        boolean explicitlyAsksForValue = text.matches("(?s).*\\b(?:que|cuantos|cuantas|cuanto|cual|valor exacto)\\b.{0,40}\\b(?:grados?|temperatura|termometro|medicion)\\b.*")
+                || text.matches("(?s).*\\b(?:grados?|temperatura|termometro|medicion)\\b.{0,35}\\b(?:marco|valor|cuantos|cuanto)\\b.*");
+        if (explicitlyAsksForValue) return false;
+        boolean asksWhetherMeasured = text.matches("(?s).*\\b(?:pudiste|lograste|llegaste a)\\s+medir(?:te)?\\b.*")
+                || text.matches("(?s).*\\b(?:pudiste|lograste|llegaste a)\\s+tomar(?:te)?\\b.*")
+                || text.matches("(?s).*\\bte\\s+mediste\\b.*")
+                || text.matches("(?s).*\\bmediste\\b.*")
+                || text.matches("(?s).*\\b(?:te\\s+)?tomaste\\b.*");
+        return asksWhetherMeasured && (text.contains("temperatura") || text.contains("termometro"));
+    }
+
+    private static boolean isPositiveMeasurementConfirmation(String text) {
+        if (isNegativeMeasurementConfirmation(text)) return false;
+        return text.matches("^(?:si|claro|correcto|exacto)[.!]?$")
+                || text.matches("(?s).*\\b(?:si|claro|correcto|exacto)\\b.{0,35}\\b(?:(?:me\\s+)?(?:la\\s+)?(?:medi|medido|medimos|tome|tomado))\\b.*")
+                || text.matches("(?s).*\\bme\\s+(?:la\\s+)?(?:medi|tome|tomado)\\b.*")
+                || text.matches("(?s).*\\b(?:la\\s+)?(?:medi|tome|tomado)\\b.*");
+    }
+
+    private static boolean isNegativeMeasurementConfirmation(String text) {
+        return text.matches("(?s).*\\bno\\s+(?:tengo|hay|consegui|consigo)\\s+(?:un\\s+)?termometro\\b.*")
+                || text.matches("(?s).*\\bno\\s+(?:me\\s+)?(?:la\\s+)?(?:medi|tome|tomado)\\b.*")
+                || text.matches("(?s).*\\bno\\s+(?:pude|pudimos|logre)\\s+(?:medir|medirme|tomar|tomarme)\\b.*");
     }
 
     private static int dimensionPriority(Dimension dimension) {
