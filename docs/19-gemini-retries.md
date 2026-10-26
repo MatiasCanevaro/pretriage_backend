@@ -56,10 +56,22 @@ evalúan semánticamente con el objetivo canónico, sin imponer un formato rígi
 Para una aclaración de motivo todavía indefinido (`ACLARACION` sin síntoma ni
 dimensión), tanto un rechazo local como `INFERENCIA` o `SIN_RESPALDO` reciben
 feedback fijo que pide explicar con palabras propias el sentido de la expresión.
-No pide elegir categorías físicas/emocionales ni cuantificar todavía. Los demás
-objetivos conservan su feedback y sus límites anteriores. Si la segunda propuesta
-se acepta, se registra `Chat IA question correction accepted` con chatId y códigos
+No pide elegir categorías físicas/emocionales ni cuantificar todavía. Si la segunda
+propuesta se acepta, se registra `Chat IA question correction accepted` con chatId y códigos
 de motivo, sin texto clínico. La aceptación no prueba entrega HTTP ni commit.
+
+Para `COMUNICACION` con objetivo `INVITACION`, el feedback exige una sola
+invitación pertinente sobre lo ya contado, sin pedir otro dato, sugerir síntomas,
+resumir el contexto como causa o diagnóstico, anunciar registro ni cerrar. El
+generador y el verificador permiten un reconocimiento neutral muy breve justo
+antes de esa invitación; esa frase no es por sí sola una despedida ni un cierre.
+No se permite una respuesta de empatía sin la invitación ni otro acto clínico.
+Los demás objetivos conservan su feedback y todos conservan los mismos límites:
+dos propuestas como máximo y un presupuesto compartido de 45 segundos.
+
+Los logs `Chat IA correction` de preguntas y `Chat IA question correction accepted`
+incluyen `objectiveType`, únicamente el enum del objetivo controlado por el backend.
+No contienen el identificador del síntoma ni texto del paciente o del proveedor.
 
 Una aclaración necesaria puede repetir la última pregunta si el dato sigue
 pendiente y conserva intentos disponibles. Esto no permite repetir preguntas

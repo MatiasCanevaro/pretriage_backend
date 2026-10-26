@@ -104,6 +104,16 @@ Una aclaración conserva la dimensión efectiva preguntada: si se eligió impact
 funcional para ese dolor, no vuelve a exigir una escala de intensidad. La
 invitación puede referirse a síntomas ya aportados, pero no sugerir otros nuevos.
 
+Al reconstruir el historial, una invitación no depende únicamente de frases como
+«algo más». Si el objetivo inmediatamente anterior al bot era `INVITACION`, una
+pregunta abierta con intención de aportar información adicional, sin dimensión
+clínica ni síntomas nuevos, puede conservar esa tarea aunque use otra paráfrasis,
+por ejemplo «¿Hay algún otro detalle que quieras compartir?». No se aplica si hay
+datos pendientes, falta aclarar el motivo o ya
+corresponde cerrar, ni a anuncios de registro/cierre. Un «no» admitido responde
+esa invitación; un turno excluido sigue sin resolverla. No se agrega una llamada
+al proveedor ni se persisten campos nuevos.
+
 Las aclaraciones `AMBIGUO` también respetan el objetivo y los límites de repetición;
 no pueden volver a un dato agotado. La redirección fija `FUERA_DE_CONTEXTO` conserva
 su tratamiento administrativo. Un desvío permite una sola corrección remota con

@@ -589,8 +589,9 @@ public class ChatService {
                 String error = errorPregunta(chat, respuesta, progreso);
                 if (error == null) {
                     if (intento > 0) {
-                        log.info("Chat IA question correction accepted chatId={} reason={} semanticReason={}",
-                                chat.getId(), correccion,
+                        log.info("Chat IA question correction accepted chatId={} objectiveType={} reason={} semanticReason={}",
+                                chat.getId(), progreso.objetivoDelTurno().tipo().name(),
+                                correccion,
                                 motivoCorreccion.map(TriageIaClient.MotivoRechazoSemantico::name).orElse("none"));
                     }
                     return respuesta;
@@ -598,13 +599,13 @@ public class ChatService {
                 if (intento == 1) throw respuestaIaInvalida(chat, error);
                 correccion = error;
                 motivoCorreccion = java.util.Optional.empty();
-                logCorreccionPregunta(chat, correccion, motivoCorreccion);
+                logCorreccionPregunta(chat, correccion, motivoCorreccion, progreso);
             } catch (ProveedorIaException error) {
                 if (intento == 1 || !TriageIaClient.esErrorDeRespuesta(error)) throw error;
                 motivoCorreccion = TriageIaClient.motivoRechazo(error);
                 correccion = motivoCorreccion.isPresent()
                         ? "question_semantic_verification" : "invalid_question_response";
-                logCorreccionPregunta(chat, correccion, motivoCorreccion);
+                logCorreccionPregunta(chat, correccion, motivoCorreccion, progreso);
             } catch (RuntimeException error) {
                 throw new ProveedorIaException(error);
             }
@@ -613,8 +614,10 @@ public class ChatService {
     }
 
     private void logCorreccionPregunta(Chat chat, String razonTecnica,
-                                       java.util.Optional<TriageIaClient.MotivoRechazoSemantico> motivoSemantico) {
-        log.info("Chat IA correction chatId={} reason={} semanticReason={}", chat.getId(), razonTecnica,
+                                       java.util.Optional<TriageIaClient.MotivoRechazoSemantico> motivoSemantico,
+                                       ProgresoEntrevista progreso) {
+        log.info("Chat IA correction chatId={} objectiveType={} reason={} semanticReason={}", chat.getId(),
+                progreso.objetivoDelTurno().tipo().name(), razonTecnica,
                 motivoSemantico.map(TriageIaClient.MotivoRechazoSemantico::name).orElse("none"));
     }
 
@@ -671,7 +674,13 @@ public class ChatService {
             };
         }
         return switch (motivo) {
-            case COMUNICACION -> "Formula una sola pregunta breve para continuar. No menciones registro, despedida, clasificación, triage ni resultados.";
+            case COMUNICACION -> progreso.objetivoDelTurno().tipo() == ProgresoEntrevista.TipoObjetivo.INVITACION
+                    ? "El objetivo sigue siendo una invitación abierta. Pregunta en una sola invitación si quiere "
+                            + "agregar algo sobre lo que ya contó; no pidas un dato ni sugieras síntomas nuevos. "
+                            + "No resumas ni reinterpretes su contexto como causa o diagnóstico, y no cierres ni "
+                            + "anuncies el registro. Evita empatía redundante; si aporta, una frase muy breve de "
+                            + "reconocimiento neutral puede preceder inmediatamente a esa única invitación."
+                    : "Formula una sola pregunta breve para continuar. No menciones registro, despedida, clasificación, triage ni resultados.";
             case INFERENCIA -> "Pregunta neutralmente solo por el dato pendiente; no asumas causas ni hechos que la persona no informó.";
             case NEGACION -> "Respeta la negación que ya dio la persona. No la reformules como afirmación y pregunta solo el dato pendiente.";
             case SIN_RESPALDO -> "No presentes como hecho ningún dato nuevo. Pregunta solo por la dimensión pendiente, sin atribuir síntomas no informados.";

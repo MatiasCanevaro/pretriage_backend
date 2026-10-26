@@ -779,6 +779,121 @@ class ProgresoEntrevistaTest {
     }
 
     @Test
+    void chat25RespuestaTrasContextoExcluidoNoCreaDolorYPermiteInvitacion() {
+        var progreso = ProgresoEntrevista.evaluarConContexto(List.of(
+                bt("Hola"),
+                new ProgresoEntrevista.Turno(AutorMensaje.PACIENTE, "Siento un vacío en el pecho", true),
+                bt("¿Podrías explicarme con tus palabras qué querés decir o qué sentís con eso de \"un vacío en el pecho\"?"),
+                pt("No sé, lo siento desde que me dejó", false)));
+
+        assertTrue(progreso.datos().isEmpty());
+        assertFalse(progreso.datos().stream().anyMatch(d -> d.sintomaId().startsWith("dolor:")));
+        assertEquals(ProgresoEntrevista.TipoObjetivo.INVITACION, progreso.objetivoDelTurno().tipo());
+    }
+
+    @Test
+    void invitacionSemanticaNoCubiertaPorRegexPermiteCerrarTrasLaRespuesta() {
+        var historial = new java.util.ArrayList<ProgresoEntrevista.Turno>(List.of(
+                bt("Hola"),
+                new ProgresoEntrevista.Turno(AutorMensaje.PACIENTE, "Siento un vacío en el pecho", true),
+                bt("¿Podrías explicarme con tus palabras qué querés decir o qué sentís con eso de \"un vacío en el pecho\"?"),
+                pt("No sé, empecé a sentir mucha tristeza cuando mi pareja se mudó a otra ciudad", false)));
+        assertEquals(ProgresoEntrevista.TipoObjetivo.INVITACION,
+                ProgresoEntrevista.evaluarConContexto(historial).objetivoDelTurno().tipo());
+
+        historial.add(bt("¿Hay algún otro detalle que quieras compartir?"));
+        historial.add(pt("No", false));
+        var progreso = ProgresoEntrevista.evaluarConContexto(historial);
+
+        assertTrue(progreso.puedeCerrar());
+        assertEquals(ProgresoEntrevista.MotivoCierre.DATOS_RESUELTOS, progreso.motivoCierre());
+    }
+
+    @Test
+    void preguntaAjenaNoSeInterpretaComoInvitacionAunqueElObjetivoCanonicoLoSea() {
+        var historial = new java.util.ArrayList<ProgresoEntrevista.Turno>(List.of(
+                bt("Hola"),
+                new ProgresoEntrevista.Turno(AutorMensaje.PACIENTE, "Siento un vacío en el pecho", true),
+                bt("¿Podrías explicarme con tus palabras qué querés decir o qué sentís con eso de \"un vacío en el pecho\"?"),
+                pt("No sé, empecé a sentir mucha tristeza cuando mi pareja se mudó a otra ciudad", false)));
+        assertEquals(ProgresoEntrevista.TipoObjetivo.INVITACION,
+                ProgresoEntrevista.evaluarConContexto(historial).objetivoDelTurno().tipo());
+
+        historial.add(bt("¿A qué hora te acostás?"));
+        historial.add(pt("No", false));
+        var progreso = ProgresoEntrevista.evaluarConContexto(historial);
+
+        assertFalse(progreso.puedeCerrar());
+        assertEquals(ProgresoEntrevista.TipoObjetivo.INVITACION, progreso.objetivoDelTurno().tipo());
+    }
+
+    @Test
+    void preguntaPorUnaSensacionNoEsInvitacionPorIncluirAlgoYSolicitarDescripcion() {
+        var historial = new java.util.ArrayList<ProgresoEntrevista.Turno>(List.of(
+                bt("Hola"),
+                new ProgresoEntrevista.Turno(AutorMensaje.PACIENTE, "Siento un vacío en el pecho", true),
+                bt("¿Podrías explicarme con tus palabras qué querés decir o qué sentís con eso de \"un vacío en el pecho\"?"),
+                pt("No sé, empecé a sentir mucha tristeza cuando mi pareja se mudó a otra ciudad", false)));
+        assertEquals(ProgresoEntrevista.TipoObjetivo.INVITACION,
+                ProgresoEntrevista.evaluarConContexto(historial).objetivoDelTurno().tipo());
+
+        historial.add(bt("¿Podrías contarme si sentís algo en el brazo?"));
+        historial.add(pt("No", false));
+        var progreso = ProgresoEntrevista.evaluarConContexto(historial);
+
+        assertFalse(progreso.puedeCerrar());
+        assertEquals(ProgresoEntrevista.TipoObjetivo.INVITACION, progreso.objetivoDelTurno().tipo());
+    }
+
+    @Test
+    void preguntaSemanticaNoReemplazaUnDatoPendientePorInvitacion() {
+        var progreso = ProgresoEntrevista.evaluar(turnos(
+                p("Tengo tos"), b("¿Desde cuándo empezó la tos?"), p("Desde ayer"),
+                b("¿Hay algún otro detalle que quieras compartir?"), p("No")));
+
+        assertFalse(progreso.puedeCerrar());
+        assertEquals(ProgresoEntrevista.TipoObjetivo.DATO, progreso.objetivoDelTurno().tipo());
+        assertEquals(Estado.PENDIENTE, dato(progreso, "sintoma:tos", ProgresoEntrevista.Dimension.IMPACTO).estado());
+    }
+
+    @Test
+    void preguntaDeRegistroNoSeInterpretaComoInvitacionSemantica() {
+        var progreso = ProgresoEntrevista.evaluarConContexto(List.of(
+                bt("Hola"),
+                new ProgresoEntrevista.Turno(AutorMensaje.PACIENTE, "Siento un vacío en el pecho", true),
+                bt("¿Podrías explicarme con tus palabras qué querés decir o qué sentís con eso de \"un vacío en el pecho\"?"),
+                pt("No sé, empecé a sentir mucha tristeza cuando mi pareja se mudó a otra ciudad", false),
+                bt("La entrevista ya quedó registrada. ¿Querés continuar?"),
+                pt("No", false)));
+
+        assertFalse(progreso.puedeCerrar());
+        assertEquals(ProgresoEntrevista.TipoObjetivo.INVITACION, progreso.objetivoDelTurno().tipo());
+    }
+
+    @Test
+    void respuestaExcluidaANuevaInvitacionSemanticaNoLaDaPorContestada() {
+        var progreso = ProgresoEntrevista.evaluarConContexto(List.of(
+                bt("Hola"),
+                new ProgresoEntrevista.Turno(AutorMensaje.PACIENTE, "Siento un vacío en el pecho", true),
+                bt("¿Podrías explicarme con tus palabras qué querés decir o qué sentís con eso de \"un vacío en el pecho\"?"),
+                pt("No sé, empecé a sentir mucha tristeza cuando mi pareja se mudó a otra ciudad", false),
+                bt("¿Hay algún otro detalle que quieras compartir?"),
+                new ProgresoEntrevista.Turno(AutorMensaje.PACIENTE, "No", true)));
+
+        assertFalse(progreso.puedeCerrar());
+        assertEquals(ProgresoEntrevista.TipoObjetivo.INVITACION, progreso.objetivoDelTurno().tipo());
+    }
+
+    @Test
+    void preguntaSemanticaSinMotivoPrevioNoSeInterpretaComoInvitacion() {
+        var progreso = ProgresoEntrevista.evaluarConContexto(List.of(
+                bt("¿Hay algún otro detalle que quieras compartir?"), pt("No", false)));
+
+        assertFalse(progreso.puedeCerrar());
+        assertEquals(ProgresoEntrevista.TipoObjetivo.ACLARACION, progreso.objetivoDelTurno().tipo());
+    }
+
+    @Test
     void limiteDeTurnosCierraComoParcialYNoComoDatosResueltos() {
         var turnos = new java.util.ArrayList<ProgresoEntrevista.Turno>();
         List<String> motivos = List.of("Tengo fiebre", "Tengo tos", "Tengo náuseas", "Tengo vómitos",

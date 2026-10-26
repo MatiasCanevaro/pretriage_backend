@@ -219,6 +219,31 @@ The opt-in check needs `GEMINI_API_KEY` in the process environment and makes rea
 provider requests with synthetic data. It uses mocked repositories and queue
 services, without starting Spring or connecting to the application database.
 
+If the first ambiguous turn and open clarification are already saved but the
+following reply fails twice with `COMUNICACION`, inspect the controlled objective
+instead of treating this as another failed initial clarification. An emotional
+clarification can legitimately advance to `INVITACION`. Its correction must keep
+that invitation, not request a new clinical datum or announce completion.
+`objectiveType=INVITACION` in correction logs identifies this branch without
+logging clinical text. The verifier accepts a brief neutral acknowledgment only
+when followed immediately by a valid invitation; announcements of registration
+and closure remain invalid. Rejected proposals are not retained, so these logs
+alone do not identify the exact wording or prove a false positive.
+
+Verified on 2026-10-26: the final isolated suite reported 688 tests, no failures
+or errors, and 12 skipped tests. The exact reported clarification was replayed
+locally with a simulated provider. Three opt-in checks with real Gemini and
+synthetic text passed: acknowledgment plus invitation accepted, a registration
+announcement rejected, and a three-turn emotional interview classified after
+one final negative reply. Local regressions also cover a valid invitation
+paraphrase outside the original phrase pattern, unrelated questions, missing
+data, and excluded replies. No application records were rewritten, and no mobile
+rebuild is required. These checks do not guarantee every future provider output.
+
+```powershell
+./mvnw.cmd "-Dtest=ChatHardeningGeminiSmokeTest#chatRealAclaraAbiertamenteAntesDeRegistrarUnMotivoEmocional+verificadorRealAceptaReconocimientoBreveAntesDeInvitacionEmocional+verificadorRealRechazaAnuncioDeRegistroComoPregunta" "-Dpretriage.gemini.hardening.live=true" "-Dspring.docker.compose.enabled=false" test
+```
+
 When transport errors coexist with `invalid_response`, `repeated_question` or
 `premature_or_unsafe_closure`, do not attribute all delays to the provider. A
 single message correction or final-result correction adds another Gemini request

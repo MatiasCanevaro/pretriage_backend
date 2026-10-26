@@ -116,6 +116,26 @@ class ChatHardeningGeminiSmokeTest {
     }
 
     @Test
+    void verificadorRealAceptaReconocimientoBreveAntesDeInvitacionEmocional() {
+        String invitation = "Entiendo. ¿Querés agregar algo más sobre lo que sentís?";
+        var harness = clientWithRealQuestionVerifier(invitation);
+        String input = """
+                {"turnos":[{"autor":"PACIENTE","contenido":"Me siento triste desde que mi pareja se mudó a otro país."}],
+                 "objetivoDelTurno":{"tipo":"INVITACION","sintomaId":null,"dimension":null}}
+                """;
+
+        var response = harness.client().consultarContinuacion(LenguajeClinicoChat.REGLAS_PREGUNTA_TEXTO,
+                input, Duration.ofSeconds(30));
+
+        assertEquals(EstadoEntradaChat.RELEVANTE, response.estadoEntrada());
+        assertEquals(invitation, response.mensaje());
+        assertFalse(response.finalizado());
+        assertNull(response.resultado());
+        assertEquals(2, harness.calls().get(), "la propuesta fija debe pasar por el verificador Gemini real");
+        verify(harness.mockedGenerator(), times(2)).generar(anyString(), anyString(), any(), any(Duration.class));
+    }
+
+    @Test
     void noInventaClasificacionCuandoElUnicoMotivoEsIncoherente() {
         var response = client().consultar(LenguajeClinicoChat.REGLAS_RESULTADO,
                 conversation(List.of(patient("Me duele la harina de trigo"))), true);
@@ -463,13 +483,16 @@ class ChatHardeningGeminiSmokeTest {
         RepoEntradasCola entries = mock(RepoEntradasCola.class);
         AtencionHospitalService queue = mock(AtencionHospitalService.class);
         var providerCalls = new AtomicInteger();
+        var providerResponses = new CopyOnWriteArrayList<String>();
         var realGenerator = generator();
         var delegatedGenerator = mock(GeminiJsonClient.class);
         when(delegatedGenerator.generar(anyString(), anyString(), any(), any(Duration.class)))
                 .thenAnswer(invocation -> {
                     providerCalls.incrementAndGet();
-                    return realGenerator.generar(invocation.getArgument(0), invocation.getArgument(1),
+                    String generated = realGenerator.generar(invocation.getArgument(0), invocation.getArgument(1),
                             invocation.getArgument(2), invocation.getArgument(3));
+                    providerResponses.add(generated);
+                    return generated;
                 });
         var service = new ChatService(chats, patients, consultations, entries, queue,
                 new TriageIaClient(delegatedGenerator, mapper), mapper);
@@ -480,7 +503,7 @@ class ChatHardeningGeminiSmokeTest {
                 .thenReturn(new com.pretriage.backend.controllers.dtos.TiempoEstimadoAtencionResponse());
 
         service.enviarMensaje("17", "auth0|synthetic-smoke",
-                "Tengo una sensación extraña y no sé cómo explicar lo que me pasa");
+                "Me pasa algo raro y no encuentro palabras para explicarlo");
 
         assertFalse(chat.isFinalizado());
         assertEquals(EstadoClasificacionChat.NO_SOLICITADA, chat.getEstadoClasificacion());
@@ -494,7 +517,7 @@ class ChatHardeningGeminiSmokeTest {
         verify(queue, never()).finalizarTriageEIngresarACola(anyString(), any(), anyString(), any(Chat.class));
 
         service.enviarMensaje("17", "auth0|synthetic-smoke",
-                "Es una tristeza muy grande desde que me mudé de ciudad");
+                "No sé, empecé a sentir mucha tristeza cuando mi pareja se mudó a otra ciudad");
 
         assertFalse(chat.isFinalizado());
         assertEquals(EstadoClasificacionChat.NO_SOLICITADA, chat.getEstadoClasificacion());
@@ -505,7 +528,15 @@ class ChatHardeningGeminiSmokeTest {
 
         service.enviarMensaje("17", "auth0|synthetic-smoke", "No");
 
-        assertTrue(chat.isFinalizado());
+        String historyDiagnostic = chat.getMensajes().stream()
+                .map(m -> m.getAutor() + ":" + m.getContenido() + " [excluido="
+                        + Boolean.TRUE.equals(m.getExcluidoDelTriage()) + "]")
+                .collect(java.util.stream.Collectors.joining(" | "));
+        var finalProgress = progress(chat);
+        String closeDiagnostic = "historial=" + historyDiagnostic
+                + "; progreso=" + finalProgress.motivoCierre() + "/" + finalProgress.objetivoDelTurno()
+                + "; respuestas crudas del proveedor=" + providerResponses;
+        assertTrue(chat.isFinalizado(), closeDiagnostic);
         assertEquals(EstadoClasificacionChat.COMPLETADA, chat.getEstadoClasificacion());
         var saved = mapper.readTree(chat.getResultadoTriageJson());
         assertEquals("DATOS_RESUELTOS", saved.path("seguimientoEntrevista").path("motivoCierre").asText());

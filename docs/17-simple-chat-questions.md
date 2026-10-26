@@ -25,6 +25,11 @@ duración, intensidad o causas. Una pregunta concreta posterior solo corresponde
 si la respuesta deja una ambigüedad relevante. Esta aclaración para entender el
 motivo es distinta de la invitación única a agregar información al final.
 
+En texto, la invitación puede estar precedida inmediatamente por un reconocimiento
+neutral muy breve, como «Entiendo». Sigue siendo una sola invitación pertinente;
+no habilita otra pregunta, datos nuevos, interpretaciones, anuncio de registro ni
+cierre. Tanto la generación como la verificación semántica comparten ese criterio.
+
 El cierre normal depende del progreso por síntoma y dato: respondido, desconocido
 o rechazado. Se mantiene una única invitación abierta para que el paciente agregue
 información útil. Ya no se cierra por contar cuatro preguntas u ocho respuestas.

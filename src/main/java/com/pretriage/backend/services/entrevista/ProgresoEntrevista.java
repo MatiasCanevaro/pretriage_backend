@@ -54,6 +54,9 @@ public final class ProgresoEntrevista {
     private static final Pattern REFUSAL = Pattern.compile("\\b(?:no quiero|no deseo|prefiero no|no voy a|no puedo)\\s+(?:decir|responder|contestar|informar|medir|compartir)\\b|\\bno quiero hablar de eso\\b");
     private static final Pattern STOP = Pattern.compile("\\b(?:no quiero seguir|no quiero continuar|no quiero responder mas|no deseo seguir|quiero terminar|prefiero terminar|terminemos|dejemoslo aca)\\b");
     private static final Pattern INVITATION = Pattern.compile("\\b(?:algo mas|otra cosa|algo para agregar|algo que quieras (?:contar|agregar)|queres agregar algo|quieres agregar algo|tenes algun otro sintoma|hay algun otro sintoma|que mas queres contar)\\b");
+    private static final Pattern ADDITIONAL_INFORMATION_CUE = Pattern.compile("\\b(?:algo\\s+mas|mas|otra cosa|otro[s]?\\s+(?:detalle|dato|aspecto|tema)|alguna otra\\s+(?:cosa|idea)|detalle adicional)\\b");
+    private static final Pattern CONTRIBUTION_VERB = Pattern.compile("\\b(?:(?:queres|quieres|quieras|deseas|te gustaria|podrias|podes)\\s+)?(?:contar(?:me|nos)?|compartir(?:me)?|agregar|anadir|decir(?:me|nos)?|comentar(?:me)?|mencionar|sumar)\\b");
+    private static final Pattern REGISTRATION_OR_CLOSURE = Pattern.compile("\\b(?:registrad[oa]s?|registro|registrar|registrarse|cerrar|cierre|finalizad[oa]s?|finalizar|terminad[oa]s?|terminar)\\b");
     private static final Pattern EMOTION = Pattern.compile("\\b(?:ansiedad|angustia|tristeza|triste|depresion|deprimid[oa]s?|duelo|soledad|desesperanza|malestar emocional|me siento mal emocionalmente|me siento (?:un )?vaci[oa]|la extrano|lo extrano|me dejo|me abandono|nos separamos|perdi a (?:mi|un|una))\\b");
     private static final String UBICACIONES_DOLOR = "cabeza|pecho|torax|abdomen|estomago|espalda|cuello|garganta|mano|manos|brazo|brazos|pierna|piernas|rodilla|rodillas|diente|dientes|muela|muelas|ojo|ojos|pie|pies";
     private static final Pattern LOCATION_PAIN = Pattern.compile("\\b(?:dolor(?:es)?(?:\\s+(?:de|en|del|en el|en la))?|(?:me|te)\\s+duele(?:n)?|duele(?:n)?)\\s+(?:la|el|los|las)?\\s*(" + UBICACIONES_DOLOR + ")\\b");
@@ -403,6 +406,7 @@ public final class ProgresoEntrevista {
             // An open clarification is still an interview task even when it has no dimension words.
             boolean aclaracionAbiertaPendiente = requiereAclaracion && tareaAclarar == null
                     && !motivoClinico && !emocional;
+            SeleccionObjetivo objetivoAntesDelBot = seleccionarObjetivo(determineReason());
             requiereAclaracion = false;
             if (INVITATION.matcher(text).find()) {
                 if (!respondioInvitacion) {
@@ -437,6 +441,16 @@ public final class ProgresoEntrevista {
             }
             Dimension dimension = askedDimension(text);
             if (dimension == null) {
+                List<String> mencionados = symptoms(text).stream().map(Hallazgo::sintomaId).distinct().toList();
+                boolean mencionaSoloDatosConocidos = mencionados.isEmpty()
+                        || mencionados.stream().allMatch(this::sintomaConocidoParaBuilder);
+                if (objetivoAntesDelBot.objetivo().tipo() == TipoObjetivo.INVITACION
+                        && hasQuestionForm(text) && esPreguntaDeAporteAdicional(text) && mencionaSoloDatosConocidos
+                        && !containsClosingPhrase(text) && !REGISTRATION_OR_CLOSURE.matcher(text).find()) {
+                    invitacionAbierta = true;
+                    tarea = new Tarea(TipoTarea.INVITACION, List.of(), text);
+                    return;
+                }
                 if (hasQuestionForm(text) && tareaAclarar == null && !motivoClinico && !emocional) {
                     tarea = new Tarea(TipoTarea.ACLARACION, List.of(), text);
                     return;
@@ -506,6 +520,19 @@ public final class ProgresoEntrevista {
             }
             // An answer to a different dimension never completes this target.
             tarea = new Tarea(TipoTarea.DATO, targets.stream().map(t -> t.clave).toList(), text);
+        }
+
+        private boolean sintomaConocidoParaBuilder(String id) {
+            if (trackers.keySet().stream().anyMatch(key -> key.sintomaId().equals(id))) return true;
+            long knownPainIds = trackers.keySet().stream().map(Clave::sintomaId)
+                    .filter(sintomaId -> sintomaId.startsWith("dolor:") && !sintomaId.equals("dolor:general"))
+                    .distinct().count();
+            return id.equals("dolor:general") && knownPainIds == 1;
+        }
+
+        private boolean esPreguntaDeAporteAdicional(String text) {
+            return ADDITIONAL_INFORMATION_CUE.matcher(text).find()
+                    && CONTRIBUTION_VERB.matcher(text).find();
         }
 
         private boolean ensureObjectives(Hallazgo symptom) {

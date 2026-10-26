@@ -123,6 +123,100 @@ class ChatAutomaticRetryTest {
     }
 
     @Test
+    void rechazoComunicacionEnInvitacionEmocionalSeCorrigeSinPedirOtroDato() throws Exception {
+        prepararAclaracionEmocionalConTurnoInicialExcluido();
+        String announcement = "Ya registré tus respuestas para el equipo médico.";
+        String empatheticInvitation = "Lamento que estés pasando por eso. ¿Hay algo más que quieras contar sobre cómo te sentís?";
+        var requests = responderConCaptura(List.of(
+                response(200, envelope(mapper.writeValueAsString(Map.of(
+                        "mensaje", announcement, "estadoEntrada", "RELEVANTE")))),
+                response(200, envelope("{\"valido\":false,\"motivo\":\"COMUNICACION\"}")),
+                response(200, envelope(mapper.writeValueAsString(Map.of(
+                        "mensaje", empatheticInvitation, "estadoEntrada", "RELEVANTE")))),
+                response(200, envelope("{\"valido\":true}"))));
+
+        var result = service().enviarMensaje("7", "patient", "No sé, lo siento desde que me dejó");
+
+        assertEquals(empatheticInvitation, result.respuesta().contenido());
+        assertFalse(chat.isFinalizado());
+        assertEquals(EstadoClasificacionChat.NO_SOLICITADA, chat.getEstadoClasificacion());
+        assertNull(chat.getResultadoTriageJson());
+        assertEquals(5, chat.getMensajes().size(), "la respuesta del paciente y una sola invitación deben agregarse una vez");
+        assertEquals(2, chat.getMensajes().stream().filter(m -> m.getAutor() == AutorMensaje.PACIENTE).count());
+        assertEquals(1, chat.getMensajes().stream().filter(m -> m.getAutor() == AutorMensaje.PACIENTE
+                && "No sé, lo siento desde que me dejó".equals(m.getContenido())).count());
+        assertEquals(1, chat.getMensajes().stream().filter(m -> m.getAutor() == AutorMensaje.BOT
+                && empatheticInvitation.equals(m.getContenido())).count());
+        assertTrue(chat.getMensajes().stream().noneMatch(m -> announcement.equals(m.getContenido())));
+        assertTrue(chat.getMensajes().get(1).getExcluidoDelTriage(),
+                "el turno inicial excluido debe conservar su flag local");
+        assertEquals(4, requests.size(), "una generación/verificación y una corrección/verificación");
+
+        String correctionPrompt = normalizarPrompt(requestSystemInstruction(requests.get(2)));
+        assertTrue(correctionPrompt.contains("el objetivo sigue siendo una invitación abierta"));
+        assertTrue(correctionPrompt.contains("pregunta en una sola invitación si quiere agregar algo sobre lo que ya contó"));
+        assertTrue(correctionPrompt.contains("no pidas un dato ni sugieras síntomas nuevos"));
+        assertTrue(correctionPrompt.contains("no cierres ni anuncies el registro"));
+        assertTrue(correctionPrompt.contains("reconocimiento neutral puede preceder inmediatamente a esa única invitación"));
+
+        var providerInput = mapper.readTree(requestContentText(requests.get(0)));
+        assertEquals("INVITACION", providerInput.path("objetivoDelTurno").path("tipo").asText());
+        assertTrue(requestContentText(requests.get(0)).contains("No sé, lo siento desde que me dejó"));
+        assertFalse(requestContentText(requests.get(0)).contains("Me pasa algo raro y no sé cómo explicarlo"),
+                "el turno excluido no debe volver como evidencia del proveedor");
+        assertFalse(requestBody(requests.get(2)).contains(announcement),
+                "la respuesta rechazada no se reenvía como instrucción en el reintento");
+        verify(chats, times(1)).save(chat);
+        verifyNoInteractions(queue);
+    }
+
+    @Test
+    void dobleRechazoComunicacionEnInvitacionEmocionalRevierteTurnoYRespetaDosIntentos() throws Exception {
+        prepararAclaracionEmocionalConTurnoInicialExcluido();
+        String announcement = "Ya registré tus respuestas para el equipo médico.";
+        String rejectedCorrection = "Siento mucho que estés pasando por eso; ya quedó registrado para el equipo médico.";
+        var requests = responderConCaptura(List.of(
+                response(200, envelope(mapper.writeValueAsString(Map.of(
+                        "mensaje", announcement, "estadoEntrada", "RELEVANTE")))),
+                response(200, envelope("{\"valido\":false,\"motivo\":\"COMUNICACION\"}")),
+                response(200, envelope(mapper.writeValueAsString(Map.of(
+                        "mensaje", rejectedCorrection, "estadoEntrada", "RELEVANTE")))),
+                response(200, envelope("{\"valido\":false,\"motivo\":\"COMUNICACION\"}"))));
+
+        assertThrows(com.pretriage.backend.exceptions.ProveedorIaException.class,
+                () -> service().enviarMensaje("7", "patient", "No sé, lo siento desde que me dejó"));
+
+        assertFalse(chat.isFinalizado());
+        assertEquals(EstadoClasificacionChat.NO_SOLICITADA, chat.getEstadoClasificacion());
+        assertNull(chat.getResultadoTriageJson());
+        assertEquals(3, chat.getMensajes().size(), "solo queda la historia previa; el nuevo mensaje se revierte");
+        assertEquals(1, chat.getMensajes().stream().filter(m -> m.getAutor() == AutorMensaje.PACIENTE
+                && m.getContenido().equals("Me pasa algo raro y no sé cómo explicarlo")).count());
+        assertTrue(chat.getMensajes().get(1).getExcluidoDelTriage());
+        assertTrue(chat.getMensajes().stream().noneMatch(m -> m.getContenido().equals(announcement)
+                || m.getContenido().equals(rejectedCorrection)
+                || m.getContenido().equals("No sé, lo siento desde que me dejó")));
+        assertEquals(4, requests.size(), "no debe haber una tercera generación ni una segunda corrección");
+        String correctionPrompt = normalizarPrompt(requestSystemInstruction(requests.get(2)));
+        assertTrue(correctionPrompt.contains("el objetivo sigue siendo una invitación abierta"));
+        assertTrue(correctionPrompt.contains("no pidas un dato ni sugieras síntomas nuevos"));
+        assertTrue(correctionPrompt.contains("no cierres ni anuncies el registro"));
+        verify(chats, never()).save(any());
+        verifyNoInteractions(queue);
+    }
+
+    private void prepararAclaracionEmocionalConTurnoInicialExcluido() {
+        chat.agregarMensaje(new com.pretriage.backend.model.chat.Mensaje(
+                "Hola. Contame qué te pasa.", AutorMensaje.BOT, null));
+        var initialPatientTurn = new com.pretriage.backend.model.chat.Mensaje(
+                "Me pasa algo raro y no sé cómo explicarlo", AutorMensaje.PACIENTE, chat.getPaciente());
+        initialPatientTurn.setExcluidoDelTriage(true);
+        chat.agregarMensaje(initialPatientTurn);
+        chat.agregarMensaje(new com.pretriage.backend.model.chat.Mensaje(
+                "¿Podés contarme con tus palabras qué querés decir con eso?", AutorMensaje.BOT, null));
+    }
+
+    @Test
     void aclaracionInicialCorrigeLaPreguntaDeOpcionesAUnaInvitacionAbierta() throws Exception {
         chat.agregarMensaje(new com.pretriage.backend.model.chat.Mensaje(
                 "¿Cuál es el principal motivo de consulta?", AutorMensaje.BOT, null));
