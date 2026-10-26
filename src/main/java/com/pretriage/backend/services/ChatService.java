@@ -93,7 +93,7 @@ public class ChatService {
             EnumSet.of(EstadoEntradaCola.FINALIZADA, EstadoEntradaCola.CANCELADA);
 
     private record RespuestaClasificacionInicial(TriageAiResponse respuesta,
-                                                  java.util.Optional<TriageIaClient.MotivoRechazoSemantico> rechazoSemantico) { }
+                                                  java.util.Optional<TriageIaClient.MotivoCorreccionFinal> rechazoSemantico) { }
 
     private final RepoChat repoChat;
     private final RepoPacientes repoPacientes;
@@ -210,7 +210,7 @@ public class ChatService {
             if (cierreRequerido) iniciarClasificacion(chat);
             long inicioConsulta = System.nanoTime();
             TriageAiResponse respuesta;
-            java.util.Optional<TriageIaClient.MotivoRechazoSemantico> rechazoSemantico = java.util.Optional.empty();
+            java.util.Optional<TriageIaClient.MotivoCorreccionFinal> rechazoSemantico = java.util.Optional.empty();
             if (cierreRequerido) {
                 String datos = construirDatosParaClasificacion(chat);
                 String promptFinal = promptFinal(progreso, false);
@@ -313,11 +313,11 @@ public class ChatService {
         try {
             String datos = construirDatosVozParaClasificacion(entrevistaCompleta, resumen);
             TriageAiResponse respuesta;
-            java.util.Optional<TriageIaClient.MotivoRechazoSemantico> rechazoSemantico = java.util.Optional.empty();
+            java.util.Optional<TriageIaClient.MotivoCorreccionFinal> rechazoSemantico = java.util.Optional.empty();
             try {
                 respuesta = triageIaClient.consultar(promptFinal(progreso, true), datos, true);
             } catch (ProveedorIaException error) {
-                rechazoSemantico = TriageIaClient.motivoRechazo(error);
+                rechazoSemantico = TriageIaClient.motivoCorreccionFinal(error);
                 if (rechazoSemantico.isEmpty() && !TriageIaClient.esErrorDeRespuesta(error)) throw error;
                 respuesta = null;
             } catch (RuntimeException error) {
@@ -426,21 +426,21 @@ public class ChatService {
 
     private TriageAiResponse corregirClasificacionSiHaceFalta(Chat chat, TriageAiResponse respuesta,
                                                              String datos, long inicio,
-                                                             java.util.Optional<TriageIaClient.MotivoRechazoSemantico> rechazoSemantico) {
+                                                             java.util.Optional<TriageIaClient.MotivoCorreccionFinal> rechazoSemantico) {
         return corregirClasificacionSiHaceFalta(chat, respuesta, datos, inicio, rechazoSemantico, FINAL_SYSTEM_PROMPT);
     }
 
     private TriageAiResponse corregirClasificacionSiHaceFalta(Chat chat, TriageAiResponse respuesta,
                                                              String datos, long inicio,
-                                                             java.util.Optional<TriageIaClient.MotivoRechazoSemantico> rechazoSemantico,
+                                                             java.util.Optional<TriageIaClient.MotivoCorreccionFinal> rechazoSemantico,
                                                              String promptFinal) {
         String motivo = errorClasificacionFinal(chat, respuesta);
         if (motivo == null && rechazoSemantico.isEmpty()) return respuesta;
         var restante = java.time.Duration.ofSeconds(45).minusNanos(System.nanoTime() - inicio);
         if (restante.isNegative() || restante.isZero()) throw respuestaIaInvalida(chat, "correction_deadline_exceeded");
-        String motivoLog = rechazoSemantico.map(TriageIaClient.MotivoRechazoSemantico::name).orElse(motivo);
+        String motivoLog = rechazoSemantico.map(TriageIaClient.MotivoCorreccionFinal::name).orElse(motivo);
         log.info("Chat IA correction chatId={} reason={}", chat.getId(), motivoLog);
-        String regla = rechazoSemantico.map(this::reglaCorreccionSemantica).orElseGet(() -> "negation_in_affirmative_list".equals(motivo)
+        String regla = rechazoSemantico.map(this::reglaCorreccionFinal).orElseGet(() -> "negation_in_affirmative_list".equals(motivo)
                 ? "Las negaciones como Ninguna no son alergias, medicamentos ni antecedentes: usa listas vacias y registra la negacion en observaciones."
                 : "alarm_classification_inconsistent".equals(motivo)
                 ? "Tu resultado anterior contenia una alarma o contradecia una alarma literal del paciente. Revisa la evidencia completa. Si hay alarma, requiereAtencionInmediata debe ser true y nivelPrioridad al menos 4. No inventes alarmas ni las elimines para evitar la validacion."
@@ -455,16 +455,18 @@ public class ChatService {
         if (estadoEntrada(corregida) != EstadoEntradaChat.RELEVANTE) return corregida;
         String error = errorClasificacionFinal(chat, corregida);
         if (error != null) throw respuestaIaInvalida(chat, error);
+        log.info("Chat IA correction accepted chatId={} reason={}", chat.getId(), motivoLog);
         return corregida;
     }
 
-    private String reglaCorreccionSemantica(TriageIaClient.MotivoRechazoSemantico motivo) {
+    private String reglaCorreccionFinal(TriageIaClient.MotivoCorreccionFinal motivo) {
         return switch (motivo) {
             case SIN_RESPALDO -> "Revisa sintomas, signos de alarma, antecedentes, medicamentos y alergias. Conserva un dato solo si un turno del PACIENTE lo afirma claramente; los turnos BOT son contexto, no evidencia. Omite lo que no tenga respaldo.";
             case NEGACION -> "Revisa el alcance de cada negacion. No incluyas como afirmados los sintomas o antecedentes que el paciente nego; conserva la negacion solo en observaciones.";
             case INFERENCIA -> "Quita diagnosticos, causas y sintomas inferidos. Conserva solo lo que el paciente dijo y usa lenguaje descriptivo sin atribuir una causa.";
             case COMUNICACION -> "Corrige el mensaje dirigido al paciente: agradece y confirma el registro, sin mencionar triage, clasificacion, prioridad ni resultados internos.";
             case INTENSIDAD_NO_DOLOR -> "intensidadDolor solo puede contener una escala de dolor que el paciente atribuyo explicitamente al dolor. Una intensidad de otra sensacion no es dolor; usa null si no informo dolor cuantificado.";
+            case SINTOMAS_AUSENTES -> "Incluye en sintomas al menos un hecho de salud descriptivo expresado por el paciente, también si describe malestar emocional o de salud mental. Conserva sus palabras y evidencia; no inventes sintomas fisicos ni diagnosticos para llenar el campo. Un vacio en el pecho no es dolor toracico salvo que el paciente afirme dolor. Si no hay un hecho respaldado, no lo fabriques ni lo sustituyas por un marcador.";
         };
     }
 
@@ -483,11 +485,11 @@ public class ChatService {
             ProgresoEntrevista progreso = progresoEntrevista(chat);
             String promptFinal = promptFinal(progreso, false);
             TriageAiResponse respuesta;
-            java.util.Optional<TriageIaClient.MotivoRechazoSemantico> rechazoSemantico = java.util.Optional.empty();
+            java.util.Optional<TriageIaClient.MotivoCorreccionFinal> rechazoSemantico = java.util.Optional.empty();
             try {
                 respuesta = triageIaClient.consultar(promptFinal, datos, true);
             } catch (ProveedorIaException error) {
-                rechazoSemantico = TriageIaClient.motivoRechazo(error);
+                rechazoSemantico = TriageIaClient.motivoCorreccionFinal(error);
                 if (rechazoSemantico.isEmpty() && !TriageIaClient.esErrorDeRespuesta(error)) throw error;
                 respuesta = null;
             }
@@ -556,7 +558,7 @@ public class ChatService {
             return new RespuestaClasificacionInicial(
                     triageIaClient.consultar(promptFinal, datos, true), java.util.Optional.empty());
         } catch (ProveedorIaException error) {
-            var rechazo = TriageIaClient.motivoRechazo(error);
+            var rechazo = TriageIaClient.motivoCorreccionFinal(error);
             if (rechazo.isPresent()) return new RespuestaClasificacionInicial(null, rechazo);
             if (TriageIaClient.esErrorDeRespuesta(error)) return new RespuestaClasificacionInicial(null, java.util.Optional.empty());
             throw error;

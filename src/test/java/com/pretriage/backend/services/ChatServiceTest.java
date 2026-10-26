@@ -342,6 +342,152 @@ class ChatServiceTest {
         verify(atencionHospitalService).finalizarTriageEIngresarACola(anyString(),
                 eq(NivelDeGravedad.MUY_URGENTE), anyString(), eq(chat));
     }
+
+    @Test
+    void corrigeUnaVezSintomasAusentesYValidaUnHechoEmocionalExpreso() {
+        Chat chat = chatDeVoz(new Paciente());
+        String cita = "Me siento muy triste y con angustia desde ayer.";
+        List<TurnoVoz> turnos = entrevistaConCierreSolicitado(cita);
+        GeminiJsonClient gemini = mock(GeminiJsonClient.class);
+        TriageIaClient validador = new TriageIaClient(gemini, new ObjectMapper());
+        when(gemini.generar(anyString(), anyString(), any(), any()))
+                .thenReturn(providerFinalSinSintomas(), providerFinalEmocional(cita), "{\"valido\":true}");
+        when(triageIaClient.consultar(anyString(), anyString(), eq(true)))
+                .thenAnswer(invocation -> validador.consultar(invocation.getArgument(0), invocation.getArgument(1), true));
+        when(triageIaClient.consultarCorreccionFinal(anyString(), anyString(), any()))
+                .thenAnswer(invocation -> validador.consultarCorreccionFinal(invocation.getArgument(0),
+                        invocation.getArgument(1), invocation.getArgument(2)));
+        when(atencionHospitalService.finalizarTriageEIngresarACola(anyString(), any(), anyString(), any(Chat.class)))
+                .thenReturn(new TiempoEstimadoAtencionResponse());
+
+        int mensajesPrevios = chat.getMensajes().size();
+        var resultado = chatService.finalizarEntrevistaVoz("1", "auth0|paciente", turnos, resumenEmocional());
+
+        assertTrue(chat.isFinalizado());
+        assertEquals(com.pretriage.backend.model.chat.EstadoClasificacionChat.COMPLETADA, chat.getEstadoClasificacion());
+        assertTrue(chat.getResultadoTriageJson().contains("\"sintomas\":[\"tristeza y angustia\"]"));
+        assertEquals(mensajesPrevios + turnos.size() + 1, chat.getMensajes().size());
+        assertEquals("Cierre emocional validado.", resultado.respuesta().contenido());
+        org.mockito.ArgumentCaptor<String> prompt = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.ArgumentCaptor<java.time.Duration> plazo =
+                org.mockito.ArgumentCaptor.forClass(java.time.Duration.class);
+        verify(triageIaClient).consultarCorreccionFinal(prompt.capture(), anyString(), plazo.capture());
+        assertTrue(prompt.getValue().contains("también si describe malestar emocional o de salud mental"));
+        assertFalse(prompt.getValue().contains("missing_or_uninformative"));
+        assertFalse(prompt.getValue().contains(cita));
+        assertTrue(plazo.getValue().isPositive());
+        assertFalse(plazo.getValue().compareTo(java.time.Duration.ofSeconds(45)) > 0);
+        verify(triageIaClient, times(1)).consultarCorreccionFinal(anyString(), anyString(), any());
+        verify(atencionHospitalService, times(1)).finalizarTriageEIngresarACola(anyString(), any(), anyString(), eq(chat));
+    }
+
+    @Test
+    void reintentoManualUsaElMismoFeedbackDeSintomasAusentes() {
+        Paciente paciente = new Paciente();
+        Chat chat = new Chat(paciente);
+        chat.setId(9L);
+        chat.setFinalizado(true);
+        chat.setEstadoClasificacion(com.pretriage.backend.model.chat.EstadoClasificacionChat.FALLIDA);
+        String cita = "Me siento muy triste y con angustia desde ayer.";
+        chat.agregarMensaje(new Mensaje(cita, AutorMensaje.PACIENTE, paciente));
+        when(repoChat.findForUpdate(9L, "auth0|paciente")).thenReturn(Optional.of(chat));
+        when(repoChat.findFirstByPacienteUsuarioAuthIdOrderByFechaHoraCreacionDescIdDesc("auth0|paciente"))
+                .thenReturn(Optional.of(chat));
+        when(repoChat.save(any(Chat.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        GeminiJsonClient gemini = mock(GeminiJsonClient.class);
+        TriageIaClient validador = new TriageIaClient(gemini, new ObjectMapper());
+        when(gemini.generar(anyString(), anyString(), any(), any()))
+                .thenReturn(providerFinalSinSintomas(), providerFinalEmocional(cita), "{\"valido\":true}");
+        when(triageIaClient.consultar(anyString(), anyString(), eq(true)))
+                .thenAnswer(invocation -> validador.consultar(invocation.getArgument(0), invocation.getArgument(1), true));
+        when(triageIaClient.consultarCorreccionFinal(anyString(), anyString(), any()))
+                .thenAnswer(invocation -> validador.consultarCorreccionFinal(invocation.getArgument(0),
+                        invocation.getArgument(1), invocation.getArgument(2)));
+        when(atencionHospitalService.finalizarTriageEIngresarACola(anyString(), any(), anyString(), any(Chat.class)))
+                .thenReturn(new TiempoEstimadoAtencionResponse());
+
+        int mensajesPrevios = chat.getMensajes().size();
+        var resultado = chatService.reintentarClasificacion("9", "auth0|paciente");
+
+        assertEquals(com.pretriage.backend.model.chat.EstadoClasificacionChat.COMPLETADA, chat.getEstadoClasificacion());
+        assertEquals(mensajesPrevios + 1, chat.getMensajes().size());
+        assertEquals("Cierre emocional validado.", resultado.respuesta().contenido());
+        verify(triageIaClient, times(1)).consultarCorreccionFinal(anyString(), anyString(), any());
+        verify(atencionHospitalService, times(1)).finalizarTriageEIngresarACola(anyString(), any(), anyString(), eq(chat));
+    }
+
+    @Test
+    void cierrePorTextoUsaFeedbackDeSintomasAusentesSinReabrirLaEntrevista() {
+        Chat chat = prepararChat();
+        String cita = "Me siento muy triste y con angustia desde ayer. No quiero seguir respondiendo.";
+        GeminiJsonClient gemini = mock(GeminiJsonClient.class);
+        TriageIaClient validador = new TriageIaClient(gemini, new ObjectMapper());
+        when(gemini.generar(anyString(), anyString(), any(), any()))
+                .thenReturn(providerFinalSinSintomas(), providerFinalEmocional(cita), "{\"valido\":true}");
+        when(triageIaClient.consultar(anyString(), anyString(), eq(true)))
+                .thenAnswer(invocation -> validador.consultar(invocation.getArgument(0), invocation.getArgument(1), true));
+        when(triageIaClient.consultarCorreccionFinal(anyString(), anyString(), any()))
+                .thenAnswer(invocation -> validador.consultarCorreccionFinal(invocation.getArgument(0),
+                        invocation.getArgument(1), invocation.getArgument(2)));
+        when(atencionHospitalService.finalizarTriageEIngresarACola(anyString(), any(), anyString(), any(Chat.class)))
+                .thenReturn(new TiempoEstimadoAtencionResponse());
+
+        int mensajesPrevios = chat.getMensajes().size();
+        var resultado = chatService.enviarMensaje("1", "auth0|paciente", cita);
+
+        assertTrue(chat.isFinalizado());
+        assertEquals(mensajesPrevios + 2, chat.getMensajes().size());
+        assertEquals("Cierre emocional validado.", resultado.respuesta().contenido());
+        verify(triageIaClient, never()).consultarContinuacion(anyString(), anyString(), any());
+        verify(triageIaClient, times(1)).consultarCorreccionFinal(anyString(), anyString(), any());
+        verify(atencionHospitalService, times(1)).finalizarTriageEIngresarACola(anyString(), any(), anyString(), eq(chat));
+    }
+
+    @Test
+    void correccionDeSintomasQueSigueVaciaDejaClasificacionFallidaSinDuplicarNiEncolar() {
+        Chat chat = chatDeVoz(new Paciente());
+        List<TurnoVoz> turnos = entrevistaConCierreSolicitado("Me siento muy triste y con angustia desde ayer.");
+        GeminiJsonClient gemini = mock(GeminiJsonClient.class);
+        TriageIaClient validador = new TriageIaClient(gemini, new ObjectMapper());
+        when(gemini.generar(anyString(), anyString(), any(), any()))
+                .thenReturn(providerFinalSinSintomas(), providerFinalSinSintomas());
+        when(triageIaClient.consultar(anyString(), anyString(), eq(true)))
+                .thenAnswer(invocation -> validador.consultar(invocation.getArgument(0), invocation.getArgument(1), true));
+        when(triageIaClient.consultarCorreccionFinal(anyString(), anyString(), any()))
+                .thenAnswer(invocation -> validador.consultarCorreccionFinal(invocation.getArgument(0),
+                        invocation.getArgument(1), invocation.getArgument(2)));
+
+        int mensajesPrevios = chat.getMensajes().size();
+        assertThrows(ProveedorIaException.class, () -> chatService.finalizarEntrevistaVoz(
+                "1", "auth0|paciente", turnos, resumenEmocional()));
+
+        assertTrue(chat.isFinalizado());
+        assertEquals(com.pretriage.backend.model.chat.EstadoClasificacionChat.FALLIDA, chat.getEstadoClasificacion());
+        assertNull(chat.getResultadoTriageJson());
+        assertEquals(mensajesPrevios + turnos.size(), chat.getMensajes().size());
+        verify(triageIaClient, times(1)).consultarCorreccionFinal(anyString(), anyString(), any());
+        verify(atencionHospitalService, never()).finalizarTriageEIngresarACola(anyString(), any(), anyString(), any(Chat.class));
+    }
+
+    private String providerFinalSinSintomas() {
+        return providerFinal("[]", "[]", "malestar emocional", "Cierre vacío");
+    }
+
+    private String providerFinalEmocional(String cita) {
+        return providerFinal("[\"tristeza y angustia\"]",
+                "[{\"campo\":\"sintomas\",\"valor\":\"tristeza y angustia\",\"cita\":\"" + cita + "\"}]",
+                "tristeza y angustia", "Cierre emocional validado.");
+    }
+
+    private String providerFinal(String sintomas, String evidencia, String motivo, String mensaje) {
+        return """
+                {"finalizado":true,"mensaje":"%s","estadoEntrada":"RELEVANTE","evidenciaClinica":%s,
+                 "resultado":{"motivoConsulta":"%s","sintomas":%s,"inicio":"desde ayer","evolucion":"no informado",
+                 "intensidadDolor":null,"signosAlarma":[],"antecedentesRelevantes":[],"medicamentos":[],"alergias":[],
+                 "posibilidadEmbarazo":"no informado","observaciones":"no informado","nivelPrioridad":2,
+                 "requiereAtencionInmediata":false,"recomendacionSeguridad":"Consulte presencialmente."}}
+                """.formatted(mensaje, evidencia, motivo, sintomas);
+    }
     @Test
     void corrigeUnaPreguntaRepetidaUnaVezConGeminiYConservaLaEntrevistaAbierta() {
         Paciente paciente = new Paciente();
@@ -1115,6 +1261,12 @@ class ChatServiceTest {
         return new ResumenEntrevistaVoz("dolor de cabeza con fiebre", List.of("dolor de cabeza", "fiebre"),
                 "desde ayer", "se mantiene", 6, signosAlarma, List.of(), List.of(), List.of(), "no",
                 "Niega dificultad respiratoria y alergias");
+    }
+
+    private ResumenEntrevistaVoz resumenEmocional() {
+        return new ResumenEntrevistaVoz("malestar emocional", List.of("tristeza y angustia"),
+                "desde ayer", "no informado", null, List.of(), List.of(), List.of(), List.of(),
+                "no informado", "malestar emocional");
     }
 }
 

@@ -27,6 +27,19 @@ orientación genérica. El sistema no copia texto de rechazo ni citas del provee
 prompt correctivo o a los logs; la corrección comparte el mismo presupuesto de 45 segundos.
 Un segundo rechazo conserva el chat cerrado en `FALLIDA` para procesamiento manual.
 
+El rechazo local exacto `sintomas:missing_or_uninformative` conserva el código
+permitido `SINTOMAS_AUSENTES` para esa misma corrección, en texto, voz y reintento
+de clasificación. El feedback fijo pide recuperar hechos descriptivos expresos,
+también emocionales; no exige síntomas físicos ni permite inventarlos. Las listas
+opcionales pueden quedar vacías, pero una clasificación relevante sigue requiriendo
+síntomas significativos con evidencia literal y verificación semántica. No se copia
+el resultado rechazado ni se interpolan campos o mensajes arbitrarios de excepción.
+
+`Chat IA correction accepted chatId=... reason=...` indica que la corrección pasó
+los validadores. No prueba por sí solo que la transacción haya confirmado ni que
+el cliente haya recibido la respuesta HTTP. Un rechazo inicial seguido de esa
+aceptación es distinto de un fallo definitivo del procesamiento.
+
 En una continuación de texto, un rechazo semántico de la pregunta conserva solo el
 código de motivo permitido y lo convierte en una instrucción fija para una única
 corrección. Un motivo ausente o una respuesta repetida usa la orientación genérica
@@ -60,3 +73,12 @@ La política de cierre por datos añade el origen `CIERRE_SIN_DATOS`: el cliente
 actualizado sincroniza GET y muestra una entrevista cerrada sin fingir una
 clasificación completada. Para cargar las clases nuevas en el proceso local es
 necesario reiniciar el backend.
+
+El 25 de octubre de 2026, la regresión de síntomas vacíos pasó junto con la suite
+completa: 647 pruebas registradas, sin fallos ni errores, nueve omitidas, en una
+base temporal aislada. El smoke opt-in
+`ChatHardeningGeminiSmokeTest#flujoRealCorrigeUnaClasificacionEmocionalConSintomasVacios`
+fuerza una primera propuesta vacía y usa Gemini real para corregirla y verificarla
+con una entrevista emocional ficticia. Comprueba cierre `DATOS_RESUELTOS`, estado
+`COMPLETADA`, tres llamadas al generador —la primera simulada—, un solo mensaje
+final y un único ingreso a cola. No usa Spring, base de datos ni entrevistas reales.

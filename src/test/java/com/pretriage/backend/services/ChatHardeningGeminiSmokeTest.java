@@ -311,6 +311,80 @@ class ChatHardeningGeminiSmokeTest {
                 "máximo una corrección por operación, con generación y verificación en pregunta y clasificación");
     }
 
+    @Test
+    void flujoRealCorrigeUnaClasificacionEmocionalConSintomasVacios() {
+        Paciente paciente = new Paciente();
+        Chat chat = new Chat(paciente);
+        chat.setId(9L);
+        addBot(chat, "Hola. Contame qué te pasa.");
+        addPatient(chat, "Desde que mi familia se mudó a otra ciudad me siento triste y solo.", false);
+        addBot(chat, "¿Hay algo más que quieras contar sobre lo que te pasa?");
+
+        RepoChat chats = mock(RepoChat.class);
+        RepoPacientes patients = mock(RepoPacientes.class);
+        RepoConsultasMedicas consultations = mock(RepoConsultasMedicas.class);
+        RepoEntradasCola entries = mock(RepoEntradasCola.class);
+        AtencionHospitalService queue = mock(AtencionHospitalService.class);
+        List<String> capturedPrompts = new CopyOnWriteArrayList<>();
+        List<String> capturedInputs = new CopyOnWriteArrayList<>();
+        var calls = new AtomicInteger();
+        var realGenerator = generator();
+        var delegatedGenerator = mock(GeminiJsonClient.class);
+        String rejectedResponse = emptySymptomsFinalResponse();
+        when(delegatedGenerator.generar(anyString(), anyString(), any(), any(Duration.class)))
+                .thenAnswer(invocation -> {
+                    capturedPrompts.add(invocation.getArgument(0));
+                    capturedInputs.add(invocation.getArgument(1));
+                    if (calls.getAndIncrement() == 0) return rejectedResponse;
+                    return realGenerator.generar(invocation.getArgument(0), invocation.getArgument(1),
+                            invocation.getArgument(2), invocation.getArgument(3));
+                });
+        var service = new ChatService(chats, patients, consultations, entries, queue,
+                new TriageIaClient(delegatedGenerator, mapper), mapper);
+        when(chats.findByIdAndPacienteUsuarioAuthId(9L, "auth0|synthetic-smoke"))
+                .thenReturn(java.util.Optional.of(chat));
+        when(chats.save(any(Chat.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(queue.finalizarTriageEIngresarACola(anyString(), any(), anyString(), any(Chat.class)))
+                .thenReturn(new com.pretriage.backend.controllers.dtos.TiempoEstimadoAtencionResponse());
+
+        int patientMessagesBeforeClose = (int) chat.getMensajes().stream()
+                .filter(m -> m.getAutor() == AutorMensaje.PACIENTE).count();
+        int botMessagesBeforeClose = (int) chat.getMensajes().stream()
+                .filter(m -> m.getAutor() == AutorMensaje.BOT).count();
+        service.enviarMensaje("9", "auth0|synthetic-smoke", "No, nada más.");
+
+        assertTrue(chat.isFinalizado());
+        assertEquals(EstadoClasificacionChat.COMPLETADA, chat.getEstadoClasificacion());
+        var saved = mapper.readTree(chat.getResultadoTriageJson());
+        assertEquals("DATOS_RESUELTOS", saved.path("seguimientoEntrevista").path("motivoCierre").asText());
+        assertFalse(saved.path("sintomas").isEmpty(), "la corrección debe conservar el malestar emocional afirmado");
+        assertTrue(saved.path("sintomas").toString().toLowerCase(Locale.ROOT).matches("(?s).*(triste|soledad|emocional).*"),
+                "la clasificación debe reflejar tristeza o soledad, no completar el campo con un síntoma físico inventado");
+        assertTrue(saved.path("intensidadDolor").isNull(), "el relato no afirma dolor ni una intensidad de dolor");
+        assertTrue(saved.path("nivelPrioridad").asInt() >= 1 && saved.path("nivelPrioridad").asInt() <= 5);
+        assertEquals(patientMessagesBeforeClose + 1, chat.getMensajes().stream()
+                .filter(m -> m.getAutor() == AutorMensaje.PACIENTE).count());
+        assertEquals(botMessagesBeforeClose + 1, chat.getMensajes().stream()
+                .filter(m -> m.getAutor() == AutorMensaje.BOT).count());
+        assertEquals(AutorMensaje.BOT, chat.getMensajes().getLast().getAutor());
+        assertEquals(AutorMensaje.PACIENTE, chat.getMensajes().get(chat.getMensajes().size() - 2).getAutor());
+        assertEquals("No, nada más.", chat.getMensajes().get(chat.getMensajes().size() - 2).getContenido());
+        verify(queue, times(1)).finalizarTriageEIngresarACola(anyString(), any(), anyString(), any(Chat.class));
+
+        assertEquals(3, calls.get(), "generación inicial, corrección y verificación independiente");
+        verify(delegatedGenerator, times(3)).generar(anyString(), anyString(), any(), any(Duration.class));
+        String correctionPrompt = capturedPrompts.get(1);
+        assertTrue(correctionPrompt.contains("también si describe malestar emocional o de salud mental"),
+                "el feedback allowlisted debe admitir hechos emocionales comprensibles");
+        assertTrue(correctionPrompt.contains("no inventes sintomas fisicos ni diagnosticos"));
+        assertFalse(correctionPrompt.contains("missing_or_uninformative"), "no filtrar el código de validación");
+        assertFalse(correctionPrompt.contains(rejectedResponse), "no reenviar la clasificación rechazada en bruto");
+        assertFalse(capturedInputs.get(1).contains(rejectedResponse), "la entrada de corrección solo debe contener la entrevista");
+        assertTrue(capturedPrompts.get(2).contains("verificador independiente"),
+                "la propuesta corregida debe pasar por el verificador Gemini real");
+        assertFalse(String.join("\n", capturedPrompts).contains("DETALLE_INVENTADO_SMOKE"));
+    }
+
     private static void addBot(Chat chat, String contenido) {
         chat.agregarMensaje(new Mensaje(contenido, AutorMensaje.BOT, null));
     }
@@ -319,6 +393,30 @@ class ChatHardeningGeminiSmokeTest {
         Mensaje mensaje = new Mensaje(contenido, AutorMensaje.PACIENTE, chat.getPaciente());
         mensaje.setExcluidoDelTriage(excluded);
         chat.agregarMensaje(mensaje);
+    }
+
+    private String emptySymptomsFinalResponse() {
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("motivoConsulta", "malestar emocional tras una mudanza familiar");
+        result.put("sintomas", List.of());
+        result.put("inicio", "desde que mi familia se mudó a otra ciudad");
+        result.put("evolucion", "no informado");
+        result.put("intensidadDolor", null);
+        result.put("signosAlarma", List.of());
+        result.put("antecedentesRelevantes", List.of());
+        result.put("medicamentos", List.of());
+        result.put("alergias", List.of());
+        result.put("posibilidadEmbarazo", "no informado");
+        result.put("observaciones", "DETALLE_INVENTADO_SMOKE");
+        result.put("nivelPrioridad", 2);
+        result.put("requiereAtencionInmediata", false);
+        result.put("recomendacionSeguridad", "Consultar con un profesional de salud.");
+        return mapper.writeValueAsString(Map.of(
+                "finalizado", true,
+                "mensaje", "Gracias. Ya registré tus respuestas para el equipo médico.",
+                "resultado", result,
+                "estadoEntrada", EstadoEntradaChat.RELEVANTE.name(),
+                "evidenciaClinica", List.of()));
     }
 
     private static ProgresoEntrevista progress(Chat chat) {

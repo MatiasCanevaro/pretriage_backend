@@ -17,8 +17,9 @@ El trabajo se divide en tres controles y sus regresiones:
    o tratar un objeto incoherente como síntoma. Un rechazo pide corrección remota.
 2. **Separación entre historial y hechos clínicos.** Los mensajes se serializan como
    JSON con roles reales. Los turnos de texto rechazados permanecen visibles, pero
-   se excluyen de la extracción clínica, las alarmas, la cuantificación y el límite
-   de respuestas. Las instrucciones pegadas por el paciente no cambian los roles.
+   se excluyen de la extracción clínica, las alarmas y la cuantificación. Siguen
+   contando localmente para los límites de recursos. Las instrucciones pegadas por
+   el paciente no cambian los roles.
 3. **Validación del resultado.** Cada síntoma y signo de alarma propuesto requiere
    evidencia del paciente. Una comprobación semántica independiente revisa el
    significado y las negaciones antes de aceptar la clasificación final. Si falla,
@@ -52,6 +53,13 @@ Un motivo emocional comprensible es suficiente para mantener el caso dentro del 
 la entrevista no debe volver a preguntas físicas solo para habilitar la clasificación.
 Una imagen como «vacío en el pecho» no implica dolor torácico, urgencia o diagnóstico
 sin una afirmación clara de una sensación física.
+
+La clasificación final no deja `sintomas` vacío solo porque el malestar sea
+emocional: debe describir el hecho de salud expresado y respaldarlo con una cita
+del paciente. La indicación de listas vacías para datos ausentes se limita a las
+listas opcionales. Si Gemini incumple el requisito de síntomas significativos,
+el código fijo `SINTOMAS_AUSENTES` orienta una sola corrección; la evidencia y el
+verificador siguen siendo obligatorios y no se fabrica ningún síntoma localmente.
 
 ## Contratos y persistencia
 

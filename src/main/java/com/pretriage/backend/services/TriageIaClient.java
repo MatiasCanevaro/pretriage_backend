@@ -193,6 +193,12 @@ public class TriageIaClient {
         SIN_RESPALDO, NEGACION, INFERENCIA, COMUNICACION, INTENSIDAD_NO_DOLOR
     }
 
+    /** Allowlisted reasons that may guide one bounded final-classification correction. */
+    public enum MotivoCorreccionFinal {
+        SIN_RESPALDO, NEGACION, INFERENCIA, COMUNICACION, INTENSIDAD_NO_DOLOR,
+        SINTOMAS_AUSENTES
+    }
+
     private static final Map<String, Object> ALCANCE_SCHEMA = Map.of(
             "type", "object", "additionalProperties", false, "required", List.of(ESTADO_ENTRADA),
             "properties", Map.of(ESTADO_ENTRADA, estadoEntradaSchema()));
@@ -211,10 +217,15 @@ public class TriageIaClient {
                     ESTADO_ENTRADA, estadoEntradaSchema()));
     private static final String FINALIZATION_DIRECTIVE = """
             La entrevista debe finalizar en esta respuesta. No hagas preguntas. Para datos ausentes usa
-            "no informado", listas vacias o intensidadDolor=null; nunca los inventes.
+            "no informado", listas vacias en signosAlarma, antecedentesRelevantes, medicamentos y alergias
+            cuando no haya datos, o intensidadDolor=null; nunca los inventes.
             Resume todos los hechos informados por el paciente en resultado, conserva los campos requeridos
             y usa como motivoConsulta el motivo principal expresado por el paciente; si describe sintomas
             como motivo, resumelos ahi y no escribas "no informado".
+            El campo sintomas requiere al menos un hecho de salud descriptivo informado por el paciente;
+            puede describir malestar emocional o de salud mental con sus palabras. No lo dejes vacio por
+            tratarse de una experiencia emocional, y no inventes sintomas fisicos ni diagnosticos para
+            completarlo. Un "vacio en el pecho" no es dolor toracico salvo que el paciente afirme dolor.
             Si afirma dolor de pecho o dificultad para respirar, agrega en signosAlarma los elementos
             "dolor toracico" o "dificultad respiratoria", respectivamente, aunque tambien aparezcan
             en sintomas; no los pongas en antecedentesRelevantes, que describe enfermedades previas.
@@ -366,6 +377,23 @@ public class TriageIaClient {
     /** Alias with a concise name for bounded correction feedback in the chat service. */
     public static java.util.Optional<MotivoRechazoSemantico> motivoRechazo(ProveedorIaException error) {
         return motivoRechazoSemantico(error);
+    }
+
+    /** Returns only a semantic verifier code or the one explicitly supported field rejection. */
+    public static java.util.Optional<MotivoCorreccionFinal> motivoCorreccionFinal(ProveedorIaException error) {
+        Throwable cause = error;
+        for (int i = 0; cause != null && i < 10; i++, cause = cause.getCause()) {
+            if (cause instanceof InvalidResponseException invalid) {
+                if (invalid.semanticReason != null) {
+                    return java.util.Optional.of(MotivoCorreccionFinal.valueOf(invalid.semanticReason.name()));
+                }
+                if ("sintomas".equals(invalid.field)
+                        && "missing_or_uninformative".equals(invalid.reason)) {
+                    return java.util.Optional.of(MotivoCorreccionFinal.SINTOMAS_AUSENTES);
+                }
+            }
+        }
+        return java.util.Optional.empty();
     }
 
     private TriageAiResponse consultarConFormato(String systemPrompt, String conversation,

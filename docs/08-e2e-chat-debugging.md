@@ -174,6 +174,14 @@ can use that category as feedback; the original rejection text and any provider 
 are never copied into the correction prompt or logs. No queue entry is created when that
 correction fails.
 
+The exact local validation failure `field=sintomas reason=missing_or_uninformative`
+also supplies the allowlisted correction code `SINTOMAS_AUSENTES`. It asks Gemini
+to preserve reported descriptive health facts, including emotional experiences,
+without inventing physical symptoms. `Chat IA correction accepted` means that
+the replacement passed validation; it does not establish HTTP delivery or commit
+success. Inspect the persisted chat status and client error before concluding
+that a recoverable warning forced a manual retry.
+
 When transport errors coexist with `invalid_response`, `repeated_question` or
 `premature_or_unsafe_closure`, do not attribute all delays to the provider. A
 single message correction or final-result correction adds another Gemini request
