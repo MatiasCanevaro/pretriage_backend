@@ -70,6 +70,27 @@ a persistent schema mode, or stop it after backing up its data. Editing `.env`
 alone does not protect the shutdown of a process that already loaded
 `create-drop`. Tests that need a datasource must use an isolated database.
 
+## Optional hospital metrics demo data
+
+`MetricasHospitalTestInyection` is disabled by default. It is imported from the
+development branch for manually exercising the hospital metrics dashboard, and
+must not populate the normal application database implicitly.
+
+To use it in an explicitly disposable demo environment, configure both properties:
+
+```properties
+pretriage.seed.metricas-demo.enabled=true
+pretriage.seed.metricas-demo.hospital-place-id=<existing-demo-hospital-place-id>
+```
+
+The hospital and `CLINICA_MEDICA` specialty must already exist. The runner inserts
+310 synthetic queue entries across 1–23 October 2026, with patients, consultations,
+rooms, a doctor and supporting attendance data. It creates no authenticated users
+or hospital-admin memberships. An existing `MTR-%` consultation skips the seed;
+this is not a general migration or repair tool. Fixed demo document numbers must
+not collide with other data. Leave activation absent or `false` for normal startup
+and isolated regression tests. See [the development integration](25-development-integration.md).
+
 ## Invitation email through Brevo
 
 The SMTP adapter is already included in the backend. Configure the ignored `.env`

@@ -4,7 +4,11 @@ Actualizado el 28/10/2026, zona horaria America/Buenos_Aires.
 
 ## Instrucción para continuar
 
-Leer este documento y los `AGENTS.md` de cada repositorio antes de trabajar. Los cambios descritos están implementados y probados, pero **sin commit ni push**. Preservar el trabajo local. La siguiente tarea depende de lo que solicite el usuario; no repetir automáticamente las compilaciones ni reiniciar su backend.
+Este documento conserva el estado histórico previo a los commits del 28/10/2026.
+Las referencias a cambios sin commit, procesos y revisiones corresponden a ese
+momento. El estado posterior de recuperación está en
+`24-durable-text-turns.md`, y los commits y la integración de desarrollo en
+`25-development-integration.md`. Leer también los `AGENTS.md` de cada repositorio.
 
 ## Repositorios y estado verificado
 

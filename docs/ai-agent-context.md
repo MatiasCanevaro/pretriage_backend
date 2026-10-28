@@ -162,6 +162,10 @@ Chat lifecycle and consultation link:
   `RepoConsultasMedicas.contarIngresadosPorNivelBot/Medico` (`ConteoPorNivelProjection`, `null` nivel = `SIN_REVISION`)
   and `contarIngresadosCon/SinPretriage`.
 - DTOs: `MetricasHospitalResponse`, `DistribucionNivelItem`, `SerieDiariaItem` (`controllers/dtos/metricas`).
+- Metrics demo data is opt-in: `pretriage.seed.metricas-demo.enabled=true` also
+  requires an explicit `pretriage.seed.metricas-demo.hospital-place-id`. Never
+  enable this synthetic-data runner in the application's normal datasource.
+  Configuration and prerequisites: `docs/07-local-development.md`.
 
 Contract rules: everything is anchored on `EntradaCola.fechaHoraIngreso` of the hospital in range;
 `pacientesAtendidos` = those with `AtencionMedica.FINALIZADA`; wait = `fechaHoraInicio - fechaHoraIngreso`
