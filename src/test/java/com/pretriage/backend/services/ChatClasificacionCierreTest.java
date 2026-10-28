@@ -114,8 +114,6 @@ class ChatClasificacionCierreTest {
                 .mapToObj(i -> new TurnoVoz(AutorMensaje.PACIENTE, "No sé cómo explicarlo"))
                 .toList();
         when(ia.consultarAlcance(anyString(), any())).thenReturn(EstadoEntradaChat.AMBIGUO);
-        when(ia.consultar(anyString(), anyString(), eq(true)))
-                .thenReturn(new TriageAiResponse(false, "No entendí bien la consulta.", null, EstadoEntradaChat.AMBIGUO));
 
         service.validarAlcanceCierreVoz("1", "patient", turnos, summary());
         var response = service.finalizarEntrevistaVoz("1", "patient", turnos, summary());
@@ -124,8 +122,12 @@ class ChatClasificacionCierreTest {
         assertTrue(chat.isFinalizado());
         assertEquals(EstadoClasificacionChat.NO_SOLICITADA, chat.getEstadoClasificacion());
         assertNull(chat.getResultadoTriageJson());
-        verify(ia).consultarAlcance(anyString(), any());
-        verify(ia).consultar(anyString(), anyString(), eq(true));
+        assertEquals(24, chat.getMensajes().stream()
+                .filter(m -> m.getAutor() == AutorMensaje.PACIENTE).count());
+        verify(ia, times(2)).consultarAlcance(anyString(), any());
+        verify(ia, never()).consultar(anyString(), anyString(), eq(true));
+        verify(ia, never()).consultar(anyString(), anyString(), eq(true), any(java.time.Duration.class));
+        verify(ia, never()).consultarCorreccionFinal(anyString(), anyString(), any());
         verifyNoInteractions(cola);
     }
     @Test void reintentoDeProcesamientoNoAgregaMensajeDelPacienteYNoReclasificaUnCompletado() {

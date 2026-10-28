@@ -311,14 +311,23 @@ public class ChatService {
                 .ifPresent(error -> { throw new IllegalArgumentException(error); });
         agregarTurnosVoz(chat, turnos == null ? List.of() : turnos);
         ProgresoEntrevista progreso = progresoEntrevista(chat);
+        boolean verificarAlcanceAdministrativo = candidatoCierreSinDatos(progreso);
         iniciarClasificacion(chat);
         long inicio = System.nanoTime();
         try {
             String datos = construirDatosVozParaClasificacion(entrevistaCompleta, resumen);
+            if (verificarAlcanceAdministrativo) {
+                EstadoEntradaChat alcance = consultarAlcanceAdministrativo(datos, inicio, chat);
+                if (alcance != EstadoEntradaChat.RELEVANTE) {
+                    return cerrarSinHechosClinicos(chat, progreso);
+                }
+            }
             TriageAiResponse respuesta;
             java.util.Optional<TriageIaClient.MotivoCorreccionFinal> rechazoSemantico = java.util.Optional.empty();
             try {
-                respuesta = triageIaClient.consultar(promptFinal(progreso, true), datos, true);
+                respuesta = verificarAlcanceAdministrativo
+                        ? triageIaClient.consultar(promptFinal(progreso, true), datos, true, plazoRestante(inicio, chat))
+                        : triageIaClient.consultar(promptFinal(progreso, true), datos, true);
             } catch (ProveedorIaException error) {
                 rechazoSemantico = TriageIaClient.motivoCorreccionFinal(error);
                 if (rechazoSemantico.isEmpty() && !TriageIaClient.esErrorDeRespuesta(error)) throw error;
@@ -329,7 +338,6 @@ public class ChatService {
             respuesta = corregirClasificacionSiHaceFalta(chat, respuesta, datos, inicio, rechazoSemantico,
                     promptFinal(progreso, true));
             if (estadoEntrada(respuesta) != EstadoEntradaChat.RELEVANTE) {
-                if (permiteCierrePorRecursos(progreso)) return cerrarSinHechosClinicos(chat, progreso);
                 throw new ProveedorIaException(new IllegalStateException(
                         "La clasificación final contradice el preflight de alcance de la entrevista de voz"));
             }
@@ -482,16 +490,25 @@ public class ChatService {
         Chat ultimo = repoChat.findFirstByPacienteUsuarioAuthIdOrderByFechaHoraCreacionDescIdDesc(idPaciente)
                 .orElseThrow(ChatNoEncontradoException::new);
         if (!ultimo.getId().equals(chat.getId())) throw new ChatFinalizadoException();
-        iniciarClasificacion(chat);
+        ProgresoEntrevista progreso = progresoEntrevista(chat);
+        boolean verificarAlcanceAdministrativo = candidatoCierreSinDatos(progreso);
         long inicio = System.nanoTime();
+        iniciarClasificacion(chat);
         try {
             String datos = construirDatosParaClasificacion(chat);
-            ProgresoEntrevista progreso = progresoEntrevista(chat);
+            if (verificarAlcanceAdministrativo) {
+                EstadoEntradaChat alcance = consultarAlcanceAdministrativo(datos, inicio, chat);
+                if (alcance != EstadoEntradaChat.RELEVANTE) {
+                    return cerrarSinHechosClinicos(chat, progreso);
+                }
+            }
             String promptFinal = promptFinal(progreso, false);
             TriageAiResponse respuesta;
             java.util.Optional<TriageIaClient.MotivoCorreccionFinal> rechazoSemantico = java.util.Optional.empty();
             try {
-                respuesta = triageIaClient.consultar(promptFinal, datos, true);
+                respuesta = verificarAlcanceAdministrativo
+                        ? triageIaClient.consultar(promptFinal, datos, true, plazoRestante(inicio, chat))
+                        : triageIaClient.consultar(promptFinal, datos, true);
             } catch (ProveedorIaException error) {
                 rechazoSemantico = TriageIaClient.motivoCorreccionFinal(error);
                 if (rechazoSemantico.isEmpty() && !TriageIaClient.esErrorDeRespuesta(error)) throw error;
@@ -499,8 +516,8 @@ public class ChatService {
             }
             respuesta = corregirClasificacionSiHaceFalta(chat, respuesta, datos, inicio, rechazoSemantico, promptFinal);
             if (estadoEntrada(respuesta) != EstadoEntradaChat.RELEVANTE) {
-                marcarClasificacionFallida(chat);
-                throw new ProveedorIaException(new IllegalStateException("Entrada no clinica en clasificacion fallida"));
+                throw new ProveedorIaException(new IllegalStateException(
+                        "La clasificación final contradice el preflight de alcance de la entrevista"));
             }
             String motivoCierre = progreso.motivoCierre() == ProgresoEntrevista.MotivoCierre.EN_CURSO
                     ? "CIERRE_PREVIO" : null;
@@ -829,11 +846,25 @@ public class ChatService {
         };
     }
 
-    private boolean permiteCierrePorRecursos(ProgresoEntrevista progreso) {
-        return switch (progreso.motivoCierre()) {
-            case LIMITE_RECURSOS, SIN_AVANCE -> true;
-            default -> false;
-        };
+    private boolean candidatoCierreSinDatos(ProgresoEntrevista progreso) {
+        return permiteCierreAdministrativo(progreso) && !progreso.tieneHechosClinicos();
+    }
+
+    private java.time.Duration plazoRestante(long inicio, Chat chat) {
+        java.time.Duration restante = java.time.Duration.ofSeconds(45)
+                .minusNanos(System.nanoTime() - inicio);
+        if (restante.isZero() || restante.isNegative()) {
+            throw respuestaIaInvalida(chat, "closure_deadline_exceeded");
+        }
+        return restante;
+    }
+
+    private EstadoEntradaChat consultarAlcanceAdministrativo(String datos, long inicio, Chat chat) {
+        EstadoEntradaChat alcance = triageIaClient.consultarAlcance(datos, plazoRestante(inicio, chat));
+        if (alcance == null) {
+            throw new ProveedorIaException(new IllegalStateException("Gemini no devolvió un estado de alcance válido"));
+        }
+        return alcance;
     }
 
     private boolean hayTurnoPacienteIncluido(Chat chat) {

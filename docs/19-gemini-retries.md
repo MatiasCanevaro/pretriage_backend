@@ -101,6 +101,15 @@ actualizado sincroniza GET y muestra una entrevista cerrada sin fingir una
 clasificación completada. Para cargar las clases nuevas en el proceso local es
 necesario reiniciar el backend.
 
+En el cierre de voz y en `POST /api/chat/{id}/clasificacion`, una entrevista
+agotada o detenida por el paciente, sin hechos clínicos locales, se evalúa primero
+con la petición reducida de alcance. Una decisión no relevante termina sin pedir
+clasificación; una relevante conserva el procesamiento clínico. Esa consulta,
+generación, verificación y eventual corrección comparten los 45 segundos de la
+operación mediante el presupuesto restante. No agrega intentos de clasificación.
+Timeouts, cuotas, errores de transporte o un alcance ausente no se interpretan
+como ausencia de datos: conservan el procesamiento en `FALLIDA`.
+
 El 25 de octubre de 2026, la regresión de síntomas vacíos pasó junto con la suite
 completa: 647 pruebas registradas, sin fallos ni errores, nueve omitidas, en una
 base temporal aislada. El smoke opt-in

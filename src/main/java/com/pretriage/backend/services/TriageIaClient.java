@@ -314,6 +314,15 @@ public class TriageIaClient {
         return consultarConFormato(systemPrompt, conversation, finalizacionRequerida);
     }
 
+    /** Queries the provider within a caller-owned operation budget. */
+    public TriageAiResponse consultar(String systemPrompt, String conversation, boolean finalizacionRequerida,
+                                      Duration maxWait) {
+        if (maxWait == null || maxWait.isZero() || maxWait.isNegative()) {
+            throw new ProveedorIaException(new IllegalArgumentException("El plazo de triage debe ser positivo"));
+        }
+        return consultarConFormato(systemPrompt, conversation, finalizacionRequerida, maxWait);
+    }
+
     /** Gemini writes only the next question; this operation cannot classify or close the chat. */
     public TriageAiResponse consultarContinuacion(String systemPrompt, String conversation, java.time.Duration maxWait) {
         long operationStartedAt = System.nanoTime();

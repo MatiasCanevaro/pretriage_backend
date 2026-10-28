@@ -137,7 +137,15 @@ crea prioridad, resultado clínico ni entrada de cola.
 
 Cerrar la entrevista y completar la clasificación siguen siendo operaciones
 distintas. Un fallo del proveedor conserva las respuestas y el estado `FALLIDA`;
-el reintento de procesamiento no vuelve a entrevistar ni agrega un mensaje.
+el reintento de procesamiento no vuelve a entrevistar ni agrega respuestas del paciente.
+
+En voz y al reintentar un procesamiento fallido, un cierre administrativo sin
+hechos clínicos locales necesita además una decisión de alcance remota. Si el
+alcance es ambiguo o ajeno a salud, se guarda una única respuesta administrativa,
+con `CIERRE_SIN_DATOS`, estado `NO_SOLICITADA` y resultado nulo. No se pide una
+clasificación de esa entrada ni se crea prioridad o entrada en cola. Si el alcance
+es relevante, se clasifica con el tiempo restante. Los fallos de proveedor o una
+respuesta final contradictoria mantienen `FALLIDA`, sin ocultar el error.
 
 Una pregunta abierta para aclarar el motivo conserva esa tarea aunque no contenga
 las palabras «físico» o «emocional». Solo se usa esta asociación cuando aún no hay
@@ -172,7 +180,9 @@ metadata del backend; no se solicita a Gemini ni modifica el DTO clínico. Los
 resultados históricos sin esta metadata continúan siendo legibles.
 
 Al reintentar un chat fallido que ya estaba cerrado bajo reglas anteriores, el
-procesamiento no vuelve a pedir respuestas. Si la proyección actual no puede
+procesamiento no vuelve a pedir respuestas. Primero puede aplicar la comprobación
+de cierre administrativo sin datos indicada arriba; no duplica la transcripción.
+Si corresponde clasificar y la proyección actual no puede
 reconstruir un motivo terminal, la metadata usa `CIERRE_PREVIO` y conserva los
 datos pendientes. El prompt final siempre pide clasificar la entrevista cerrada;
 nunca incorpora instrucciones de continuar preguntando.

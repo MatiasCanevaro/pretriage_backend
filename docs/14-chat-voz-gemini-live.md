@@ -168,6 +168,21 @@ Hay un límite total de 30 segundos desde que se acepta la función, independien
 
 `ChatService.finalizarEntrevistaVoz` guarda la transcripción y cierra la entrevista antes de solicitar la clasificación final a Gemini REST. El prompt indica que, si el resumen contradice al paciente, prevalece la transcripción. Una alarma literal del paciente o una alarma afirmada en el resultado validado exige prioridad al menos 4 y atención inmediata. Cada síntoma o alarma del resultado requiere una cita del paciente y la verificación semántica final; el texto del resumen no basta. Si la respuesta no cumple, pide una corrección sin generar clasificación local. Solo con un resultado válido actualiza `Chat.resultadoTriageJson`, el resumen de la consulta y la prioridad de su entrada en cola. Si el procesamiento falla, las respuestas quedan guardadas en `FALLIDA`.
 
+En un cierre administrativo (`SIN_AVANCE`, `LIMITE_RECURSOS` o
+`SOLICITUD_PACIENTE`) sin hechos clínicos reconocidos por el progreso local,
+se comprueba primero el alcance de la entrevista admitida. Solo un alcance
+`AMBIGUO` o `FUERA_DE_CONTEXTO` permite cerrar con `CIERRE_SIN_DATOS`,
+`finalizado=true`, `estadoClasificacion=NO_SOLICITADA` y resultado nulo, sin
+clasificación ni entrada en cola. La comprobación remota evita descartar un
+relato clínico comprensible que no esté en el vocabulario local. Si devuelve
+`RELEVANTE`, continúa la clasificación; si falla o no devuelve una decisión
+válida, se conserva `FALLIDA`. Los hechos clínicos locales también impiden ese
+atajo. No se convierte una respuesta final contradictoria en un cierre sin datos.
+
+La comprobación de alcance de esta operación, la clasificación y su eventual
+corrección comparten 45 segundos. El preflight previo a confirmar la herramienta
+mantiene su comprobación independiente sobre la instantánea de voz.
+
 El chat no genera resúmenes ni prioridades mediante reglas locales. Si Gemini devuelve una clasificación incoherente o JSON/esquema inválido, se solicita una corrección desde el backend. Si sigue fallando, no se guarda un resultado ni se actualiza la prioridad: se emite `error`, se conserva la transcripción y la entrevista queda cerrada en `FALLIDA`, para reintentar solamente el procesamiento. Las validaciones finales son compartidas por texto y voz.
 
 ## Cierre cuando Live omite la herramienta
@@ -196,8 +211,10 @@ Gemini REST con los hechos guardados, su corrección única y la verificación
 clínica habituales. No se agrega otra respuesta del paciente, no se llama la
 herramienta con argumentos inventados y no se genera un resumen clínico local.
 
-Si el procesamiento resulta válido, se emite un solo `triage_finalizado` y se
-actualiza la cola una vez. Si falla, la entrevista conserva `FALLIDA` y permite
+Si el procesamiento obtiene una clasificación válida, se emite un solo
+`triage_finalizado` y se actualiza la cola una vez. Un cierre administrativo sin
+datos usa el mismo evento con origen `CIERRE_SIN_DATOS`, sin atención estimada ni
+actualización de cola. Si falla, la entrevista conserva `FALLIDA` y permite
 reintentar únicamente el procesamiento. Una interrupción anormal del transporte
 conserva el cierre fallido, sin afirmar una clasificación exitosa. Los estados y
 eventos públicos existentes alcanzan para esta recuperación; no requiere un APK
@@ -216,7 +233,7 @@ El endpoint sigue siendo `/api/chat/{id}/voz`. Admite JWT por `Authorization: Be
 | `interrumpido` | Interrumpir la reproducción y vaciar el audio pendiente. |
 | `turno_completo` | Terminó un turno de Gemini; no equivale a triage finalizado. |
 | `entrevista_finalizada` | Detener micrófono y mostrar procesamiento pendiente. Puede incluir un resumen de Live, sin prioridad; la recuperación sin herramienta no incluye ese resumen. |
-| `triage_finalizado` | Mostrar `respuesta` y `atencionEstimada`. `origenRespuesta` indica `GEMINI` para nuevas clasificaciones. |
+| `triage_finalizado` | Mostrar `respuesta` y `atencionEstimada` si existe. `origenRespuesta=GEMINI` indica una clasificación válida; `CIERRE_SIN_DATOS` indica cierre sin clasificación ni cola. |
 | `fin` o cierre del socket | Terminar la sesión; si falta `triage_finalizado`, consultar el estado del chat por HTTP. |
 | `error`, `sesion_por_expirar` | Mostrar el estado y preparar recuperación por texto o una sesión nueva, según el estado persistido. |
 

@@ -164,6 +164,76 @@ class ChatHardeningGeminiSmokeTest {
         assertEquals(2, harness.calls().get(), "una fecha desconocida no borra el inicio relativo expresado");
     }
 
+    @ParameterizedTest
+    @CsvSource({
+            "Siento que la habitación da vueltas cuando me incorporo",
+            "Me invade una tristeza enorme desde una mudanza familiar"
+    })
+    void alcanceRealDeCierreConservaRelatosClinicosComprensibles(String relato) {
+        assertEquals(EstadoEntradaChat.RELEVANTE, client().consultarAlcance(
+                conversation(List.of(patient(relato))), Duration.ofSeconds(30)));
+    }
+
+    @Test
+    void reintentoRealDeVozSinHechosCierraSinPedirClasificacion() {
+        Paciente paciente = new Paciente();
+        Chat chat = new Chat(paciente);
+        chat.setId(29L);
+        addBot(chat, "Hola. Contame qué te pasa.");
+        addPatient(chat, "Me duele el abrigo de una nube", false);
+        addBot(chat, "¿Qué querés decir con esa expresión?");
+        addPatient(chat, "Una escalera de papel", false);
+        addBot(chat, "¿Qué estás sintiendo?");
+        addPatient(chat, "Una rueda de cristal", false);
+        addBot(chat, "¿Podés describirlo con tus palabras?");
+        addPatient(chat, "Como un martes de algodón", false);
+        addBot(chat, "¿Qué te está pasando?");
+        addPatient(chat, "Todavía", false);
+        chat.setFinalizado(true);
+        chat.setEstadoClasificacion(EstadoClasificacionChat.FALLIDA);
+        assertEquals(ProgresoEntrevista.MotivoCierre.SIN_AVANCE, progress(chat).motivoCierre());
+        assertFalse(progress(chat).tieneHechosClinicos());
+
+        RepoChat chats = mock(RepoChat.class);
+        RepoPacientes patients = mock(RepoPacientes.class);
+        RepoConsultasMedicas consultations = mock(RepoConsultasMedicas.class);
+        RepoEntradasCola entries = mock(RepoEntradasCola.class);
+        AtencionHospitalService queue = mock(AtencionHospitalService.class);
+        var calls = new AtomicInteger();
+        var realGenerator = generator();
+        var delegatedGenerator = mock(GeminiJsonClient.class);
+        when(delegatedGenerator.generar(anyString(), anyString(), any(), any(Duration.class)))
+                .thenAnswer(invocation -> {
+                    calls.incrementAndGet();
+                    return realGenerator.generar(invocation.getArgument(0), invocation.getArgument(1),
+                            invocation.getArgument(2), invocation.getArgument(3));
+                });
+        when(chats.findForUpdate(29L, "auth0|synthetic-smoke"))
+                .thenReturn(java.util.Optional.of(chat));
+        when(chats.findFirstByPacienteUsuarioAuthIdOrderByFechaHoraCreacionDescIdDesc("auth0|synthetic-smoke"))
+                .thenReturn(java.util.Optional.of(chat));
+        when(chats.save(any(Chat.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        var service = new ChatService(chats, patients, consultations, entries, queue,
+                new TriageIaClient(delegatedGenerator, mapper), mapper);
+        int messagesBefore = chat.getMensajes().size();
+        long patientTurnsBefore = chat.getMensajes().stream()
+                .filter(m -> m.getAutor() == AutorMensaje.PACIENTE).count();
+
+        var response = service.reintentarClasificacion("29", "auth0|synthetic-smoke");
+
+        assertEquals("CIERRE_SIN_DATOS", response.origenRespuesta());
+        assertTrue(chat.isFinalizado());
+        assertEquals(EstadoClasificacionChat.NO_SOLICITADA, chat.getEstadoClasificacion());
+        assertNull(chat.getResultadoTriageJson());
+        assertNull(response.atencionEstimada());
+        assertEquals(messagesBefore + 1, chat.getMensajes().size());
+        assertEquals(patientTurnsBefore, chat.getMensajes().stream()
+                .filter(m -> m.getAutor() == AutorMensaje.PACIENTE).count());
+        assertEquals(1, calls.get(), "solo debe pedirse alcance; no una clasificación final ni una corrección");
+        verify(chats, times(1)).save(chat);
+        verify(queue, never()).finalizarTriageEIngresarACola(anyString(), any(), anyString(), any(Chat.class));
+    }
+
     @Test
     void noInventaClasificacionCuandoElUnicoMotivoEsIncoherente() {
         var response = client().consultar(LenguajeClinicoChat.REGLAS_RESULTADO,

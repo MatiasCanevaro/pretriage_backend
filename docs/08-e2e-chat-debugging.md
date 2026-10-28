@@ -189,6 +189,37 @@ the replacement passed validation; it does not establish HTTP delivery or commit
 success. Inspect the persisted chat status and client error before concluding
 that a recoverable warning forced a manual retry.
 
+`field=estadoEntrada reason=non_relevant_must_not_classify` means a proposed
+response marked the input as ambiguous or out of scope while also setting
+`finalizado=true`, supplying a result, or supplying evidence. The parser rejects
+that contradiction; the log alone does not identify which incompatible field was
+present. Do not normalize it into a successful clinical classification.
+
+For voice closure and processing retries, administrative closure without local
+clinical facts now checks the complete admitted interview with the scope-only
+request first. An ambiguous/out-of-scope decision closes as `CIERRE_SIN_DATOS`
+before requesting a classification. Recognized clinical facts or a relevant scope
+decision keep the clinical path; provider errors, missing scope and later
+contradictions remain failures. A previously failed latest chat can reach this
+administrative outcome through its normal retry endpoint after restarting the
+backend, without resending or duplicating its patient turns. No historic record
+is automatically rewritten during deployment.
+
+Verification of this voice administrative-closure change: the isolated suite
+recorded 705 tests, no failures or errors, and 16 skipped tests. The focused run
+recorded 93 tests, including three opt-in real-Gemini checks with synthetic text.
+A fictitious failed voice chat reached `CIERRE_SIN_DATOS` through the normal retry
+service after exactly one scope request, without classification, queue entry or
+duplicate patient turns. Separate checks kept colloquial and emotional complaints
+in scope. Local regressions cover known clinical facts, relevant scope followed by
+a contradictory final response, scope timeout and the shared 45-second budget.
+The real application's chat records were not modified. These tests exercise the
+backend processing path, not Android audio capture or speech recognition.
+
+```powershell
+./mvnw.cmd "-Dtest=ChatHardeningGeminiSmokeTest#reintentoRealDeVozSinHechosCierraSinPedirClasificacion+alcanceRealDeCierreConservaRelatosClinicosComprensibles" "-Dpretriage.gemini.hardening.live=true" "-Dspring.docker.compose.enabled=false" test
+```
+
 At the start of an ambiguous interview, local
 `ACLARACION_FUERA_DE_OBJETIVO` alternating with semantic `INFERENCIA` can indicate
 that the proposed clarification itself introduces a category or quantifies an
