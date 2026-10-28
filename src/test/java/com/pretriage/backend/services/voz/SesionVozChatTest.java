@@ -259,7 +259,7 @@ class SesionVozChatTest {
     void alFinalizarPrevalidaPeroClasificaSoloDespuesDelDrenaje() {
         TiempoEstimadoAtencionResponse atencion = new TiempoEstimadoAtencionResponse();
         atencion.setConsultaId(10L);
-        when(chatService.finalizarEntrevistaVoz(eq("7"), eq("auth0|paciente"), anyList(), any()))
+        when(chatService.finalizarEntrevistaVozConfirmadaParcial(eq("7"), eq("auth0|paciente"), anyList()))
                 .thenReturn(new ChatTurnResponse(new MensajeDTO("Gracias. Registre tus sintomas.", "BOT",
                         LocalDateTime.now()), atencion, "GEMINI"));
         SesionVozChat sesion = sesion(historialNuevo());
@@ -283,7 +283,7 @@ class SesionVozChatTest {
         assertEquals("llamada-1", respuesta.path("id").asText());
         assertEquals(SesionVozChat.MENSAJE_DESPEDIDA, respuesta.path("response").path("mensaje").asText());
         assertTrue(canal.eventos.stream().anyMatch(e -> e.contains("entrevista_finalizada")));
-        verify(chatService).validarAlcanceCierreVoz(eq("7"), eq("auth0|paciente"), anyList(), any());
+        verify(chatService, never()).validarAlcanceCierreVoz(anyString(), anyString(), anyList(), any());
         verify(chatService, never()).finalizarEntrevistaVoz(anyString(), anyString(), anyList(), any());
 
         entrada(sesion, " y tomo ibuprofeno");
@@ -294,8 +294,7 @@ class SesionVozChatTest {
         esperar(() -> canal.cerrado);
         assertTrue(conexion.cerrada);
         ArgumentCaptor<List<TurnoVoz>> turnos = ArgumentCaptor.captor();
-        ArgumentCaptor<ResumenEntrevistaVoz> resumen = ArgumentCaptor.captor();
-        verify(chatService).finalizarEntrevistaVoz(eq("7"), eq("auth0|paciente"), turnos.capture(), resumen.capture());
+        verify(chatService).finalizarEntrevistaVozConfirmadaParcial(eq("7"), eq("auth0|paciente"), turnos.capture());
         assertEquals(List.of(
                 new TurnoVoz(AutorMensaje.PACIENTE, "Me duele la cabeza desde ayer."),
                 new TurnoVoz(AutorMensaje.BOT, "Del 0 al 10, cuanto te duele?"),
@@ -303,8 +302,6 @@ class SesionVozChatTest {
                 new TurnoVoz(AutorMensaje.BOT, "¿Hay algo más que quieras contar sobre lo que te pasa?"),
                 new TurnoVoz(AutorMensaje.PACIENTE, "No, nada más."),
                 new TurnoVoz(AutorMensaje.PACIENTE, "y tomo ibuprofeno")), turnos.getValue());
-        assertEquals("dolor de cabeza", resumen.getValue().motivoConsulta());
-        assertEquals(6, resumen.getValue().intensidadDolor());
 
         JsonNode triage = canal.eventos.stream().map(this::json)
                 .filter(e -> "triage_finalizado".equals(e.path("tipo").asText())).findFirst().orElseThrow();
@@ -327,17 +324,12 @@ class SesionVozChatTest {
     }
 
     @Test
-    void rechazoSemanticoPideAclaracionYUnNuevoToolPuedeCerrar() {
-        TiempoEstimadoAtencionResponse atencion = new TiempoEstimadoAtencionResponse();
+    void preflightAmbiguoSeConservaCuandoNoHayDatosClinicosLocales() {
         doThrow(new EntradaChatNoClinicaException(EstadoEntradaChat.AMBIGUO))
-                .doNothing().when(chatService).validarAlcanceCierreVoz(anyString(), anyString(), anyList(), any());
-        when(chatService.finalizarEntrevistaVoz(anyString(), anyString(), anyList(), any()))
-                .thenReturn(new ChatTurnResponse(new MensajeDTO("Gracias. Ya registré tus respuestas.", "BOT",
-                        LocalDateTime.now()), atencion, "GEMINI"));
+                .when(chatService).validarAlcanceCierreVoz(anyString(), anyString(), anyList(), any());
         SesionVozChat sesion = sesion(historialNuevo());
         sesion.iniciar();
-        relatoClinicoSuficiente(sesion);
-
+        entrada(sesion, "No quiero seguir respondiendo.");
         sesion.alRecibir(llamadaFinalizar("ambiguo", List.of()));
         esperar(() -> conexion.enviados.stream().anyMatch(m -> m.contains("\"id\":\"ambiguo\"")));
         JsonNode rechazo = conexion.enviados.stream().map(this::json)
@@ -349,33 +341,10 @@ class SesionVozChatTest {
         assertFalse(conexion.cerrada);
         assertFalse(canal.cerrado);
         assertTrue(canal.eventos.stream().noneMatch(e -> e.contains("entrevista_finalizada")));
-        sesion.alRecibir(llamadaFinalizar("sin-aclaracion", List.of()));
-        esperar(() -> conexion.enviados.stream().anyMatch(m -> m.contains("\"id\":\"sin-aclaracion\"")));
-        JsonNode sinAclaracion = conexion.enviados.stream().map(this::json)
-                .filter(m -> m.toString().contains("\"id\":\"sin-aclaracion\""))
-                .map(m -> m.path("toolResponse").path("functionResponses").get(0))
-                .findFirst().orElseThrow();
-        assertTrue(sinAclaracion.path("response").path("error").asText().contains("aclaracion nueva"));
         verify(chatService, times(1)).validarAlcanceCierreVoz(anyString(), anyString(), anyList(), any());
-
-        salida(sesion, "¿Podés aclarar algo más sobre el dolor de cabeza?");
-        turnoCompleto(sesion);
-        entrada(sesion, "El dolor de cabeza sigue igual desde ayer.");
-        sesion.alRecibir(llamadaFinalizar("aclarado", List.of()));
-        esperar(() -> conexion.enviados.stream().anyMatch(m -> m.contains("\"id\":\"aclarado\"")));
-        salida(sesion, SesionVozChat.MENSAJE_DESPEDIDA);
-        turnoCompleto(sesion);
-        sesion.alCerrar(1000, "fin");
-        esperar(() -> canal.cerrado);
-
-        ArgumentCaptor<List<TurnoVoz>> turnos = ArgumentCaptor.captor();
-        verify(chatService, times(2)).validarAlcanceCierreVoz(eq("7"), eq("auth0|paciente"), anyList(), any());
-        verify(chatService).finalizarEntrevistaVoz(eq("7"), eq("auth0|paciente"), turnos.capture(), any());
-        assertTrue(turnos.getAllValues().getLast().stream()
-                .anyMatch(t -> "El dolor de cabeza sigue igual desde ayer.".equals(t.contenido())));
         verify(chatService, never()).registrarCierreVozFallido(anyString(), anyString(), anyList());
         verify(chatService, never()).registrarTurnosVoz(anyString(), anyString(), anyList());
-        assertTrue(canal.eventos.stream().anyMatch(e -> e.contains("triage_finalizado")));
+        verify(chatService, never()).finalizarEntrevistaVoz(anyString(), anyString(), anyList(), any());
     }
 
     @Test
@@ -420,8 +389,8 @@ class SesionVozChatTest {
                 .validarAlcanceCierreVoz(anyString(), anyString(), anyList(), any());
         SesionVozChat sesion = sesion(historialNuevo());
         sesion.iniciar();
-        entrada(sesion, "Tengo dolor de pecho");
-        sesion.alRecibir(llamadaFinalizar("preflight-error", List.of("dolor de pecho")));
+        entrada(sesion, "No quiero seguir respondiendo.");
+        sesion.alRecibir(llamadaFinalizar("preflight-error", List.of()));
         esperar(() -> conexion.enviados.stream().anyMatch(m -> m.contains("\"id\":\"preflight-error\"")));
         assertTrue(conexion.enviados.stream().noneMatch(m -> m.contains("toolResponse")
                 && m.contains("Tus respuestas quedaron registradas")));
@@ -453,8 +422,8 @@ class SesionVozChatTest {
         }).when(chatService).validarAlcanceCierreVoz(anyString(), anyString(), anyList(), any());
         SesionVozChat sesion = sesion(historialNuevo());
         sesion.iniciar();
-        entrada(sesion, "Tengo dolor de pecho");
-        sesion.alRecibir(llamadaFinalizar("preflight-error", List.of("dolor de pecho")));
+        entrada(sesion, "No quiero seguir respondiendo.");
+        sesion.alRecibir(llamadaFinalizar("preflight-error", List.of()));
         assertTrue(inicioPreflight.await(2, TimeUnit.SECONDS));
         entrada(sesion, "También me falta el aire.");
         sesion.cerrar();
@@ -486,7 +455,7 @@ class SesionVozChatTest {
             turnoCompleto(sesion);
             reloj.avanzar(40);
             assertTrue(conexion.cerrada);
-            verify(chatService).validarAlcanceCierreVoz(anyString(), anyString(), anyList(), any());
+            verify(chatService, never()).validarAlcanceCierreVoz(anyString(), anyString(), anyList(), any());
             verify(chatService, never()).finalizarEntrevistaVoz(anyString(), anyString(), anyList(), any());
             sesion.alCerrar(1006, "sin confirmacion");
             esperar(() -> canal.cerrado);
@@ -494,8 +463,8 @@ class SesionVozChatTest {
     }
 
     @Test
-    void siNoConfirmaElTransporteRegistraElCierreFallidoSinFinalizarElTriage() {
-        when(chatService.finalizarEntrevistaVoz(anyString(), anyString(), anyList(), any()))
+    void siNoConfirmaElTransporteProcesaAutomaticamenteElCierreYaAceptado() {
+        when(chatService.finalizarEntrevistaVozConfirmadaParcial(anyString(), anyString(), anyList()))
                 .thenReturn(new ChatTurnResponse(new MensajeDTO("Cierre", "BOT", LocalDateTime.now()),
                         new TiempoEstimadoAtencionResponse(), "GEMINI"));
         try (RelojManual reloj = new RelojManual()) {
@@ -511,16 +480,17 @@ class SesionVozChatTest {
             reloj.avanzar(30);
             esperar(() -> canal.cerrado);
             sesion.alCerrar(1000, "confirmacion fuera de plazo");
-            verify(chatService).validarAlcanceCierreVoz(eq("7"), eq("auth0|paciente"), anyList(), any());
+            verify(chatService, never()).validarAlcanceCierreVoz(anyString(), anyString(), anyList(), any());
             verify(chatService, never()).finalizarEntrevistaVoz(anyString(), anyString(), anyList(), any());
-            verify(chatService).registrarCierreVozFallido(eq("7"), eq("auth0|paciente"), anyList());
-            assertFalse(canal.eventos.stream().anyMatch(e -> e.contains("triage_finalizado")));
+            verify(chatService).finalizarEntrevistaVozConfirmadaParcial(eq("7"), eq("auth0|paciente"), anyList());
+            verify(chatService, never()).registrarCierreVozFallido(anyString(), anyString(), anyList());
+            assertTrue(canal.eventos.stream().anyMatch(e -> e.contains("triage_finalizado")));
         }
     }
 
     @Test
     void fragmentosTardiosReinicianDrenajeYSeIncluyenHastaConfirmarCierre() {
-        when(chatService.finalizarEntrevistaVoz(anyString(), anyString(), anyList(), any()))
+        when(chatService.finalizarEntrevistaVozConfirmadaParcial(anyString(), anyString(), anyList()))
                 .thenReturn(new ChatTurnResponse(new MensajeDTO("Cierre", "BOT", LocalDateTime.now()),
                         new TiempoEstimadoAtencionResponse(), "GEMINI"));
         try (RelojManual reloj = new RelojManual()) {
@@ -542,7 +512,7 @@ class SesionVozChatTest {
             esperar(() -> canal.cerrado);
             sesion.alCerrar(1000, "duplicado");
             ArgumentCaptor<List<TurnoVoz>> turnos = ArgumentCaptor.captor();
-            verify(chatService).finalizarEntrevistaVoz(eq("7"), eq("auth0|paciente"), turnos.capture(), any());
+            verify(chatService).finalizarEntrevistaVozConfirmadaParcial(eq("7"), eq("auth0|paciente"), turnos.capture());
             assertEquals("El dolor ahora es 8/10. Desde ayer.", turnos.getValue().getLast().contenido());
             verify(chatService, never()).registrarTurnosVoz(anyString(), anyString(), anyList());
         }
@@ -559,14 +529,14 @@ class SesionVozChatTest {
         }).when(chatService).validarAlcanceCierreVoz(anyString(), anyString(), anyList(), any());
         SesionVozChat sesion = sesion(historialNuevo());
         sesion.iniciar();
-        relatoClinicoSuficiente(sesion);
-        sesion.alRecibir(llamadaFinalizar("fin", List.of("dolor toracico")));
+        entrada(sesion, "No quiero seguir respondiendo.");
+        sesion.alRecibir(llamadaFinalizar("fin", List.of()));
         assertTrue(inicioClasificacion.await(2, TimeUnit.SECONDS));
         sesion.cerrar();
         liberarClasificacion.countDown();
         ArgumentCaptor<List<TurnoVoz>> turnos = ArgumentCaptor.captor();
         verify(chatService, timeout(2_000)).registrarTurnosVoz(eq("7"), eq("auth0|paciente"), turnos.capture());
-        assertTrue(turnos.getValue().stream().anyMatch(t -> t.contenido().contains("Me duele la cabeza desde ayer.")));
+        assertTrue(turnos.getValue().stream().anyMatch(t -> t.contenido().contains("No quiero seguir respondiendo.")));
         verify(chatService).validarAlcanceCierreVoz(anyString(), anyString(), anyList(), any());
         verify(chatService, never()).finalizarEntrevistaVoz(anyString(), anyString(), anyList(), any());
         verify(chatService, never()).registrarCierreVozFallido(anyString(), anyString(), anyList());
@@ -586,7 +556,7 @@ class SesionVozChatTest {
                         new TiempoEstimadoAtencionResponse(), "GEMINI"));
         SesionVozChat sesion = sesion(historialNuevo());
         sesion.iniciar();
-        entrada(sesion, "Tengo dolor de pecho");
+        entrada(sesion, "No quiero seguir respondiendo.");
         sesion.alRecibir(llamadaFinalizar("primera", List.of("dolor toracico")));
         assertTrue(inicioClasificacion.await(2, TimeUnit.SECONDS));
         sesion.alRecibir(llamadaFinalizar("repetida", List.of("dolor toracico")));
@@ -619,7 +589,7 @@ class SesionVozChatTest {
                         new TiempoEstimadoAtencionResponse(), "GEMINI"));
         SesionVozChat sesion = sesion(historialNuevo());
         sesion.iniciar();
-        entrada(sesion, "Tengo dolor de pecho");
+        entrada(sesion, "No quiero seguir respondiendo.");
         sesion.alRecibir(llamadaFinalizar("obsoleto", List.of("dolor de pecho")));
         assertTrue(inicioPreflight.await(2, TimeUnit.SECONDS));
         entrada(sesion, "Ahora también me cuesta respirar.");
@@ -652,8 +622,8 @@ class SesionVozChatTest {
         sesion.iniciar();
         doThrow(new EntradaChatNoClinicaException(EstadoEntradaChat.FUERA_DE_CONTEXTO))
                 .when(chatService).validarAlcanceCierreVoz(anyString(), anyString(), anyList(), any());
-        relatoClinicoSuficiente(sesion);
-        sesion.alRecibir(llamadaFinalizar("fin", List.of("dolor toracico")));
+        entrada(sesion, "No quiero seguir respondiendo.");
+        sesion.alRecibir(llamadaFinalizar("fin", List.of()));
         esperar(() -> conexion.enviados.stream().anyMatch(m -> m.contains("toolResponse")));
         JsonNode respuesta = json(conexion.enviados.getLast()).path("toolResponse").path("functionResponses").get(0);
         assertEquals("FUERA_DE_CONTEXTO", respuesta.path("response").path("estadoEntrada").asText());
@@ -669,22 +639,32 @@ class SesionVozChatTest {
         List.of("Tengo fiebre", "Tengo tos", "Tengo náuseas", "Tengo mareos", "Tengo diarrea",
                         "Tengo sangrado", "Tengo debilidad", "Tengo picazón")
                 .forEach(texto -> historial.add(new MensajeDTO(texto, "PACIENTE", LocalDateTime.now())));
-        SesionVozChat sesion = sesion(historial);
+        RelojManual reloj = new RelojManual();
+        SesionVozChat sesion = sesion(historial, reloj, Duration.ZERO,
+                Duration.ofSeconds(30), Duration.ofSeconds(8));
         sesion.iniciar();
         int mensajesPrevios = conexion.enviados.size();
 
         entrada(sesion, "También me arde la piel");
         turnoCompleto(sesion);
+        reloj.avanzar(8_000);
 
-        assertTrue(conexion.enviados.subList(mensajesPrevios, conexion.enviados.size()).stream()
-                .noneMatch(mensaje -> mensaje.contains("clientContent")));
+        List<String> mensajes = conexion.enviados.subList(mensajesPrevios, conexion.enviados.size()).stream()
+                .filter(mensaje -> mensaje.contains("clientContent"))
+                .map(this::textoCliente)
+                .toList();
+        assertEquals(1, mensajes.size());
+        assertTrue(mensajes.getFirst().contains("Live no completó una respuesta útil"));
+        assertFalse(mensajes.getFirst().contains("Llama ahora a finalizar_entrevista"));
         assertFalse(canal.eventos.stream().anyMatch(evento -> evento.contains("entrevista_finalizada")));
         verify(chatService, never()).finalizarEntrevistaVoz(anyString(), anyString(), anyList(), any());
     }
 
     @Test
-    void enviaUnUnicoAvisoInternoCuandoElProgresoAutorizaElCierre() {
-        SesionVozChat sesion = sesion(historialNuevo());
+    void rechazoTrasDatosResueltosCierraEnLaFronteraSinEsperarToolNiCortesia() {
+        RelojManual reloj = new RelojManual();
+        SesionVozChat sesion = sesion(historialNuevo(), reloj, Duration.ZERO,
+                Duration.ofSeconds(30), Duration.ofSeconds(8));
         sesion.iniciar();
         entrada(sesion, "Me duele la cabeza desde ayer.");
         salida(sesion, "Del 0 al 10, cuánto te duele?");
@@ -697,18 +677,54 @@ class SesionVozChatTest {
         int mensajesPrevios = conexion.enviados.size();
         turnoCompleto(sesion);
 
-        List<String> avisos = conexion.enviados.subList(mensajesPrevios, conexion.enviados.size()).stream()
+        List<String> mensajesAlModelo = conexion.enviados.subList(mensajesPrevios, conexion.enviados.size()).stream()
                 .filter(mensaje -> mensaje.contains("clientContent"))
                 .map(this::textoCliente)
                 .toList();
-        assertEquals(1, avisos.size());
-        assertTrue(avisos.getFirst().contains("Llama ahora a finalizar_entrevista"));
-        assertFalse(avisos.getFirst().contains("limite de respuestas"));
+        assertTrue(mensajesAlModelo.isEmpty(), "el rechazo terminal no debe solicitar otro turno ni herramienta");
+        assertFalse(canal.eventos.stream().anyMatch(e -> e.contains("\"tipo\":\"entrevista_finalizada\"")));
+        reloj.avanzar(0);
+        assertTrue(canal.eventos.stream().anyMatch(e -> e.contains("\"tipo\":\"entrevista_finalizada\"")));
+        verify(chatService, never()).validarAlcanceCierreVoz(anyString(), anyString(), anyList(), any());
     }
 
     @Test
-    void rechazoGlobalSinToolTrasElUnicoAvisoTerminaConCierreFallidoReintentable() {
+    void variantesDeNoBreveCierranConLosDatosResueltosSinOtraRespuesta() {
+        when(chatService.finalizarEntrevistaVozSinResumen(anyString(), anyString(), anyList()))
+                .thenReturn(new ChatTurnResponse(new MensajeDTO("Cierre", "BOT", LocalDateTime.now()),
+                        new TiempoEstimadoAtencionResponse(), "GEMINI"));
+
+        for (String rechazo : List.of("No, no.", "No. Nada.")) {
+            RelojManual reloj = new RelojManual();
+            SesionVozChat sesion = sesion(historialNuevo(), reloj, Duration.ZERO,
+                    Duration.ofSeconds(30), Duration.ofSeconds(8));
+            sesion.iniciar();
+            entrada(sesion, "Me duele la cabeza desde ayer.");
+            salida(sesion, "Del 0 al 10, cuánto te duele?");
+            turnoCompleto(sesion);
+            entrada(sesion, "4");
+            salida(sesion, "¿Hay algo más que quieras contar sobre lo que te pasa?");
+            turnoCompleto(sesion);
+            entrada(sesion, rechazo);
+            turnoCompleto(sesion);
+
+            assertFalse(conexion.enviados.stream().anyMatch(mensaje -> mensaje.contains("clientContent")));
+            reloj.avanzar(0);
+            assertTrue(canal.eventos.stream().anyMatch(e -> e.contains("\"tipo\":\"entrevista_finalizada\"")));
+            sesion.alCerrar(1000, "fin");
+            esperar(() -> canal.cerrado);
+        }
+
+        verify(chatService, timeout(2_000).times(2)).finalizarEntrevistaVozSinResumen(
+                eq("7"), eq("auth0|paciente"), anyList());
+    }
+
+    @Test
+    void rechazoGlobalSinToolCierraYDejaProcesamientoAlBackend() {
         RelojManual reloj = new RelojManual();
+        when(chatService.finalizarEntrevistaVozSinResumen(anyString(), anyString(), anyList()))
+                .thenReturn(new ChatTurnResponse(new MensajeDTO("Cierre", "BOT", LocalDateTime.now()),
+                        new TiempoEstimadoAtencionResponse(), "GEMINI"));
         SesionVozChat sesion = sesion(historialNuevo(), reloj, Duration.ZERO,
                 Duration.ofSeconds(30), Duration.ofSeconds(8));
         sesion.iniciar();
@@ -721,33 +737,85 @@ class SesionVozChatTest {
         entrada(sesion, "No, nada más.");
         turnoCompleto(sesion);
 
-        assertTrue(conexion.enviados.stream().anyMatch(mensaje -> mensaje.contains("clientContent")
+        assertFalse(conexion.enviados.stream().anyMatch(mensaje -> mensaje.contains("clientContent")
                 && textoCliente(mensaje).contains("Llama ahora a finalizar_entrevista")));
         assertFalse(canal.cerrado);
-
-        // Gemini completes its one requested follow-up without calling the close tool.
-        turnoCompleto(sesion);
-        salida(sesion, "Gracias por esperar.");
         reloj.avanzar(0);
-        assertFalse(canal.eventos.stream().anyMatch(evento -> evento.contains("\"tipo\":\"entrevista_finalizada\"")));
-        assertFalse(conexion.cerrada, "No debe cerrar mientras Gemini sigue transmitiendo el turno");
-        turnoCompleto(sesion);
-        reloj.avanzar(0);
+        assertTrue(canal.eventos.stream().anyMatch(evento -> evento.contains("\"tipo\":\"entrevista_finalizada\"")));
+        assertTrue(conexion.cerrada, "el servidor cierra Live después de drenar el turno terminal");
         sesion.alCerrar(1000, "fin");
         sesion.alCerrar(1000, "duplicado");
 
         esperar(() -> canal.cerrado);
-        verify(chatService, times(1)).registrarCierreVozFallido(eq("7"), eq("auth0|paciente"),
-                anyList());
-        verify(chatService, times(1)).reintentarClasificacion("7", "auth0|paciente");
+        verify(chatService, times(1)).finalizarEntrevistaVozSinResumen(eq("7"), eq("auth0|paciente"), anyList());
+        verify(chatService, never()).registrarCierreVozFallido(anyString(), anyString(), anyList());
+        verify(chatService, never()).reintentarClasificacion(anyString(), anyString());
         verify(chatService, never()).finalizarEntrevistaVoz(anyString(), anyString(), anyList(), any());
         assertEquals(1, canal.eventos.stream().filter(evento -> evento.contains("\"tipo\":\"entrevista_finalizada\"")).count());
         assertEquals(1, canal.eventos.stream().filter(evento -> evento.contains("\"tipo\":\"fin\"")).count());
     }
 
     @Test
+    void alarmaCierraSinCortesiaEIncluyeElDatoClinicoLlegadoDuranteElDrenaje() {
+        RelojManual reloj = new RelojManual();
+        when(chatService.finalizarEntrevistaVozSinResumen(anyString(), anyString(), anyList()))
+                .thenReturn(new ChatTurnResponse(new MensajeDTO("Cierre", "BOT", LocalDateTime.now()),
+                        new TiempoEstimadoAtencionResponse(), "GEMINI"));
+        SesionVozChat sesion = sesion(historialNuevo(), reloj, Duration.ZERO,
+                Duration.ofSeconds(30), Duration.ofSeconds(8));
+        sesion.iniciar();
+        entrada(sesion, "Me falta un poco el aire.");
+        turnoCompleto(sesion);
+
+        assertFalse(conexion.enviados.stream().anyMatch(mensaje -> mensaje.contains("clientContent")),
+                "una alarma confirmada debe cerrar en su frontera, sin pregunta ni herramienta");
+
+        entrada(sesion, "También me cuesta hablar.");
+        turnoCompleto(sesion);
+        reloj.avanzar(0);
+        assertEquals(1, canal.eventos.stream()
+                .filter(evento -> evento.contains("\"tipo\":\"entrevista_finalizada\"")).count());
+        sesion.alCerrar(1000, "fin");
+        esperar(() -> canal.cerrado);
+
+        ArgumentCaptor<List<TurnoVoz>> turnos = ArgumentCaptor.captor();
+        verify(chatService, times(1)).finalizarEntrevistaVozSinResumen(eq("7"), eq("auth0|paciente"), turnos.capture());
+        assertTrue(turnos.getValue().stream().anyMatch(t -> t.contenido().contains("Me falta un poco el aire")));
+        assertTrue(turnos.getValue().stream().anyMatch(t -> t.contenido().contains("También me cuesta hablar")));
+        verify(chatService, never()).reintentarClasificacion(anyString(), anyString());
+        verify(chatService, never()).finalizarEntrevistaVoz(anyString(), anyString(), anyList(), any());
+        assertEquals(1, canal.eventos.stream()
+                .filter(evento -> evento.contains("\"tipo\":\"entrevista_finalizada\"")).count());
+    }
+
+    @Test
+    void alarmaCierraEnSuFronteraSinEsperarUnaRespuestaDelProveedor() {
+        RelojManual reloj = new RelojManual();
+        when(chatService.finalizarEntrevistaVozSinResumen(anyString(), anyString(), anyList()))
+                .thenReturn(new ChatTurnResponse(new MensajeDTO("Cierre", "BOT", LocalDateTime.now()),
+                        new TiempoEstimadoAtencionResponse(), "GEMINI"));
+        SesionVozChat sesion = sesion(historialNuevo(), reloj, Duration.ZERO,
+                Duration.ofSeconds(30), Duration.ofSeconds(8));
+        doThrow(new EntradaChatNoClinicaException(EstadoEntradaChat.FUERA_DE_CONTEXTO))
+                .when(chatService).validarAlcanceCierreVoz(anyString(), anyString(), anyList(), any());
+        sesion.iniciar();
+        entrada(sesion, "Me falta un poco el aire.");
+        turnoCompleto(sesion);
+        reloj.avanzar(0);
+        assertTrue(canal.eventos.stream().anyMatch(evento -> evento.contains("\"tipo\":\"entrevista_finalizada\"")));
+        sesion.alCerrar(1000, "fin");
+        esperar(() -> canal.cerrado);
+        verify(chatService, never()).validarAlcanceCierreVoz(anyString(), anyString(), anyList(), any());
+        verify(chatService, times(1)).finalizarEntrevistaVozSinResumen(anyString(), anyString(), anyList());
+        verify(chatService, never()).finalizarEntrevistaVoz(anyString(), anyString(), anyList(), any());
+    }
+
+    @Test
     void limiteDelAvisoFinalizaSoloSiElRechazoGlobalSigueTerminal() {
         RelojManual reloj = new RelojManual();
+        when(chatService.finalizarEntrevistaVozSinResumen(anyString(), anyString(), anyList()))
+                .thenReturn(new ChatTurnResponse(new MensajeDTO("Cierre", "BOT", LocalDateTime.now()),
+                        new TiempoEstimadoAtencionResponse(), "GEMINI"));
         SesionVozChat sesion = sesion(historialNuevo(), reloj, Duration.ZERO,
                 Duration.ofSeconds(30), Duration.ofSeconds(8));
         sesion.iniciar();
@@ -757,20 +825,17 @@ class SesionVozChatTest {
         entrada(sesion, "4");
         salida(sesion, "¿Hay algo más que quieras contar sobre lo que te pasa?");
         turnoCompleto(sesion);
-        entrada(sesion, "No, nada más.");
+        entrada(sesion, "No, nada.");
         turnoCompleto(sesion);
 
-        reloj.avanzar(7_999);
-        assertFalse(conexion.cerrada);
-        reloj.avanzar(1);
-        assertFalse(canal.eventos.stream().anyMatch(evento -> evento.contains("\"tipo\":\"entrevista_finalizada\"")));
         reloj.avanzar(0);
         assertTrue(canal.eventos.stream().anyMatch(evento -> evento.contains("\"tipo\":\"entrevista_finalizada\"")));
         sesion.alCerrar(1000, "fin");
         esperar(() -> canal.cerrado);
 
-        verify(chatService, times(1)).registrarCierreVozFallido(eq("7"), eq("auth0|paciente"), anyList());
-        verify(chatService, times(1)).reintentarClasificacion("7", "auth0|paciente");
+        verify(chatService, times(1)).finalizarEntrevistaVozSinResumen(eq("7"), eq("auth0|paciente"), anyList());
+        verify(chatService, never()).registrarCierreVozFallido(anyString(), anyString(), anyList());
+        verify(chatService, never()).reintentarClasificacion(anyString(), anyString());
         assertEquals(1, canal.eventos.stream().filter(evento -> evento.contains("\"tipo\":\"entrevista_finalizada\"")).count());
     }
 
@@ -803,7 +868,7 @@ class SesionVozChatTest {
     }
 
     @Test
-    void deadlineConRespuestaPacienteAbiertaGuardaFallidaSinClasificar() {
+    void timeoutDeCierreAutomaticoConFragmentoAbiertoGuardaContinuacionSinFALLIDA() {
         RelojManual reloj = new RelojManual();
         SesionVozChat sesion = sesion(historialNuevo(), reloj, Duration.ZERO,
                 Duration.ofSeconds(30), Duration.ofSeconds(8));
@@ -823,17 +888,23 @@ class SesionVozChatTest {
 
         esperar(() -> canal.cerrado);
         ArgumentCaptor<List<TurnoVoz>> transcripcion = ArgumentCaptor.captor();
-        verify(chatService, times(1)).registrarCierreVozFallido(eq("7"), eq("auth0|paciente"), transcripcion.capture());
+        verify(chatService, times(1)).registrarTurnosVoz(eq("7"), eq("auth0|paciente"), transcripcion.capture());
+        verify(chatService, never()).registrarCierreVozFallido(anyString(), anyString(), anyList());
         verify(chatService, never()).reintentarClasificacion(anyString(), anyString());
         verify(chatService, never()).finalizarEntrevistaVoz(anyString(), anyString(), anyList(), any());
+        verify(chatService, never()).finalizarEntrevistaVozConfirmadaParcial(anyString(), anyString(), anyList());
         assertTrue(transcripcion.getValue().stream().anyMatch(turno -> "También tengo hormigueo en la mano".equals(turno.contenido())));
         assertFalse(canal.eventos.stream().anyMatch(evento -> evento.contains("\"tipo\":\"triage_finalizado\"")));
         assertFalse(canal.eventos.stream().anyMatch(evento -> evento.contains("\"tipo\":\"entrevista_finalizada\"")));
+        assertTrue(canal.eventos.stream().anyMatch(evento -> evento.contains("podés continuar la entrevista")));
     }
 
     @Test
-    void entradaTardiaTrasConfirmarCierreSeGuardaFallidaSinReclasificarComoTerminal() {
+    void entradaTardiaTrasConfirmarCierreSeClasificaConElTranscriptCompletoSinResumenObsoleto() {
         RelojManual reloj = new RelojManual();
+        when(chatService.finalizarEntrevistaVozConfirmadaParcial(anyString(), anyString(), anyList()))
+                .thenReturn(new ChatTurnResponse(new MensajeDTO("Cierre parcial", "BOT", LocalDateTime.now()),
+                        new TiempoEstimadoAtencionResponse(), "GEMINI"));
         SesionVozChat sesion = sesion(historialNuevo(), reloj, Duration.ZERO,
                 Duration.ofSeconds(30), Duration.ofSeconds(8));
         sesion.iniciar();
@@ -855,11 +926,49 @@ class SesionVozChatTest {
         sesion.alCerrar(1000, "fin");
         esperar(() -> canal.cerrado);
 
-        verify(chatService, times(1)).registrarCierreVozFallido(eq("7"), eq("auth0|paciente"), anyList());
+        ArgumentCaptor<List<TurnoVoz>> transcripcion = ArgumentCaptor.captor();
+        verify(chatService, times(1)).finalizarEntrevistaVozConfirmadaParcial(
+                eq("7"), eq("auth0|paciente"), transcripcion.capture());
+        assertTrue(transcripcion.getValue().stream()
+                .anyMatch(turno -> turno.contenido().contains("También me duele el brazo desde hoy.")));
+        verify(chatService, never()).registrarCierreVozFallido(anyString(), anyString(), anyList());
         verify(chatService, never()).reintentarClasificacion(anyString(), anyString());
         verify(chatService, never()).finalizarEntrevistaVoz(anyString(), anyString(), anyList(), any());
-        assertTrue(canal.eventos.stream().anyMatch(evento -> evento.contains("respuesta nueva durante el cierre")));
         assertEquals(1, canal.eventos.stream().filter(evento -> evento.contains("\"tipo\":\"entrevista_finalizada\"")).count());
+    }
+
+    @Test
+    void deadlineTrasCierreConfirmadoRecuperaParcialConLaTranscripcionTardia() {
+        RelojManual reloj = new RelojManual();
+        when(chatService.finalizarEntrevistaVozConfirmadaParcial(anyString(), anyString(), anyList()))
+                .thenReturn(new ChatTurnResponse(new MensajeDTO("Cierre parcial", "BOT", LocalDateTime.now()),
+                        new TiempoEstimadoAtencionResponse(), "GEMINI"));
+        SesionVozChat sesion = sesion(historialNuevo(), reloj, Duration.ZERO,
+                Duration.ofSeconds(30), Duration.ofSeconds(8));
+        sesion.iniciar();
+        entrada(sesion, "Me duele la cabeza desde ayer.");
+        salida(sesion, "Del 0 al 10, cuánto te duele?");
+        turnoCompleto(sesion);
+        entrada(sesion, "4");
+        salida(sesion, "¿Hay algo más que quieras contar sobre lo que te pasa?");
+        turnoCompleto(sesion);
+        entrada(sesion, "No, nada más.");
+        turnoCompleto(sesion);
+        reloj.avanzar(0);
+        assertTrue(canal.eventos.stream().anyMatch(e -> e.contains("\"tipo\":\"entrevista_finalizada\"")));
+
+        entrada(sesion, "También me duele el brazo desde hoy.");
+        turnoCompleto(sesion);
+        reloj.avanzar(30_000); // Provider never confirms the requested transport close.
+        esperar(() -> canal.cerrado);
+
+        ArgumentCaptor<List<TurnoVoz>> transcripcion = ArgumentCaptor.captor();
+        verify(chatService).finalizarEntrevistaVozConfirmadaParcial(
+                eq("7"), eq("auth0|paciente"), transcripcion.capture());
+        assertTrue(transcripcion.getValue().stream()
+                .anyMatch(turno -> turno.contenido().contains("También me duele el brazo desde hoy.")));
+        verify(chatService, never()).registrarCierreVozFallido(anyString(), anyString(), anyList());
+        verify(chatService, never()).reintentarClasificacion(anyString(), anyString());
     }
 
     @Test
@@ -886,7 +995,7 @@ class SesionVozChatTest {
         sesion.alCerrar(1000, "fin");
         esperar(() -> canal.cerrado);
 
-        verify(chatService, times(1)).validarAlcanceCierreVoz(anyString(), anyString(), anyList(), any());
+        verify(chatService, never()).validarAlcanceCierreVoz(anyString(), anyString(), anyList(), any());
         verify(chatService, times(1)).finalizarEntrevistaVoz(anyString(), anyString(), anyList(), any());
         verify(chatService, never()).registrarCierreVozFallido(anyString(), anyString(), anyList());
         verify(chatService, never()).reintentarClasificacion(anyString(), anyString());
@@ -999,6 +1108,133 @@ class SesionVozChatTest {
         assertFalse(contenidoInicial.contains("pregunta en un turno la intensidad del dolor"));
         assertFalse(contenidoInicial.contains("messi 8"));
         verify(chatService, never()).finalizarEntrevistaVoz(anyString(), anyString(), anyList(), any());
+    }
+
+    @Test
+    void preguntaReconocidaDevuelveElEstadoDeProcesamientoAlPaciente() {
+        RelojManual reloj = new RelojManual();
+        SesionVozChat sesion = sesion(historialNuevo(), reloj, Duration.ZERO,
+                Duration.ofSeconds(30), Duration.ofSeconds(8));
+        sesion.iniciar();
+
+        entrada(sesion, "Me duele la cabeza desde hace 3 días.");
+        turnoCompleto(sesion);
+        salida(sesion, "Del 0 al 10, ¿cuánto te duele la cabeza?");
+        turnoCompleto(sesion);
+
+        List<JsonNode> estados = canal.eventos.stream().map(this::json)
+                .filter(evento -> evento.path("tipo").asText().equals("procesando_respuesta"))
+                .toList();
+        assertEquals(2, estados.size());
+        assertTrue(estados.get(0).path("activo").asBoolean());
+        assertFalse(estados.get(1).path("activo").asBoolean());
+        assertFalse(conexion.enviados.stream()
+                .filter(mensaje -> json(mensaje).has("clientContent"))
+                .anyMatch(mensaje -> textoCliente(mensaje).contains("Live no completó una respuesta útil")));
+    }
+
+    @Test
+    void respuestaBotSinPreguntaRecibeUnaRecuperacionYDespuesErrorReanudable() {
+        RelojManual reloj = new RelojManual();
+        SesionVozChat sesion = sesion(historialNuevo(), reloj, Duration.ZERO,
+                Duration.ofSeconds(30), Duration.ofSeconds(8));
+        sesion.iniciar();
+
+        entrada(sesion, "Me duele la cabeza desde ayer.");
+        turnoCompleto(sesion);
+        salida(sesion, "Estoy a disposición.");
+        turnoCompleto(sesion);
+        assertFalse(conexion.enviados.stream()
+                .filter(mensaje -> json(mensaje).has("clientContent"))
+                .anyMatch(mensaje -> textoCliente(mensaje).contains("Live no completó una respuesta útil")));
+        reloj.avanzar(8_000);
+
+        List<String> recuperaciones = conexion.enviados.stream()
+                .filter(mensaje -> mensaje.contains("clientContent"))
+                .filter(mensaje -> textoCliente(mensaje).contains("Live no completó una respuesta útil"))
+                .toList();
+        assertEquals(1, recuperaciones.size());
+        assertTrue(canal.eventos.stream().map(this::json)
+                .anyMatch(evento -> evento.path("tipo").asText().equals("procesando_respuesta")
+                        && evento.path("activo").asBoolean()));
+
+        reloj.avanzar(8_000);
+        esperar(() -> canal.eventos.stream().anyMatch(evento -> evento.contains("\"tipo\":\"error\"")));
+
+        assertTrue(canal.eventos.stream().map(this::json)
+                .anyMatch(evento -> evento.path("tipo").asText().equals("error")
+                        && evento.path("mensaje").asText().contains("podés retomar")));
+        assertTrue(canal.eventos.stream().map(this::json)
+                .anyMatch(evento -> evento.path("tipo").asText().equals("procesando_respuesta")
+                        && !evento.path("activo").asBoolean()));
+        assertTrue(canal.cerrado);
+        verify(chatService, times(1)).registrarTurnosVoz(eq("7"), eq("auth0|paciente"), anyList());
+        verify(chatService, never()).registrarCierreVozFallido(anyString(), anyString(), anyList());
+        verify(chatService, never()).finalizarEntrevistaVoz(anyString(), anyString(), anyList(), any());
+        verify(chatService, never()).reintentarClasificacion(anyString(), anyString());
+    }
+
+    @Test
+    void transcripcionSinFronteraSeConservaYExpiraSinClasificar() {
+        RelojManual reloj = new RelojManual();
+        SesionVozChat sesion = sesion(historialNuevo(), reloj, Duration.ZERO,
+                Duration.ofSeconds(30), Duration.ofSeconds(8));
+        sesion.iniciar();
+
+        entrada(sesion, "Me duele la cabeza desde ayer"); // Live puede omitir turnComplete.
+        reloj.avanzar(8_000);
+        assertFalse(canal.eventos.stream().map(this::json)
+                .anyMatch(evento -> evento.path("tipo").asText().equals("error")));
+        reloj.avanzar(8_000);
+        esperar(() -> canal.eventos.stream().anyMatch(evento -> evento.contains("\"tipo\":\"error\"")));
+
+        assertTrue(canal.eventos.stream().map(this::json)
+                .anyMatch(evento -> evento.path("tipo").asText().equals("error")
+                        && evento.path("mensaje").asText().contains("podés retomarla")));
+        assertTrue(canal.eventos.stream().map(this::json)
+                .anyMatch(evento -> evento.path("tipo").asText().equals("procesando_respuesta")
+                        && !evento.path("activo").asBoolean()));
+        verify(chatService, never()).finalizarEntrevistaVoz(anyString(), anyString(), anyList(), any());
+        verify(chatService, times(1)).registrarTurnosVoz(eq("7"), eq("auth0|paciente"), anyList());
+        verify(chatService, never()).registrarCierreVozFallido(anyString(), anyString(), anyList());
+        verify(chatService, never()).reintentarClasificacion(anyString(), anyString());
+    }
+
+    @Test
+    void watchdogNoCortaAudioBotMientrasLleganFramesYExpiraTrasSilencio() {
+        RelojManual reloj = new RelojManual();
+        SesionVozChat sesion = sesion(historialNuevo(), reloj, Duration.ZERO,
+                Duration.ofSeconds(30), Duration.ofSeconds(8));
+        sesion.iniciar();
+        entrada(sesion, "Me duele la cabeza desde ayer.");
+        turnoCompleto(sesion);
+        String audio = Base64.getEncoder().encodeToString(new byte[]{1, 2, 3});
+
+        reloj.avanzar(7_000);
+        sesion.alRecibir("""
+                {"serverContent":{"modelTurn":{"parts":[{"inlineData":{"data":"%s"}}]}}}
+                """.formatted(audio));
+        reloj.avanzar(7_000);
+        sesion.alRecibir("""
+                {"serverContent":{"modelTurn":{"parts":[{"inlineData":{"data":"%s"}}]}}}
+                """.formatted(audio));
+        reloj.avanzar(7_000);
+        sesion.alRecibir("""
+                {"serverContent":{"modelTurn":{"parts":[{"inlineData":{"data":"%s"}}]}}}
+                """.formatted(audio));
+        reloj.avanzar(7_000);
+        assertFalse(canal.eventos.stream().map(this::json)
+                .anyMatch(evento -> evento.path("tipo").asText().equals("error")));
+
+        reloj.avanzar(8_000);
+        assertFalse(canal.eventos.stream().map(this::json)
+                .anyMatch(evento -> evento.path("tipo").asText().equals("error")));
+        reloj.avanzar(8_000);
+        esperar(() -> canal.eventos.stream().anyMatch(evento -> evento.contains("\"tipo\":\"error\"")));
+
+        verify(chatService, times(1)).registrarTurnosVoz(eq("7"), eq("auth0|paciente"), anyList());
+        verify(chatService, never()).finalizarEntrevistaVoz(anyString(), anyString(), anyList(), any());
+        verify(chatService, never()).reintentarClasificacion(anyString(), anyString());
     }
 
     @Test

@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+import uuid
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -95,6 +96,46 @@ class E2EHelpersTest(unittest.TestCase):
     def test_early_finalization_is_rejected(self):
         with self.assertRaisesRegex(RuntimeError, "finalized early"):
             e2e_chat.ensure_no_early_finalization(1, 4)
+
+    def test_text_turn_posts_once_then_polls_chatdto_until_completed(self):
+        request_id = "c7c614d7-f335-4ebd-8fa0-ddfd1cfe2d31"
+        pending = {"estadoTurnoTexto": "PENDIENTE", "estadoClasificacion": "NO_SOLICITADA",
+                   "solicitudTurnoTextoId": request_id, "mensajes": []}
+        completed = {"estadoTurnoTexto": "COMPLETADA", "estadoClasificacion": "COMPLETADA",
+                     "solicitudTurnoTextoId": request_id, "finalizado": True,
+                     "mensajes": [{"autor": "PACIENTE", "contenido": "Tengo fiebre"},
+                                  {"autor": "BOT", "contenido": "Gracias. Ya quedó registrado."}]}
+        with patch.object(e2e_chat.uuid, "uuid4", return_value=uuid.UUID(request_id)), \
+                patch.object(e2e_chat, "http_json", side_effect=[pending, pending, completed]) as http:
+            result = e2e_chat.submit_text_turn("http://backend", 7, "Tengo fiebre", "token", poll_interval=0)
+
+        self.assertEqual(result["chat"], completed)
+        self.assertEqual(e2e_chat.last_bot_message(result["chat"]), "Gracias. Ya quedó registrado.")
+        self.assertEqual(http.call_count, 3)
+        self.assertEqual(http.call_args_list[0].args[:2],
+                         ("POST", "http://backend/api/chat/7/mensajes"))
+        self.assertEqual(http.call_args_list[0].args[2],
+                         {"contenido": "Tengo fiebre", "solicitudId": request_id})
+        self.assertEqual([call.args[0] for call in http.call_args_list[1:]], ["GET", "GET"])
+
+    def test_text_turn_fails_on_unavailable_or_failed_classification(self):
+        request_id = "c7c614d7-f335-4ebd-8fa0-ddfd1cfe2d31"
+        for state, classification in (("NO_DISPONIBLE", "NO_SOLICITADA"),
+                                      ("PENDIENTE", "FALLIDA"), ("COMPLETADA", "FALLIDA")):
+            with self.subTest(state=state, classification=classification), \
+                    patch.object(e2e_chat, "http_json", return_value={
+                        "estadoTurnoTexto": state,
+                        "estadoClasificacion": classification,
+                        "solicitudTurnoTextoId": request_id,
+                    }), patch.object(e2e_chat.uuid, "uuid4", return_value=uuid.UUID(request_id)):
+                with self.assertRaisesRegex(RuntimeError, "Text turn failed"):
+                    e2e_chat.submit_text_turn("http://backend", 7, "Tengo fiebre", "token", poll_interval=0)
+
+    def test_text_turn_keeps_compatibility_with_synchronous_response(self):
+        legacy = {"respuesta": {"contenido": "¿Desde cuándo?"}, "atencionEstimada": None}
+        with patch.object(e2e_chat, "http_json", return_value=legacy):
+            result = e2e_chat.submit_text_turn("http://backend", 7, "Tengo fiebre", "token")
+        self.assertEqual(result["legacyResponse"], legacy)
 
     def test_alarm_assertions_reject_missing_alarm_sign(self):
         result = self.result()

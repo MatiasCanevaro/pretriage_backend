@@ -31,10 +31,11 @@ import java.time.Duration;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Entrevista de pre-triage por voz (speech-to-speech). Gemini Live conversa directamente con
- * el paciente siguiendo su propia secuencia de preguntas; cuando junta los datos necesarios
- * llama a {@code finalizar_entrevista} con un resumen. Entonces la sesion de voz termina y
- * {@link ChatService#finalizarEntrevistaVoz} pide a Gemini la preclasificacion.
+ * Entrevista de pre-triage por voz (speech-to-speech). Gemini Live conversa con el paciente;
+ * el progreso compartido del backend autoriza el cierre. La herramienta
+ * {@code finalizar_entrevista} entrega un resumen, y un watchdog acotado recupera su omision.
+ * La clasificacion de Gemini REST se ejecuta una sola vez tras confirmar el cierre y drenar
+ * las transcripciones. La falta de respuesta antes del cierre conserva una entrevista abierta.
  */
 public class SesionVozChat implements GeminiLiveOyente {
     private static final Logger log = LoggerFactory.getLogger(SesionVozChat.class);
@@ -101,6 +102,8 @@ public class SesionVozChat implements GeminiLiveOyente {
     private final Duration ventanaDrenaje;
     private final Duration limiteAvisoCierre;
     private final Duration limiteCierre;
+    private volatile long ultimaRespuestaNanos;
+    private long inicioClasificacionNanos;
 
     // Transcripcion acumulada: la escribe solo el hilo receptor de Gemini.
     private final List<TurnoVoz> turnos = new ArrayList<>();
@@ -122,15 +125,23 @@ public class SesionVozChat implements GeminiLiveOyente {
     private boolean despedidaTerminada;
     private boolean cierreSinHerramienta;
     private boolean turnoBotEnCurso;
+    private boolean respuestaLivePendiente;
+    private volatile boolean respuestaLiveAgotada;
+    private boolean procesandoRespuestaEmitido;
+    private int recuperacionesRespuestaLive;
+    private int intervalosRespuestaSinFrontera;
+    private long versionRespuestaLive;
     private long versionDrenaje;
     private ScheduledFuture<?> tareaDrenaje;
     private ScheduledFuture<?> tareaAvisoCierre;
+    private ScheduledFuture<?> tareaRespuestaLive;
     private ScheduledFuture<?> tareaLimite;
     private ResumenEntrevistaVoz resumenFinal;
     private volatile ChatTurnResponse respuestaFinal;
     private volatile String errorClasificacionFinal;
     private volatile String idLlamadaCierreEnCurso;
     private long versionRespuestas;
+    private long versionCierreConfirmado = -1;
     private long versionUltimoRechazo = -1;
     private long versionCierreSinHerramienta = -1;
     private volatile GeminiLiveConexion conexion;
@@ -212,7 +223,7 @@ public class SesionVozChat implements GeminiLiveOyente {
 
     /** Audio PCM 16 bits mono little-endian a 16 kHz capturado por el cliente. */
     public void recibirAudioCliente(byte[] audioPcm) {
-        if (!lista || cerrada.get() || entrevistaFinalizada.get() || audioPcm.length == 0) {
+        if (!lista || cerrada.get() || entrevistaFinalizada.get() || respuestaLiveAgotada || audioPcm.length == 0) {
             return;
         }
         ObjectNode mensaje = objectMapper.createObjectNode();
@@ -223,6 +234,7 @@ public class SesionVozChat implements GeminiLiveOyente {
     }
 
     public void recibirControlCliente(String eventoJson) {
+        if (respuestaLiveAgotada) return;
         String tipo;
         try {
             tipo = objectMapper.readTree(eventoJson).path("tipo").asText();
@@ -245,7 +257,7 @@ public class SesionVozChat implements GeminiLiveOyente {
 
     @Override
     public synchronized void alRecibir(String mensajeJson) {
-        if (clasificacionIniciada.get() || finEmitido.get()
+        if (respuestaLiveAgotada || clasificacionIniciada.get() || finEmitido.get()
                 || (cerrada.get() && !entrevistaFinalizada.get())) {
             return;
         }
@@ -267,11 +279,13 @@ public class SesionVozChat implements GeminiLiveOyente {
             procesarContenido(contenido);
         }
         JsonNode llamadas = mensaje.path("toolCall").path("functionCalls");
+        if (!llamadas.isEmpty()) cancelarWatchdogRespuestaLive();
         for (JsonNode llamada : llamadas) {
             procesarLlamada(llamada);
         }
         if (contenido.path("turnComplete").asBoolean(false) && llamadas.isEmpty()) {
             avisarCierreSiCorresponde();
+            evaluarRespuestaLiveTrasTurno();
         }
         if (mensaje.has("goAway")) {
             enviarEvento(evento("sesion_por_expirar"));
@@ -280,6 +294,9 @@ public class SesionVozChat implements GeminiLiveOyente {
 
     @Override
     public synchronized void alCerrar(int codigo, String motivo) {
+        if (respuestaLiveAgotada) return;
+        log.info("Voice provider closed chatId={} code={} accepted={} automatic={} sincePatientMs={}",
+                idChat, codigo, entrevistaFinalizada.get(), cierreSinHerramienta, tiempoDesdeUltimaRespuestaMs());
         transporteCerrado = true;
         if (cierreSinHerramienta && !entrevistaFinalizada.get()) {
             informarCierreIncompleto("La conexion de voz termino antes de confirmar el cierre.");
@@ -302,6 +319,10 @@ public class SesionVozChat implements GeminiLiveOyente {
 
     @Override
     public synchronized void alFallar(Throwable error) {
+        if (respuestaLiveAgotada) return;
+        log.warn("Voice provider failed chatId={} accepted={} automatic={} errorType={} sincePatientMs={}",
+                idChat, entrevistaFinalizada.get(), cierreSinHerramienta,
+                error == null ? "unknown" : error.getClass().getSimpleName(), tiempoDesdeUltimaRespuestaMs());
         if (cierreSinHerramienta && !entrevistaFinalizada.get()) {
             informarCierreIncompleto("Se interrumpio la conexion de voz antes de confirmar el cierre.");
             return;
@@ -341,6 +362,7 @@ public class SesionVozChat implements GeminiLiveOyente {
     }
 
     private void procesarContenido(JsonNode contenido) {
+        boolean inicioRespuesta = false;
         if (contenido.path("interrupted").asBoolean(false)) {
             turnoBotInterrumpido = true;
             turnoBotEnCurso = false;
@@ -353,6 +375,8 @@ public class SesionVozChat implements GeminiLiveOyente {
             JsonNode datos = parte.path("inlineData").path("data");
             if (!salidaCancelada && datos.isTextual()) {
                 turnoBotEnCurso = true;
+                intervalosRespuestaSinFrontera = 0;
+                programarWatchdogRespuestaLive(versionRespuestaLive);
                 if (entrevistaFinalizada.get()) {
                     despedidaConAudio = true;
                 }
@@ -365,8 +389,13 @@ public class SesionVozChat implements GeminiLiveOyente {
         String entrada = contenido.path("inputTranscription").path("text").asText("");
         if (!clasificacionIniciada.get() && !entrada.isEmpty()) {
             cerrarTurnoBot();
+            boolean nuevaRespuesta = textoPaciente.length() == 0;
+            if (nuevaRespuesta) iniciarSeguimientoRespuestaLive();
+            inicioRespuesta = nuevaRespuesta;
+            intervalosRespuestaSinFrontera = 0;
             textoPaciente.append(entrada);
             enviarEvento(evento("transcripcion_paciente").put("texto", entrada));
+            programarWatchdogRespuestaLive(versionRespuestaLive);
             if (entrevistaFinalizada.get() || cierreSinHerramienta) {
                 reprogramarDrenaje();
             }
@@ -374,6 +403,8 @@ public class SesionVozChat implements GeminiLiveOyente {
         String salida = contenido.path("outputTranscription").path("text").asText("");
         if (!salidaCancelada && !salida.isEmpty()) {
             turnoBotEnCurso = true;
+            intervalosRespuestaSinFrontera = 0;
+            programarWatchdogRespuestaLive(versionRespuestaLive);
             cerrarTurnoPaciente();
             textoBot.append(salida);
             if (!debeOmitirSaludo()) {
@@ -383,6 +414,8 @@ public class SesionVozChat implements GeminiLiveOyente {
                 despedidaConAudio = true;
             }
         }
+
+        if (inicioRespuesta) emitirProcesandoRespuesta(true);
 
         if (contenido.path("turnComplete").asBoolean(false)) {
             cerrarTurnoPaciente();
@@ -456,14 +489,26 @@ public class SesionVozChat implements GeminiLiveOyente {
         }
         idLlamadaCierreEnCurso = id;
         List<TurnoVoz> transcripcion = List.copyOf(turnos);
+        List<TurnoVoz> evidenciaAlcance = historialVozParaRechazo();
         long versionTranscripcion = versionRespuestas;
-        tareas.execute(() -> validarAlcanceAntesDeCerrar(id, nombre, transcripcion, resumen, versionTranscripcion));
+        tareas.execute(() -> validarAlcanceAntesDeCerrar(
+                id, nombre, transcripcion, evidenciaAlcance, resumen, versionTranscripcion));
     }
 
     private void validarAlcanceAntesDeCerrar(String id, String nombre, List<TurnoVoz> transcripcion,
-                                              ResumenEntrevistaVoz resumen, long versionTranscripcion) {
+                                              List<TurnoVoz> evidenciaAlcance, ResumenEntrevistaVoz resumen,
+                                              long versionTranscripcion) {
+        long inicioValidacion = System.nanoTime();
+        boolean requierePreflight = !ValidadorCierreEntrevistaVoz.tieneMotivoConcreto(evidenciaAlcance);
         try {
-            chatService.validarAlcanceCierreVoz(idChat, idPaciente, transcripcion, resumen);
+            // The local admission rules have already established a concrete clinical reason.
+            // Avoid a second remote scope call in that case; the final classifier still validates
+            // its result. Ambiguous or administrative closures keep the scope preflight.
+            if (requierePreflight) {
+                log.info("Voice closure preflight chatId={} phase=started sincePatientMs={}", idChat,
+                        tiempoDesdeUltimaRespuestaMs());
+                chatService.validarAlcanceCierreVoz(idChat, idPaciente, transcripcion, resumen);
+            }
             synchronized (this) {
                 resumenFinal = resumen;
                 cierreEnCurso.set(false);
@@ -483,9 +528,14 @@ public class SesionVozChat implements GeminiLiveOyente {
                     return;
                 }
                 cancelarTemporizadores();
+                completarEsperaRespuestaLive();
                 cierreSinHerramienta = false;
                 cancelarAvisoCierre();
                 entrevistaFinalizada.set(true);
+                versionCierreConfirmado = versionRespuestas;
+                log.info("Voice closure accepted chatId={} preflight={} elapsedMs={}", idChat,
+                        requierePreflight ? "completed" : "skipped_known_clinical",
+                        Duration.ofNanos(System.nanoTime() - inicioValidacion).toMillis());
                 ObjectNode eventoFin = evento("entrevista_finalizada");
                 eventoFin.set("resumen", objectMapper.valueToTree(resumen));
                 enviarEvento(eventoFin);
@@ -522,6 +572,7 @@ public class SesionVozChat implements GeminiLiveOyente {
                 cancelarCierreSinHerramienta();
                 errorClasificacionFinal = "Tus respuestas quedaron registradas. No pudimos completar el procesamiento. No necesitás volver a responder.";
                 resumenFinal = resumen;
+                completarEsperaRespuestaLive();
                 entrevistaFinalizada.set(true);
                 cierreEnCurso.set(false);
                 idLlamadaCierreEnCurso = null;
@@ -549,6 +600,9 @@ public class SesionVozChat implements GeminiLiveOyente {
     private void publicarResultadoFinal() {
         ChatTurnResponse turno = respuestaFinal;
         if (turno == null) return;
+        log.info("Voice classification completed chatId={} elapsedMs={} sincePatientMs={}", idChat,
+                inicioClasificacionNanos == 0 ? -1 : Duration.ofNanos(System.nanoTime() - inicioClasificacionNanos).toMillis(),
+                tiempoDesdeUltimaRespuestaMs());
         ObjectNode evento = evento("triage_finalizado");
         evento.set("respuesta", objectMapper.valueToTree(turno.respuesta()));
         evento.set("atencionEstimada", objectMapper.valueToTree(turno.atencionEstimada()));
@@ -561,6 +615,9 @@ public class SesionVozChat implements GeminiLiveOyente {
                 || !clasificacionIniciada.compareAndSet(false, true)) {
             return;
         }
+        inicioClasificacionNanos = System.nanoTime();
+        log.info("Voice classification started chatId={} automatic={} sincePatientMs={}",
+                idChat, cierreSinHerramienta, tiempoDesdeUltimaRespuestaMs());
         if (errorClasificacionFinal != null) {
             tareas.execute(() -> {
                 persistirCierreFallido(tomarTurnos());
@@ -570,15 +627,14 @@ public class SesionVozChat implements GeminiLiveOyente {
             return;
         }
         List<TurnoVoz> transcripcion = tomarTurnos();
+        if (versionRespuestas != versionCierreConfirmado) {
+            tareas.execute(() -> {
+                clasificarCierreParcialConfirmado(transcripcion);
+                completarSesion();
+            });
+            return;
+        }
         if (cierreSinHerramienta) {
-            if (versionRespuestas != versionCierreSinHerramienta) {
-                tareas.execute(() -> {
-                    persistirCierreFallido(transcripcion);
-                    enviarError("Llegó una respuesta nueva durante el cierre. Tus respuestas quedaron guardadas para reintentar el procesamiento.");
-                    completarSesion();
-                });
-                return;
-            }
             tareas.execute(() -> {
                 clasificarCierreSinHerramienta(transcripcion);
                 completarSesion();
@@ -614,15 +670,30 @@ public class SesionVozChat implements GeminiLiveOyente {
 
     private void clasificarCierreSinHerramienta(List<TurnoVoz> transcripcion) {
         try {
-            // Save the literal transcript as retryable first; then use the existing final
-            // classifier, which reads the saved conversation and enforces its 45s budget.
-            chatService.registrarCierreVozFallido(idChat, idPaciente, transcripcion);
-            respuestaFinal = chatService.reintentarClasificacion(idChat, idPaciente);
+            // This is a confirmed terminal voice close, but it has no Gemini Live summary.
+            // Let ChatService persist it as PENDIENTE and own classification/recovery from the
+            // literal transcript rather than fabricating summary fields or marking it FALLIDA.
+            respuestaFinal = chatService.finalizarEntrevistaVozSinResumen(idChat, idPaciente, transcripcion);
             publicarResultadoFinal();
         } catch (RuntimeException exception) {
             log.warn("No se pudo procesar el cierre de voz sin herramienta del chat {}: {}", idChat,
                     exception.getClass().getSimpleName());
             errorClasificacionFinal = "Tus respuestas quedaron registradas. No pudimos completar el procesamiento. Podés reintentarlo sin volver a responder.";
+            enviarError(errorClasificacionFinal);
+        }
+    }
+
+    private void clasificarCierreParcialConfirmado(List<TurnoVoz> transcripcion) {
+        try {
+            // A late patient turn invalidates the Live summary. Classify the full drained literal
+            // transcript so any unanswered dimensions remain unknown rather than using stale data.
+            respuestaFinal = chatService.finalizarEntrevistaVozConfirmadaParcial(
+                    idChat, idPaciente, transcripcion);
+            publicarResultadoFinal();
+        } catch (RuntimeException exception) {
+            log.warn("No se pudo clasificar el cierre parcial confirmado del chat {}: {}", idChat,
+                    exception.getClass().getSimpleName());
+            errorClasificacionFinal = "Tus respuestas quedaron registradas. No pudimos completar el procesamiento.";
             enviarError(errorClasificacionFinal);
         }
     }
@@ -711,6 +782,13 @@ public class SesionVozChat implements GeminiLiveOyente {
         if (cierreIncompletoReportado || clasificacionIniciada.get()) {
             return;
         }
+        if (cierreSinHerramienta && !entrevistaFinalizada.get()) {
+            informarContinuacionNoConfirmada();
+            return;
+        }
+        log.warn("Voice closure incomplete chatId={} accepted={} automatic={} transportClosed={} closeRequested={} patientFragmentOpen={} sincePatientMs={}",
+                idChat, entrevistaFinalizada.get(), cierreSinHerramienta, transporteCerrado,
+                cierreSolicitado, textoPaciente.length() > 0, tiempoDesdeUltimaRespuestaMs());
         if (respuestaFinal != null) {
             cierreIncompletoReportado = true;
             clasificacionIniciada.set(true);
@@ -732,6 +810,17 @@ public class SesionVozChat implements GeminiLiveOyente {
             }
             return;
         }
+        if (entrevistaFinalizada.get()) {
+            if (!clasificacionIniciada.compareAndSet(false, true)) return;
+            List<TurnoVoz> transcripcion = tomarTurnos();
+            cierreSolicitado = true;
+            cerrarGemini();
+            tareas.execute(() -> {
+                clasificarCierreParcialConfirmado(transcripcion);
+                completarSesion();
+            });
+            return;
+        }
         cierreIncompletoReportado = true;
         clasificacionIniciada.set(true);
         List<TurnoVoz> transcripcion = tomarTurnos();
@@ -740,6 +829,27 @@ public class SesionVozChat implements GeminiLiveOyente {
         tareas.execute(() -> {
             chatService.registrarCierreVozFallido(idChat, idPaciente, transcripcion);
             enviarError(mensaje);
+            completarSesion();
+        });
+    }
+
+    /** Keep an unconfirmed automatic close resumable instead of marking the chat FALLIDA. */
+    private void informarContinuacionNoConfirmada() {
+        if (cierreIncompletoReportado || !clasificacionIniciada.compareAndSet(false, true)) return;
+        cierreIncompletoReportado = true;
+        respuestaLiveAgotada = true;
+        List<TurnoVoz> transcripcion = tomarTurnos();
+        cierreSolicitado = true;
+        cerrarGemini();
+        tareas.execute(() -> {
+            try {
+                chatService.registrarTurnosVoz(idChat, idPaciente, transcripcion);
+                enviarError("La conexión de voz se cerró antes de confirmar el cierre. Tus respuestas quedaron guardadas; podés continuar la entrevista.");
+            } catch (RuntimeException exception) {
+                log.warn("No se pudo guardar la entrevista de voz no confirmada del chat {}: {}", idChat,
+                        exception.getClass().getSimpleName());
+                enviarError("La conexión de voz se cerró antes de confirmar el cierre y no pudimos guardar las respuestas.");
+            }
             completarSesion();
         });
     }
@@ -758,6 +868,7 @@ public class SesionVozChat implements GeminiLiveOyente {
 
     private synchronized void cancelarTemporizadores() {
         cancelarAvisoCierre();
+        cancelarWatchdogRespuestaLive();
         if (tareaDrenaje != null) {
             tareaDrenaje.cancel(false);
             tareaDrenaje = null;
@@ -793,7 +904,12 @@ public class SesionVozChat implements GeminiLiveOyente {
             return;
         }
         turnos.add(new TurnoVoz(AutorMensaje.PACIENTE, texto));
+        ultimaRespuestaNanos = System.nanoTime();
         versionRespuestas++;
+    }
+
+    private long tiempoDesdeUltimaRespuestaMs() {
+        return ultimaRespuestaNanos == 0 ? -1 : Duration.ofNanos(System.nanoTime() - ultimaRespuestaNanos).toMillis();
     }
 
     private void cerrarTurnoBot() {
@@ -810,6 +926,180 @@ public class SesionVozChat implements GeminiLiveOyente {
             return;
         }
         turnos.add(new TurnoVoz(AutorMensaje.BOT, texto));
+    }
+
+    private void iniciarSeguimientoRespuestaLive() {
+        versionRespuestaLive++;
+        recuperacionesRespuestaLive = 0;
+        intervalosRespuestaSinFrontera = 0;
+        respuestaLivePendiente = true;
+    }
+
+    private synchronized void programarWatchdogRespuestaLive(long version) {
+        if (!respuestaLivePendiente || entrevistaFinalizada.get() || cerrada.get() || transporteCerrado) return;
+        if (tareaRespuestaLive != null) tareaRespuestaLive.cancel(false);
+        try {
+            tareaRespuestaLive = temporizador.schedule(() -> evaluarWatchdogRespuestaLive(version),
+                    limiteAvisoCierre.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (RuntimeException exception) {
+            log.warn("No se pudo establecer el limite de respuesta Live del chat {}: {}", idChat,
+                    exception.getClass().getSimpleName());
+            finalizarEsperaRespuestaLiveConError();
+        }
+    }
+
+    private synchronized void evaluarWatchdogRespuestaLive(long version) {
+        tareaRespuestaLive = null;
+        if (!respuestaLivePendiente || version != versionRespuestaLive || entrevistaFinalizada.get()
+                || cerrada.get() || transporteCerrado || clasificacionIniciada.get()) return;
+        if (cierreEnCurso.get()) {
+            programarWatchdogRespuestaLive(version);
+            return;
+        }
+
+        // Live no expone una marca fiable de fin de transcripcion. Conservamos el buffer abierto
+        // y no lo usamos para evaluar progreso ni para clasificar.
+        if (textoPaciente.length() > 0) {
+            if (intervalosRespuestaSinFrontera++ > 0) {
+                finalizarEsperaRespuestaLiveConError();
+            } else {
+                // Una transcripcion abierta no basta para volver a preguntar ni para cerrarla.
+                programarWatchdogRespuestaLive(version);
+            }
+            return;
+        }
+        if (turnoBotEnCurso || textoBot.length() > 0) {
+            if (intervalosRespuestaSinFrontera++ > 0) {
+                finalizarEsperaRespuestaLiveConError();
+            } else {
+                programarWatchdogRespuestaLive(version);
+            }
+            return;
+        }
+        intervalosRespuestaSinFrontera = 0;
+
+        ProgresoEntrevista progreso;
+        try {
+            progreso = progresoActual();
+        } catch (RuntimeException exception) {
+            finalizarEsperaRespuestaLiveConError();
+            return;
+        }
+        if (progreso.puedeCerrar()) {
+            avisarCierreSiCorresponde();
+            return;
+        }
+        if (preguntaBotCorrespondeAProgreso(progreso)) {
+            completarEsperaRespuestaLive();
+            return;
+        }
+        if (recuperacionesRespuestaLive == 0) {
+            enviarRecuperacionRespuestaLive(progreso);
+            recuperacionesRespuestaLive++;
+            programarWatchdogRespuestaLive(version);
+            return;
+        }
+        finalizarEsperaRespuestaLiveConError();
+    }
+
+    private synchronized void evaluarRespuestaLiveTrasTurno() {
+        if (!respuestaLivePendiente || entrevistaFinalizada.get() || clasificacionIniciada.get()) {
+            return;
+        }
+        ProgresoEntrevista progreso;
+        try {
+            progreso = progresoActual();
+        } catch (RuntimeException exception) {
+            programarWatchdogRespuestaLive(versionRespuestaLive);
+            return;
+        }
+        if (progreso.puedeCerrar()) {
+            return; // El watchdog de cierre gestiona el estado terminal.
+        }
+        if (preguntaBotCorrespondeAProgreso(progreso)) {
+            completarEsperaRespuestaLive();
+            return;
+        }
+        // Input and output transcription events may be reordered. Wait for the bounded
+        // watchdog before recovering so a delayed BOT question can cancel this wait.
+        programarWatchdogRespuestaLive(versionRespuestaLive);
+    }
+
+    private boolean preguntaBotCorrespondeAProgreso(ProgresoEntrevista progreso) {
+        if (!progreso.esperaRespuestaPaciente() || turnos.isEmpty()) return false;
+        TurnoVoz ultimoTurno = turnos.getLast();
+        // The progress builder recognizes only a question tied to a currently pending objective.
+        // Do not enforce canonical ordering here: Live may ask any still-pending datum.
+        return ultimoTurno.autor() == AutorMensaje.BOT;
+    }
+
+    private void enviarRecuperacionRespuestaLive(ProgresoEntrevista progreso) {
+        if (turnoBotEnCurso || textoBot.length() > 0 || conexion == null) return;
+        enviarTextoSistema("Live no completó una respuesta útil. Retoma una sola vez desde el próximo objetivo: "
+                + progreso.instruccionSiguientePaso() + " Formula una única pregunta breve si hace falta. "
+                + "No clasifiques una transcripción abierta, no repitas datos respondidos y no anuncies "
+                + "un cierre sin usar finalizar_entrevista.");
+    }
+
+    private synchronized void completarEsperaRespuestaLive() {
+        respuestaLivePendiente = false;
+        cancelarWatchdogRespuestaLive();
+        emitirProcesandoRespuesta(false);
+    }
+
+    private synchronized void finalizarEsperaRespuestaLiveConError() {
+        if (!respuestaLivePendiente || respuestaLiveAgotada) return;
+        respuestaLivePendiente = false;
+        respuestaLiveAgotada = true;
+        cancelarWatchdogRespuestaLive();
+        List<TurnoVoz> transcripcion = tomarTurnos();
+        cancelarTemporizadores();
+        try {
+            tareas.execute(() -> {
+                boolean guardada = false;
+                try {
+                    chatService.registrarTurnosVoz(idChat, idPaciente, transcripcion);
+                    guardada = true;
+                } catch (RuntimeException exception) {
+                    log.warn("No se pudo guardar la transcripcion de voz del chat {}: {}", idChat,
+                            exception.getClass().getSimpleName());
+                }
+                synchronized (SesionVozChat.this) {
+                    emitirProcesandoRespuesta(false);
+                    enviarError(guardada
+                            ? "No pudimos continuar la entrevista de voz. Guardamos tus respuestas y podés retomarla."
+                            : "No pudimos continuar ni guardar tus respuestas. Volvé a iniciar para seguir.");
+                    if (finEmitido.compareAndSet(false, true)) enviarEvento(evento("fin"));
+                    transporteCerrado = true;
+                    cierreSolicitado = true;
+                    cerrarGemini();
+                    cerrar();
+                }
+            });
+        } catch (RuntimeException exception) {
+            log.warn("No se pudo programar el guardado de transcripcion del chat {}: {}", idChat,
+                    exception.getClass().getSimpleName());
+            emitirProcesandoRespuesta(false);
+            enviarError("No pudimos continuar ni guardar tus respuestas. Volvé a iniciar para seguir.");
+            if (finEmitido.compareAndSet(false, true)) enviarEvento(evento("fin"));
+            transporteCerrado = true;
+            cierreSolicitado = true;
+            cerrarGemini();
+            cerrar();
+        }
+    }
+
+    private synchronized void emitirProcesandoRespuesta(boolean activo) {
+        if (procesandoRespuestaEmitido == activo) return;
+        procesandoRespuestaEmitido = activo;
+        enviarEvento(evento("procesando_respuesta").put("activo", activo));
+    }
+
+    private synchronized void cancelarWatchdogRespuestaLive() {
+        if (tareaRespuestaLive != null) {
+            tareaRespuestaLive.cancel(false);
+            tareaRespuestaLive = null;
+        }
     }
 
     private synchronized List<TurnoVoz> tomarTurnos() {
@@ -865,6 +1155,17 @@ public class SesionVozChat implements GeminiLiveOyente {
             return;
         }
         if (!progreso.puedeCerrar()) return;
+        // A clear refusal of the single open invitation is a terminal answer once all locally
+        // established clinical data is resolved. End Live at this turn boundary; don't ask it to
+        // say "okay" or call the close tool. The existing drain/revalidation protects late input.
+        boolean cierreUrgente = progreso.motivoCierre() == ProgresoEntrevista.MotivoCierre.ALARMA
+                || progreso.motivoCierre() == ProgresoEntrevista.MotivoCierre.SOLICITUD_PACIENTE;
+        boolean rechazoTrasDatos = progreso.motivoCierre() == ProgresoEntrevista.MotivoCierre.DATOS_RESUELTOS
+                && progreso.tieneHechosClinicos();
+        if (cierreUrgente || rechazoTrasDatos) {
+            iniciarCierreSinHerramientaSiCorresponde(progreso);
+            return;
+        }
         if (avisoCierreEnviado) {
             iniciarCierreSinHerramientaSiCorresponde(progreso);
             return;
@@ -902,8 +1203,10 @@ public class SesionVozChat implements GeminiLiveOyente {
     private void iniciarCierreSinHerramientaSiCorresponde(ProgresoEntrevista progreso) {
         if (cierreSinHerramienta || !progreso.puedeCerrar()
                 || versionUltimoRechazo == versionRespuestas
-                || !ValidadorCierreEntrevistaVoz.rechazoGlobalExplicito(historialVozParaRechazo())) return;
+                || !autorizaCierreSinHerramienta(progreso)) return;
         cierreSinHerramienta = true;
+        log.info("Voice closure recovery chatId={} reason={} sincePatientMs={}",
+                idChat, progreso.motivoCierre(), tiempoDesdeUltimaRespuestaMs());
         despedidaTerminada = true;
         cancelarAvisoCierre();
         iniciarDrenaje();
@@ -920,8 +1223,8 @@ public class SesionVozChat implements GeminiLiveOyente {
     private boolean cierreSinHerramientaSigueVigente() {
         if (versionUltimoRechazo == versionRespuestas) return false;
         try {
-            return progresoActual().puedeCerrar()
-                    && ValidadorCierreEntrevistaVoz.rechazoGlobalExplicito(historialVozParaRechazo());
+            ProgresoEntrevista progreso = progresoActual();
+            return progreso.puedeCerrar() && autorizaCierreSinHerramienta(progreso);
         } catch (RuntimeException exception) {
             log.warn("No se pudo reevaluar el cierre automatico de voz del chat {}: {}", idChat,
                     exception.getClass().getSimpleName());
@@ -929,10 +1232,19 @@ public class SesionVozChat implements GeminiLiveOyente {
         }
     }
 
+    private boolean autorizaCierreSinHerramienta(ProgresoEntrevista progreso) {
+        return progreso.puedeCerrar()
+                && (progreso.motivoCierre() == ProgresoEntrevista.MotivoCierre.ALARMA
+                || versionUltimoRechazo != versionRespuestas
+                || ValidadorCierreEntrevistaVoz.rechazoGlobalExplicito(historialVozParaRechazo()));
+    }
+
     private synchronized void confirmarCierreSinHerramienta() {
         if (!cierreSinHerramienta || entrevistaFinalizada.get() || transporteCerrado) return;
+        completarEsperaRespuestaLive();
         entrevistaFinalizada.set(true);
         versionCierreSinHerramienta = versionRespuestas;
+        versionCierreConfirmado = versionRespuestas;
         cancelarAvisoCierre();
         enviarEvento(evento("entrevista_finalizada"));
         enviarFinEntradaAudio();
@@ -1049,6 +1361,9 @@ public class SesionVozChat implements GeminiLiveOyente {
         funcion.put("name", nombre);
         funcion.set("response", respuesta);
         conexion.enviar(mensaje.toString());
+        if (respuesta.has("error") && respuestaLivePendiente) {
+            programarWatchdogRespuestaLive(versionRespuestaLive);
+        }
     }
 
     String construirSetup() {

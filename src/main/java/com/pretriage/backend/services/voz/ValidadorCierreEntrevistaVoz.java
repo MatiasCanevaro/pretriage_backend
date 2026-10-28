@@ -18,6 +18,16 @@ public final class ValidadorCierreEntrevistaVoz {
     private static final Pattern INTENSIDAD = Pattern.compile("\\b(10|[0-9])\\s*(?:/|de|sobre)\\s*10\\b");
     private static final Pattern NEGACION = Pattern.compile("\\b(?:no|sin|niega|niego|descarta|descarto|ningun|ninguna|ninguno)\\b");
     private static final Pattern AFIRMACION_TRAS_NEGACION = Pattern.compile("\\b(?:pero|aunque|si|y)\\s+(?:me|tengo|siento|presento|aparecio|aparecen|noto)\\b");
+    private static final Pattern FALTA_AIRE_COLOQUIAL = Pattern.compile(
+            "\\bfalta\\s+(?:(?:un\\s+)?(?:poco|poquito|algo|bastante|mucho|muchisimo)\\s+)?(?:(?:el|de)\\s+)?aire\\b");
+    private static final Pattern CUESTA_RESPIRAR_COLOQUIAL = Pattern.compile(
+            "\\bme\\s+cuesta\\s+(?:(?:un\\s+)?(?:poco|poquito|algo|bastante|mucho|muchisimo)\\s+)?(?:el\\s+)?respirar(?:\\s+(?:un\\s+)?(?:poco|poquito|algo|bastante|mucho|muchisimo))?\\b");
+    private static final Pattern TEXTO_CITADO = Pattern.compile("(?s)(\"[^\"]*\"|'[^']*'|“[^”]*”|«[^»]*»|‘[^’]*’|`[^`]*`)");
+    private static final Pattern CITA_ALARMA = Pattern.compile(
+            "^(?:ejemplo(?: de texto)?|cita(?: textual)?|texto citado|(?:el paciente|el bot|alguien) dijo|(?:el|mi) (?:doctor|medico) dijo|me dijeron)\\b.*");
+    private static final Pattern HIPOTESIS_ALARMA = Pattern.compile(
+            "\\b(?:si|en\\s+caso(?:\\s+de(?:\\s+que)?)?|supongamos(?:\\s+que)?)\\b[^,;.!?]{0,60}$");
+    private static final Pattern AFIRMACION_SI = Pattern.compile("(?iuU)\\bsí\\b");
 
     private ValidadorCierreEntrevistaVoz() { }
 
@@ -182,7 +192,7 @@ public final class ValidadorCierreEntrevistaVoz {
     public static List<String> signosAlarmaAfirmados(List<String> signos) {
         if (signos == null) return List.of();
         return signos.stream().filter(ValidadorCierreEntrevistaVoz::textoValido)
-                .filter(signo -> alarmaResumenSignificativa(normalizar(signo))).toList();
+                .filter(ValidadorCierreEntrevistaVoz::alarmaResumenSignificativa).toList();
     }
 
     /** The same literal evidence must authorize early closure and guard its classification. */
@@ -194,8 +204,10 @@ public final class ValidadorCierreEntrevistaVoz {
     /** Primitive shared with the history projection so closure and priority use identical alarm evidence. */
     public static boolean alarmaLiteralAfirmada(String texto) {
         if (texto == null) return false;
-        String evidencia = java.util.Arrays.stream(normalizar(texto).split("\\R"))
-                .filter(linea -> !linea.matches("^\\s*(?:bot|assistant|system|developer|gemini|chatgpt)\\s*[:：].*$"))
+        String evidencia = java.util.Arrays.stream(texto.split("\\R"))
+                .filter(linea -> !normalizar(linea)
+                        .matches("^\\s*(?:bot|assistant|system|developer|gemini|chatgpt)\\s*[:：].*$"))
+                .map(ValidadorCierreEntrevistaVoz::normalizarConSiAfirmativo)
                 .reduce((a, b) -> a + "\\n" + b).orElse("");
         evidencia = evidencia.replaceAll("\\bejemplo de texto\\s*[:：-]?\\s*[^;\\n.]+;?\\s*no es un sintoma mio[^.\\n]*solo una cita[^.\\n]*", "");
         return alarmaAfirmada(evidencia);
@@ -254,13 +266,24 @@ public final class ValidadorCierreEntrevistaVoz {
         return texto.matches("(?:no|ninguno|ninguna|nada|nada mas)(?:,? (?:nada|nada mas|ninguno|ninguna|de eso|de esos|de esas))?[.!]?");
     }
 
+    private static String normalizarConSiAfirmativo(String texto) {
+        return normalizar(AFIRMACION_SI.matcher(texto).replaceAll(""));
+    }
+
     private static boolean alarmaAfirmada(String texto) {
         // Split sentences and explicit contrasts so a previous denial does not negate a new affirmation.
-        String textoConVariantesConversacionales = texto.replaceAll("\\bfalta el aire\\b", "falta de aire");
+        String textoSinCitas = TEXTO_CITADO.matcher(texto).replaceAll("");
+        String textoConVariantesConversacionales = CUESTA_RESPIRAR_COLOQUIAL.matcher(textoSinCitas)
+                .replaceAll("me cuesta respirar");
+        textoConVariantesConversacionales = FALTA_AIRE_COLOQUIAL.matcher(textoConVariantesConversacionales)
+                .replaceAll("falta de aire");
         for (String segmento : textoConVariantesConversacionales.split("[,;.!?\\n]|\\bpero\\b|\\bsin embargo\\b|\\by\\s+(?=no puedo respirar\\b)")) {
+            if (CITA_ALARMA.matcher(segmento.strip()).matches()) continue;
+            if (segmento.stripLeading().startsWith("¿")) continue;
             var alarma = Pattern.compile("\\b(?:" + ALARMAS + ")\\b").matcher(segmento);
             while (alarma.find()) {
                 String prefijo = segmento.substring(0, alarma.start());
+                if (HIPOTESIS_ALARMA.matcher(prefijo).find()) continue;
                 var negacion = NEGACION.matcher(prefijo);
                 int ultimaNegacion = -1;
                 while (negacion.find()) ultimaNegacion = negacion.start();
@@ -278,10 +301,12 @@ public final class ValidadorCierreEntrevistaVoz {
     }
 
     private static boolean alarmaResumenSignificativa(String texto) {
-        if (contiene(texto, "desconocido|desconocida|no informado|no informada|pendiente|ninguno|ninguna|negado|negados|ausente|ausentes|no aplica")) return false;
+        String normalizado = normalizarConSiAfirmativo(texto);
+        if (contiene(normalizado, "desconocido|desconocida|no informado|no informada|pendiente|ninguno|ninguna|negado|negados|ausente|ausentes|no aplica")) return false;
         // This helper sees summary fields, not verified patient testimony. Keep it limited
         // to the existing alarm vocabulary and do not let arbitrary prose count as an alarm.
-        return contiene(texto, ALARMAS) && alarmaAfirmada(texto);
+        normalizado = FALTA_AIRE_COLOQUIAL.matcher(normalizado).replaceAll("falta de aire");
+        return contiene(normalizado, ALARMAS) && alarmaAfirmada(normalizado);
     }
 
     private static String normalizar(String texto) {

@@ -120,7 +120,8 @@ public class GeminiJsonClient {
                 long elapsedMs = elapsedMillis(startedAt);
                 if (!isRetryableTransport(error) || !canRetry(attempt, budget, startedAt)) {
                     log.warn("Gemini attempt={} status=transport-error elapsedMs={}", attempt, elapsedMs);
-                    throw failure("Fallo de transporte Gemini (" + error.getClass().getSimpleName() + ")");
+                    throw failure("Fallo de transporte Gemini (" + error.getClass().getSimpleName() + ")",
+                            isRetryableTransport(error));
                 }
                 Duration delay = backoff(attempt);
                 if (!waitBeforeRetry(attempt, "transport-error", delay, budget, startedAt)) {
@@ -128,7 +129,7 @@ public class GeminiJsonClient {
                 }
                 continue;
             } catch (Exception error) {
-                throw failure("Fallo de transporte Gemini: " + error.getClass().getSimpleName());
+                throw failure("Fallo de transporte Gemini: " + error.getClass().getSimpleName(), false);
             }
 
             int status = response.statusCode();
@@ -138,7 +139,9 @@ public class GeminiJsonClient {
                     || (status == 429 && retryAfter != null);
             if (!retryable || !canRetry(attempt, budget, startedAt)) {
                 log.warn("Gemini attempt={} status={} elapsedMs={}", attempt, status, elapsedMillis(startedAt));
-                throw failure("Gemini HTTP " + status);
+                boolean workflowRetryable = retryable && status != 429
+                        && !(status == 503 && retryAfter != null);
+                throw failure("Gemini HTTP " + status, workflowRetryable);
             }
             Duration delay = retryAfter != null && (status == 429 || status == 503)
                     ? retryAfter : backoff(attempt);
@@ -270,8 +273,12 @@ public class GeminiJsonClient {
     }
 
     private ProveedorIaException failure(String message) {
+        return failure(message, false);
+    }
+
+    private ProveedorIaException failure(String message, boolean transitorio) {
         // Only caller-generated technical messages; never response bodies, URLs or credentials.
         log.warn("Gemini rejected reason={}", message);
-        return new ProveedorIaException(new IllegalStateException(message));
+        return new ProveedorIaException(new IllegalStateException(message), transitorio);
     }
 }

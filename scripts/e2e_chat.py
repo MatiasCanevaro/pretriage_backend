@@ -8,6 +8,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+import uuid
 from pathlib import Path
 
 DEFAULT_MESSAGES = [
@@ -45,6 +46,7 @@ SEVERITY_BY_PRIORITY = {
     1: "NO_URGENTE",
 }
 FAILURE_CONTEXT = None
+MAX_TEXT_TURN_WAIT_SECONDS = 180
 
 
 def load_dotenv(path: Path) -> dict:
@@ -294,6 +296,60 @@ def ensure_no_early_finalization(turn_index, min_turns, allow=False):
         raise RuntimeError(f"Chat finalized early after {turn_index} turns; expected at least {min_turns}")
 
 
+def last_bot_message(chat):
+    for message in reversed(chat.get("mensajes") or []):
+        if message.get("autor") == "BOT":
+            return message.get("contenido")
+    return None
+
+
+def submit_text_turn(backend_url, chat_id, message, token, poll_interval=0.5,
+                     timeout_seconds=MAX_TEXT_TURN_WAIT_SECONDS):
+    """Submit once, then poll the durable ChatDTO until this turn reaches a terminal state."""
+    timeout_seconds = min(timeout_seconds, MAX_TEXT_TURN_WAIT_SECONDS)
+    request_id = str(uuid.uuid4())
+    accepted = http_json(
+        "POST", f"{backend_url}/api/chat/{chat_id}/mensajes",
+        {"contenido": message, "solicitudId": request_id}, token=token, timeout=MAX_TEXT_TURN_WAIT_SECONDS,
+    )
+    if not isinstance(accepted, dict):
+        raise RuntimeError("Text turn POST did not return a JSON object")
+    # Older servers return ChatTurnResponse synchronously. Keep that path usable while
+    # the E2E client migrates to the durable 202 ChatDTO contract.
+    if "respuesta" in accepted:
+        return {"legacyResponse": accepted, "requestId": request_id}
+    if accepted.get("solicitudTurnoTextoId") != request_id:
+        raise RuntimeError("Accepted ChatDTO does not match the submitted request ID")
+
+    deadline = time.monotonic() + timeout_seconds
+    current = accepted
+    while True:
+        state = current.get("estadoTurnoTexto")
+        classification = current.get("estadoClasificacion")
+        if state == "NO_DISPONIBLE" or classification == "FALLIDA":
+            raise RuntimeError(f"Text turn failed: estadoTurnoTexto={state}, estadoClasificacion={classification}")
+        if state == "COMPLETADA":
+            return {"chat": current, "requestId": request_id}
+        if state != "PENDIENTE":
+            raise RuntimeError(f"Unexpected text-turn state: {state}")
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise RuntimeError(f"Timed out waiting for text turn {request_id} after {timeout_seconds}s")
+        if poll_interval > 0:
+            time.sleep(min(poll_interval, remaining))
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise RuntimeError(f"Timed out waiting for text turn {request_id} after {timeout_seconds}s")
+        current = http_json(
+            "GET", f"{backend_url}/api/chat/{chat_id}", token=token,
+            timeout=min(15, remaining),
+        )
+        if not isinstance(current, dict):
+            raise RuntimeError("Chat polling did not return a JSON object")
+        if current.get("solicitudTurnoTextoId") != request_id:
+            raise RuntimeError("ChatDTO moved to a different text-turn request while polling")
+
+
 def parse_result_json(raw):
     if not raw:
         raise RuntimeError("chat.resultado_triage_json is empty")
@@ -507,29 +563,43 @@ def main():
     try:
         set_failure_stage("chat turns")
         for index, message in enumerate(messages, start=1):
-            turn = http_json(
-                "POST", f"{backend_url}/api/chat/{chat_id}/mensajes", {"contenido": message},
-                token=token, timeout=180,
-            )
-            bot_text = (turn.get("respuesta") or {}).get("contenido")
-            debug_turns.append({"turno": index, "paciente": message, "bot": bot_text,
-                                "atencionEstimada": turn.get("atencionEstimada"),
-                                "origenRespuesta": turn.get("origenRespuesta")})
+            completed_turn = submit_text_turn(backend_url, chat_id, message, token)
+            legacy_turn = completed_turn.get("legacyResponse")
+            chat_snapshot = completed_turn.get("chat")
+            if legacy_turn is not None:
+                bot_text = (legacy_turn.get("respuesta") or {}).get("contenido")
+                classification = None
+                final = legacy_turn.get("atencionEstimada") is not None
+                attention_estimate = legacy_turn.get("atencionEstimada")
+            else:
+                bot_text = last_bot_message(chat_snapshot)
+                classification = chat_snapshot.get("estadoClasificacion")
+                final = bool(chat_snapshot.get("finalizado")) and classification == "COMPLETADA"
+                attention_estimate = None
+            turn_debug = {"turno": index, "paciente": message, "bot": bot_text,
+                          "solicitudId": completed_turn["requestId"],
+                          "estadoClasificacion": classification}
+            if attention_estimate is not None:
+                turn_debug["atencionEstimada"] = attention_estimate
+            debug_turns.append(turn_debug)
             print(f"Turno {index} OK | bot={bot_text!r}")
-            if turn.get("atencionEstimada") is not None:
-                final_turn = turn
-                print(f"Triage finalizado OK | atencionEstimada={turn['atencionEstimada']}")
-                if args.expect_immediate_attention and turn.get("origenRespuesta") != "GEMINI":
-                    raise RuntimeError("Alarm final turn must have origenRespuesta=GEMINI")
+            if final:
+                final_turn = {"respuesta": {"contenido": bot_text}, "chat": chat_snapshot,
+                              "legacyResponse": legacy_turn}
+                print("Triage finalizado OK | estadoClasificacion=COMPLETADA")
                 ensure_no_early_finalization(index, min_turns, args.allow_early_finalization)
                 break
-            time.sleep(0.2)
     except Exception:
         write_debug(debug_path, debug_base)
         raise
 
     current_chat = http_json("GET", f"{backend_url}/api/chat/{chat_id}", token=token)
-    if final_turn is None and current_chat.get("finalizado"):
+    if current_chat.get("estadoTurnoTexto") == "NO_DISPONIBLE" or current_chat.get("estadoClasificacion") == "FALLIDA":
+        write_debug(debug_path, debug_base)
+        raise RuntimeError("Chat reached a failed terminal state")
+    if final_turn is None and current_chat.get("finalizado") and current_chat.get("estadoClasificacion") == "COMPLETADA":
+        final_bot_text = last_bot_message(current_chat)
+        final_turn = {"respuesta": {"contenido": final_bot_text}, "chat": current_chat}
         print("Chat finalizado OK")
     elif final_turn is None:
         write_debug(debug_path, debug_base)
@@ -541,7 +611,8 @@ def main():
             args, subject, chat_id, expected_symptoms, expected_alarms, args.expect_immediate_attention
         )
         if args.expect_immediate_attention:
-            final_message = ((final_turn or {}).get("respuesta") or {}).get("contenido") or ""
+            snapshot = (final_turn or {}).get("chat") or current_chat
+            final_message = last_bot_message(snapshot) or ((final_turn or {}).get("respuesta") or {}).get("contenido") or ""
             if triage["recomendacionSeguridad"].strip().casefold() not in final_message.casefold():
                 raise RuntimeError("Alarm final message must include the safety recommendation")
         if args.expected_priority is not None and triage["nivelPrioridad"] != args.expected_priority:

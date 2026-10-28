@@ -1,5 +1,12 @@
 # Chat de voz: mobile, backend y Gemini Live
 
+El flujo vigente de cierre y recuperación automática se describe en
+[23-server-owned-voice-closure.md](23-server-owned-voice-closure.md): una negativa
+con datos resueltos inicia el cierre en el límite de turno sin otra respuesta ni
+la herramienta de Live. La clasificación se guarda como `PENDIENTE` y se recupera
+desde el backend con presupuesto persistido. Mobile no ofrece reprocesar. Las
+secciones de verificación fechadas más abajo conservan su contexto histórico.
+
 Texto y voz comparten la [política de preguntas sencillas](17-simple-chat-questions.md):
 una pregunta por turno, sin agrupar temas ni leer listas largas. Las correcciones
 del backend mantienen ese estilo. El progreso por síntoma y dato decide el cierre,
@@ -14,7 +21,7 @@ el backend aplica el cierre compartido.
 
 Integración de la rama `feature/chat-voz-gemini-live`, actualizada el 11 de octubre de 2026 tras incorporar `desarrollo` en ambos repositorios.
 
-Gemini Live ahora conduce la entrevista directamente por voz: escucha, pregunta y responde con audio. Cuando decide cerrar, entrega un resumen al backend. El backend comprueba el alcance de la entrevista antes de aceptar el cierre. Live no debe anunciar que terminó ni que registró las respuestas antes de recibir la respuesta de `finalizar_entrevista`; si la función devuelve un error, la entrevista sigue abierta. Después de la despedida aceptada, llama a Gemini REST para preclasificar, guarda la transcripción y actualiza la cola. El chat de texto conserva su flujo de preguntas con Gemini REST. Ambos aplican la [política de alcance y evidencia clínica](20-chat-hardening.md).
+Gemini Live conduce la entrevista directamente por voz: escucha, pregunta y responde con audio. El backend determina la elegibilidad de cierre mediante el progreso compartido. La herramienta `finalizar_entrevista` puede entregar un resumen, pero su omisión no deja la sesión esperando otro mensaje del paciente: el backend dispone de una recuperación acotada. Live no debe anunciar que terminó ni que registró las respuestas antes de aceptar el cierre; si la función devuelve un rechazo de alcance, la entrevista sigue abierta para aclararlo. Después del cierre confirmado, Gemini REST procesa los hechos admitidos, se guarda el resultado y se actualiza la cola. El chat de texto conserva su flujo de preguntas con Gemini REST. Ambos aplican la [política de alcance y evidencia clínica](20-chat-hardening.md).
 
 La versión anterior usaba Gemini para transcribir cada respuesta y leer las preguntas de Ollama. Esa arquitectura quedó reemplazada en voz: ya no existe la función `registrar_respuesta_paciente` ni se emite `turno_bot` por cada respuesta hablada.
 
@@ -164,7 +171,12 @@ siguiente paciente admitido, para no reenviar indirectamente una expresión cita
 El resumen
 generado por Live no es evidencia del paciente ni autoriza por sí solo una alarma.
 
-Hay un límite total de 30 segundos desde que se acepta la función, independiente del tiempo posterior de Gemini REST. Si vence, falla la conexión o llega un cierre anormal, se guarda la entrevista cerrada con clasificación `FALLIDA` y se emiten `error` y `fin`; no se clasifica una entrevista con cierre sin confirmar. La ventana reduce la pérdida de fragmentos tardíos, pero no garantiza recuperar texto que Google nunca envíe antes del cierre: `turnComplete` no confirma que haya terminado la transcripción de entrada.
+Hay un límite de drenaje de 30 segundos, independiente del tiempo posterior de
+Gemini REST. Si el cierre ya fue aceptado, un transporte anormal o vencido procesa
+el texto observado como cierre parcial confirmado, sin reutilizar un resumen
+obsoleto. Antes de confirmar el cierre se conserva la entrevista abierta para
+continuar. La ventana no recupera texto que Google no haya enviado;
+`turnComplete` no confirma el final de la transcripción de entrada.
 
 `ChatService.finalizarEntrevistaVoz` guarda la transcripción y cierra la entrevista antes de solicitar la clasificación final a Gemini REST. El prompt indica que, si el resumen contradice al paciente, prevalece la transcripción. Una alarma literal del paciente o una alarma afirmada en el resultado validado exige prioridad al menos 4 y atención inmediata. Cada síntoma o alarma del resultado requiere una cita del paciente y la verificación semántica final; el texto del resumen no basta. Si la respuesta no cumple, pide una corrección sin generar clasificación local. Solo con un resultado válido actualiza `Chat.resultadoTriageJson`, el resumen de la consulta y la prioridad de su entrada en cola. Si el procesamiento falla, las respuestas quedan guardadas en `FALLIDA`.
 
@@ -187,11 +199,18 @@ El chat no genera resúmenes ni prioridades mediante reglas locales. Si Gemini d
 
 ## Cierre cuando Live omite la herramienta
 
-Si el progreso compartido permite terminar y el paciente respondió negativamente
-a la invitación abierta, la sesión envía un único aviso para llamar la herramienta.
-Si Live completa otro turno sin hacerlo, o vence el margen de ocho segundos, el
-backend puede iniciar un drenaje de cierre sin fabricar `ResumenEntrevistaVoz`.
+En el límite de turno, `DATOS_RESUELTOS` con hechos clínicos admitidos, una alarma
+o una solicitud de terminar inician el cierre del servidor sin pedir otra respuesta
+ni esperar una herramienta. Para los otros motivos terminales sigue existiendo un
+aviso único a Live y recuperación si completa otro turno o pasan ocho segundos.
+La recuperación incluye `SIN_AVANCE` y `LIMITE_RECURSOS`, conserva el drenaje y no
+fabrica un `ResumenEntrevistaVoz`.
 El margen no es un límite médico ni cambia los presupuestos de entrevista.
+Frases como «me falta un poco el aire» o «me cuesta un poco respirar» activan la
+misma vía de alarma que sus formas canónicas; se conservan los controles de
+negación, hipótesis, citas y roles. «Terminá el chat» permite expresar una solicitud
+de cierre, sin convertir una cita, una hipótesis o una negación en intención.
+El audio o el aviso de urgencia del bot no sustituye la evidencia del paciente.
 
 La intención de cierre permanece interna mientras se estabilizan las
 transcripciones. El evento `entrevista_finalizada` se envía al confirmar ese
@@ -200,25 +219,55 @@ pendiente, se cancela ese cierre y la conversación continúa por el mismo canal
 Una misma transcripción rechazada por el preflight de alcance no usa esta vía
 para saltarse la aclaración requerida. La salida parcial de Live también se
 controla con un límite de cierre acotado; no habilita un bucle ilimitado.
-Si al vencer el límite de 30 segundos sigue abierta una transcripción del paciente,
-se conserva como cierre fallido reintentable y no se clasifica automáticamente
-esa frase incompleta.
+Si al vencer el límite de 30 segundos sigue abierta una transcripción del paciente
+y todavía no se confirmó el cierre, se guardan los turnos y la entrevista permanece
+abierta para continuar; no se fuerza una clasificación ni se afirma un guardado fallido.
 
-Con el cierre confirmado y el transporte cerrado normalmente, se guarda la
-transcripción mediante `registrarCierreVozFallido` por la omisión de la herramienta
-y se ejecuta automáticamente `reintentarClasificacion` una sola vez. Este usa
-Gemini REST con los hechos guardados, su corrección única y la verificación
-clínica habituales. No se agrega otra respuesta del paciente, no se llama la
-herramienta con argumentos inventados y no se genera un resumen clínico local.
+Con el cierre confirmado se guarda la transcripción como `PENDIENTE` mediante
+`finalizarEntrevistaVozSinResumen`; el flujo automático reserva hasta dos intentos
+técnicos y ejecuta Gemini REST con las validaciones y corrección habituales.
+No se agrega otro turno del paciente ni se genera un resumen clínico local.
+Si llegó información después del cierre aceptado, se usa
+`finalizarEntrevistaVozConfirmadaParcial` con el texto completo y pendientes desconocidos.
 
-Si el procesamiento obtiene una clasificación válida, se emite un solo
-`triage_finalizado` y se actualiza la cola una vez. Un cierre administrativo sin
-datos usa el mismo evento con origen `CIERRE_SIN_DATOS`, sin atención estimada ni
-actualización de cola. Si falla, la entrevista conserva `FALLIDA` y permite
-reintentar únicamente el procesamiento. Una interrupción anormal del transporte
-conserva el cierre fallido, sin afirmar una clasificación exitosa. Los estados y
-eventos públicos existentes alcanzan para esta recuperación; no requiere un APK
-adicional.
+Solo una clasificación válida emite `triage_finalizado` y actualiza la cola.
+El cierre administrativo usa ese evento con origen `CIERRE_SIN_DATOS`, sin cola.
+Durante la recuperación se conserva `PENDIENTE`; un fallo definitivo deja `FALLIDA`,
+sin botón de reprocesar en mobile. El endpoint anterior se mantiene por compatibilidad.
+Los estados y eventos conservan su significado; ver el contrato vigente en
+[23-server-owned-voice-closure.md](23-server-owned-voice-closure.md).
+
+## Continuidad visible de la conversación
+
+Una transcripción del paciente activa `procesando_respuesta` con `activo=true`.
+Es un estado transitorio de preparación de respuesta; no confirma el cierre y no
+deshabilita el micrófono ni la interrupción de la voz. Cuando el bot deja una
+pregunta o petición de aclaración válida, el evento con `activo=false` permite
+mostrar que corresponde responder. Las transcripciones de voz no necesitan
+signos de interrogación para expresar una pregunta.
+
+Si Live no entrega una continuación útil tras la respuesta, un watchdog usa el
+margen de ocho segundos y permite una recuperación guiada al objetivo pendiente.
+Un acuse genérico como «sigo a tu disposición» o «…» no equivale a una pregunta ni
+confirma que terminó. La recuperación tiene un presupuesto por respuesta y no se
+repite indefinidamente. La actividad real de audio/transcripción evita interrumpir
+una respuesta que todavía se está generando; una transcripción abierta del paciente
+no habilita clasificar un fragmento.
+
+Si la conexión no se recupera, la transcripción se conserva antes de indicar una
+acción para retomar una entrevista abierta. Ese fallo no debe presentarse como
+una clasificación completada. `entrevista_finalizada` cambia la presentación a
+entrevista terminada y procesamiento pendiente; `triage_finalizado` confirma el
+resultado guardado. Las pantallas no mencionan preclasificación, prioridad ni
+resultados internos al paciente.
+
+Si la respuesta a la invitación aporta algo que el seguimiento no puede
+interpretar, se solicita una aclaración abierta breve. Si continúa sin poder
+interpretarse, el cierre parcial conserva la información para la evaluación
+final, con motivo `LIMITE_RECURSOS`. No se declara ese aporte resuelto ni se
+descarta un motivo de salud por estar fuera del léxico local. Un síntoma reconocido
+en la aclaración agrega sus propios datos pendientes. Una declinación o respuesta
+de cortesía no obliga a otra invitación.
 
 ## Contrato de mobile
 
@@ -254,6 +303,51 @@ acuse de reproducción. Véase el [plan y verificación de interrupciones](16-vo
 
 Mobile debe conservar el socket del backend tras `entrevista_finalizada`: el resultado llega después, por `triage_finalizado`. La respuesta final de Gemini REST se entrega como texto; Gemini ya terminó su sesión y no la lee. El cliente debe dejar reproducir el audio de despedida que haya recibido.
 
+Desde el ajuste del 28/10/2026, la espera normal muestra un único aviso breve,
+«Estamos procesando tus respuestas...», sin botón de recarga. Mobile consulta
+automáticamente `GET /api/chat/{id}` cada 1,5 segundos, con hasta 80 lecturas,
+timeout de 2 segundos por lectura y plazo total de 120 segundos. Termina al
+confirmar `COMPLETADA`, `FALLIDA` o un cierre administrativo. `PENDIENTE` representa
+trabajo automático del backend, incluidos sus reintentos. `FALLIDA` representa el
+fallo definitivo del trabajo y no se oculta por considerar activo el canal de voz.
+Si no se confirma el resultado dentro del límite,
+se ofrece «Consultar estado», sin reenviar respuestas ni reintentar la clasificación.
+Al agotar la espera se confirman las transcripciones locales y se cancela únicamente
+el canal agotado del cliente. La clasificación del servidor continúa. La UI sale
+de `PROCESANDO` y muestra el fallo confirmado o `CERRADA_SIN_RESULTADO`; el cierre
+tardío del socket no puede devolverla al indicador de espera. `FALLIDA` muestra
+un aviso final sin botón de reprocesar ni invitación a reenviar respuestas.
+
+Al salir de la pantalla se conserva solo en memoria la conversación visible,
+incluidos los fragmentos de transcripción abiertos y el estado de cierre. Al volver
+al mismo chat se restaura antes del GET; una lectura pendiente con menos mensajes
+no recorta lo mostrado ni reabre la entrevista. Un estado terminal reemplaza las
+transcripciones locales por el historial autorizado. La copia se limita al último
+chat y se borra al cerrar sesión o limpiar `ChatStorage`; no se guarda audio ni historial adicional
+en preferencias. Una terminación del proceso requiere recuperar desde el servidor.
+
+Un fallo recuperable de una entrevista abierta muestra «Se interrumpió la voz.»
+y «Retomar voz». La entrada de texto queda disponible. La clasificación recibida
+tiene precedencia sobre un fallo posterior del socket, y una consulta que confirma
+el resultado limpia los avisos de voz anteriores.
+
+Los mensajes de voz reciben `fechaHoraEnvio` al persistir el lote, no al recibir
+cada fragmento STT. No permiten calcular la demora desde la última respuesta.
+La colección `Chat.mensajes` se recupera por `fechaHoraEnvio ASC, id ASC`: el ID
+desempata las horas compartidas y conserva la secuencia guardada de preguntas y
+respuestas. Se aplica tanto a `GET /api/chat/{id}` como al contexto que se reconstruye
+para progreso, reanudación de voz y clasificación. No requiere una migración ni
+reordenar físicamente los registros existentes; el DTO conserva sus campos actuales.
+Los logs técnicos `Voice closure preflight`, `Voice closure recovery`,
+`Voice provider closed/failed`, `Voice closure incomplete` y
+`Voice classification started/completed` registran el ID del chat, fases,
+motivos locales enumerados, códigos de cierre y tiempos. `sincePatientMs` mide
+desde la última consolidación de una transcripción del paciente, y `elapsedMs`
+la fase indicada; `-1` significa que no hay origen disponible. No incluyen
+transcripciones, resúmenes clínicos, motivos remotos de cierre ni credenciales.
+Estos eventos ayudan a distinguir espera de herramienta, preflight, drenaje y
+clasificación en pruebas futuras; no reconstruyen la cronología de chats antiguos.
+
 ### Protección contra eco del parlante en Android
 
 Android configura una sesión de comunicación para capturar y reproducir voz y
@@ -288,7 +382,12 @@ teléfono real, con parlante, auriculares y distintos volúmenes.
 
 ## Persistencia y recuperación
 
-El guardado de una sesión interrumpida es asíncrono. El cierre del socket no confirma que la transcripción ya esté disponible para una reconexión inmediata. Si falla la clasificación después de aceptar el cierre, se conserva la entrevista cerrada y `estadoClasificacion=FALLIDA`; `registrarCierreVozFallido` evita duplicar turnos. Mobile bloquea nuevas respuestas y ofrece «Reintentar», que llama `POST /api/chat/{id}/clasificacion` sin enviar un «ok». No hay reanudación de sesión de Google ni coordinación global entre envíos por HTTP y WebSocket.
+El guardado de una sesión interrumpida sin cierre aceptado es asíncrono. Tras un
+cierre aceptado se confirma el lote con `PENDIENTE` antes del trabajo del proveedor;
+el backend reserva y recupera sus intentos sin intervención del paciente. Mobile
+bloquea nuevas respuestas y consulta el estado por GET. Un fallo definitivo se
+muestra sin spinner ni botón de reprocesar. El endpoint POST de clasificación se
+mantiene por compatibilidad; no se reproduce audio ni se reenvían turnos.
 
 `fin` también puede representar una desconexión de Gemini sin entrevista completa. Para conocer el estado persistido se usa `GET /api/chat/{id}`; para el estado de atención se conserva el flujo de consulta y cola. Si el proceso del backend termina abruptamente durante la entrevista, los turnos que solo estaban en memoria todavía no se guardaron.
 
@@ -309,8 +408,9 @@ Ante un resultado incoherente se solicita una corrección a Gemini con el tiempo
 restante de 45 segundos. Si sigue fallando, la entrevista queda cerrada en `FALLIDA`.
 Los errores de JSON/esquema del resultado final también pueden pedir esa única corrección. Los errores transitorios REST tienen [reintentos automáticos acotados](19-gemini-retries.md): dos intentos HTTP por invocación de Gemini por defecto, dentro del presupuesto compartido de 45 segundos. Un 429 solo se repite con `Retry-After` válido. No se reconecta Live ni se reproduce de nuevo el audio automáticamente.
 
-Mobile lee ese estado y ofrece «Reintentar» mediante
-`POST /api/chat/{id}/clasificacion`, sin enviar un «ok» ni repetir respuestas. Solo
+El cliente anterior ofrecía «Reintentar» mediante
+`POST /api/chat/{id}/clasificacion`; el cliente vigente usa recuperación del backend
+y lecturas de estado, sin botón de reprocesar. Por compatibilidad, solo
 puede procesarse el último chat propio fallido, con bloqueo de fila para serializar
 reintentos. Los completados e históricos no se vuelven a clasificar por este endpoint.
 Esta política reemplaza el comportamiento histórico que dejaba abierto el chat

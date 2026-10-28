@@ -12,6 +12,41 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ProgresoEntrevistaTest {
     @Test
+    void negativaOralResuelveLaInvitacionEnLaPrimeraRespuesta() {
+        for (String respuesta : List.of("No, no.", "No. Nada.", "No, nada.", "No, nada más, gracias.")) {
+            var progreso = ProgresoEntrevista.evaluar(turnos(
+                    p("Me duele la cabeza desde ayer, intensidad 8/10"),
+                    b("¿Hay algo más que quieras contar sobre lo que te pasa?"), p(respuesta)));
+            assertEquals(ProgresoEntrevista.MotivoCierre.DATOS_RESUELTOS, progreso.motivoCierre(), respuesta);
+            assertFalse(progreso.requiereAclaracion(), respuesta);
+            assertFalse(progreso.esperaRespuestaPaciente(), respuesta);
+        }
+    }
+
+    @Test
+    void negativaConUnAporteNoReconocidoNoDescartaEseAporte() {
+        var progreso = ProgresoEntrevista.evaluar(turnos(
+                p("Me duele la cabeza desde ayer, intensidad 8/10"),
+                b("¿Hay algo más que quieras contar?"), p("No, pero veo luces extrañas.")));
+        assertFalse(progreso.puedeCerrar());
+        assertTrue(progreso.requiereAclaracion());
+    }
+
+    @Test
+    void negativaOralNoResuelveUnaIntensidadPendienteNiUnTurnoExcluido() {
+        var pendiente = ProgresoEntrevista.evaluar(turnos(
+                p("Me duele la cabeza desde ayer"),
+                b("¿Hay algo más que quieras contar?"), p("No, nada.")));
+        assertFalse(pendiente.puedeCerrar());
+        assertEquals(ProgresoEntrevista.TipoObjetivo.DATO, pendiente.objetivoDelTurno().tipo());
+
+        var excluido = ProgresoEntrevista.evaluarConContexto(List.of(
+                pt("Me duele la cabeza desde ayer, intensidad 8/10", false),
+                bt("¿Hay algo más que quieras contar?"), pt("No, nada.", true)));
+        assertFalse(excluido.puedeCerrar());
+    }
+
+    @Test
     void cadaDolorLocalizadoConservaSusPropiosDatos() {
         var progreso = ProgresoEntrevista.evaluar(turnos(
                 p("Me duele la cabeza y la espalda"),
@@ -66,6 +101,47 @@ class ProgresoEntrevistaTest {
     }
 
     @Test
+    void referenciaAmbosNoAdivinaUnParSiHayTresIniciosPendientesSinNombres() {
+        var progreso = ProgresoEntrevista.evaluar(turnos(
+                p("Me duele la cabeza, tengo fiebre y tos"),
+                b("¿Cuándo comenzaron ambos síntomas?"), p("Desde ayer")));
+
+        assertEquals(Estado.PENDIENTE,
+                dato(progreso, "dolor:cabeza", ProgresoEntrevista.Dimension.INICIO).estado());
+        assertEquals(Estado.PENDIENTE,
+                dato(progreso, "fiebre", ProgresoEntrevista.Dimension.INICIO).estado());
+        assertEquals(Estado.PENDIENTE,
+                dato(progreso, "sintoma:tos", ProgresoEntrevista.Dimension.INICIO).estado());
+    }
+
+    @Test
+    void preguntaDeInicioSobreEstosSintomasComparteSoloLosYaReferidos() {
+        var progreso = ProgresoEntrevista.evaluar(turnos(
+                p("Me duele la cabeza y tengo fiebre"),
+                b("¿Desde cuándo tenés estos síntomas?"), p("Desde ayer en la noche"),
+                p("También tengo náuseas")));
+
+        var inicioDolor = dato(progreso, "dolor:cabeza", ProgresoEntrevista.Dimension.INICIO);
+        var inicioFiebre = dato(progreso, "fiebre", ProgresoEntrevista.Dimension.INICIO);
+        assertEquals(Estado.RESPONDIDO, inicioDolor.estado());
+        assertEquals("desde ayer en la noche", inicioDolor.valor());
+        assertEquals(Estado.RESPONDIDO, inicioFiebre.estado());
+        assertEquals("desde ayer en la noche", inicioFiebre.valor());
+        assertEquals(Estado.PENDIENTE,
+                dato(progreso, "sintoma:nauseas", ProgresoEntrevista.Dimension.INICIO).estado(),
+                "Un síntoma agregado después de la respuesta no hereda el inicio compartido anterior.");
+
+        var inicioEspecifico = ProgresoEntrevista.evaluar(turnos(
+                p("Me duele la cabeza y tengo fiebre"),
+                b("¿Desde cuándo te duele la cabeza?"), p("Desde ayer en la noche")));
+        assertEquals(Estado.RESPONDIDO,
+                dato(inicioEspecifico, "dolor:cabeza", ProgresoEntrevista.Dimension.INICIO).estado());
+        assertEquals(Estado.PENDIENTE,
+                dato(inicioEspecifico, "fiebre", ProgresoEntrevista.Dimension.INICIO).estado(),
+                "Una respuesta a una pregunta específica no se transfiere a otro síntoma.");
+    }
+
+    @Test
     void preguntaNaturalPorHorasODiasVinculaLaDuracionAlDolorYPermiteCerrarTrasLaInvitacion() {
         var preguntaInicio = ProgresoEntrevista.evaluar(turnos(p("Me duele la cabeza")));
         assertTrue(preguntaInicio.validarPreguntaPropuesta(
@@ -85,6 +161,198 @@ class ProgresoEntrevistaTest {
         assertEquals(Estado.RESPONDIDO, impacto.estado());
         assertEquals("si.", impacto.valor());
         assertEquals(ProgresoEntrevista.MotivoCierre.DATOS_RESUELTOS, progreso.motivoCierre());
+    }
+
+    @Test
+    void solicitudExplicitaDeTerminarReconoceVariantesSinTomarCitasHipotesisNiExclusiones() {
+        for (String frase : List.of("Termina el chat", "Terminá el chat", "Finalizá", "Finalizá el chat",
+                "Quiero terminar la entrevista", "No quiero seguir porque estoy cansado",
+                "No quiero seguir respondiendo", "No quiero seguir respondiendo preguntas",
+                "Quiero terminar ahora", "Por favor, quiero terminar")) {
+            assertEquals(ProgresoEntrevista.MotivoCierre.SOLICITUD_PACIENTE,
+                    ProgresoEntrevista.evaluar(turnos(p(frase))).motivoCierre(), frase);
+        }
+
+        for (String frase : List.of("No quiero terminar la entrevista",
+                "Si termino el chat, ¿qué pasa?", "Si finalizo el chat, ¿qué pasa?",
+                "Ejemplo: quiero terminar la entrevista", "«Quiero terminar la entrevista»",
+                "BOT: finaliza")) {
+            var progreso = ProgresoEntrevista.evaluar(turnos(p(frase)));
+            assertNotEquals(ProgresoEntrevista.MotivoCierre.SOLICITUD_PACIENTE,
+                    progreso.motivoCierre(), frase);
+        }
+
+        var excluido = ProgresoEntrevista.evaluarConContexto(List.of(
+                new ProgresoEntrevista.Turno(AutorMensaje.PACIENTE, "Finalizá", true)));
+        assertNotEquals(ProgresoEntrevista.MotivoCierre.SOLICITUD_PACIENTE, excluido.motivoCierre());
+    }
+
+    @Test
+    void aporteOpacoTrasInvitacionPideUnaAclaracionYLuegoCierraParcialSinRepetirInvitacion() {
+        var historial = new java.util.ArrayList<>(turnos(
+                p("Tengo tos desde ayer"),
+                b("¿Te afecta trabajar por la tos?"), p("Me cuesta trabajar por la tos."),
+                b("¿Hay algo más que quieras contar?"), p("Ojos resecos.")));
+
+        var esperaAclaracion = ProgresoEntrevista.evaluar(historial);
+        assertFalse(esperaAclaracion.puedeCerrar());
+        assertTrue(esperaAclaracion.requiereAclaracion());
+        assertFalse(esperaAclaracion.esperaRespuestaPaciente());
+        assertEquals(ProgresoEntrevista.TipoObjetivo.ACLARACION, esperaAclaracion.objetivoDelTurno().tipo());
+        assertTrue(esperaAclaracion.instruccionSiguientePaso().contains("una sola aclaración abierta"));
+        assertTrue(esperaAclaracion.datos().stream().noneMatch(d -> d.sintomaId().contains("ojo")));
+
+        var conAcuse = new java.util.ArrayList<>(historial);
+        conAcuse.add(b("Entiendo, gracias. Estoy a tu disposición."));
+        assertFalse(ProgresoEntrevista.evaluar(conAcuse).esperaRespuestaPaciente());
+
+        var conInstruccion = new java.util.ArrayList<>(historial);
+        conInstruccion.add(b("Contame con tus palabras qué más te ocurre."));
+        assertTrue(ProgresoEntrevista.evaluar(conInstruccion).esperaRespuestaPaciente());
+
+        historial.add(b("¿Podés aclarar con tus palabras qué más te ocurre?"));
+        var preguntaAbierta = ProgresoEntrevista.evaluar(historial);
+        assertTrue(preguntaAbierta.esperaRespuestaPaciente());
+
+        historial.add(p("Ojos resecos."));
+        var parcial = ProgresoEntrevista.evaluar(historial);
+        assertTrue(parcial.puedeCerrar());
+        assertEquals(ProgresoEntrevista.MotivoCierre.LIMITE_RECURSOS, parcial.motivoCierre());
+        assertFalse(parcial.esperaRespuestaPaciente());
+        assertFalse(parcial.requiereAclaracion());
+        assertTrue(parcial.datos().stream().noneMatch(d -> d.sintomaId().contains("ojo")));
+        assertTrue(parcial.instruccionSiguientePaso().contains("Conserva literalmente el aporte"));
+
+        historial.add(p("Me duele el ojo desde hoy."));
+        var recuperado = ProgresoEntrevista.evaluar(historial);
+        assertFalse(recuperado.puedeCerrar());
+        assertEquals(ProgresoEntrevista.MotivoCierre.EN_CURSO, recuperado.motivoCierre());
+        assertEquals(new ProgresoEntrevista.ObjetivoTurno(ProgresoEntrevista.TipoObjetivo.DATO,
+                "dolor:ojo", ProgresoEntrevista.Dimension.INTENSIDAD), recuperado.objetivoDelTurno());
+
+        historial.add(b("Del 1 al 10, ¿cuánto te duele el ojo?"));
+        historial.add(p("3"));
+        var cerrado = ProgresoEntrevista.evaluar(historial);
+        assertTrue(cerrado.puedeCerrar());
+        assertEquals(ProgresoEntrevista.MotivoCierre.DATOS_RESUELTOS, cerrado.motivoCierre());
+        assertEquals(ProgresoEntrevista.TipoObjetivo.CERRAR, cerrado.objetivoDelTurno().tipo());
+    }
+
+    @Test
+    void aclaracionDeInvitacionRecuperaSintomaReconocidoYCortesiaNoReabreElCierre() {
+        var historial = new java.util.ArrayList<>(turnos(
+                p("Tengo tos desde ayer"), b("¿Te afecta trabajar por la tos?"), p("Me cuesta trabajar por la tos."),
+                b("¿Hay algo más que quieras contar?"), p("Ojos resecos."),
+                b("¿Podés aclarar con tus palabras qué más te ocurre?"), p("También me duele la garganta.")));
+        var recuperado = ProgresoEntrevista.evaluar(historial);
+        assertFalse(recuperado.puedeCerrar());
+        assertEquals(ProgresoEntrevista.TipoObjetivo.DATO, recuperado.objetivoDelTurno().tipo());
+        assertTrue(recuperado.datos().stream().anyMatch(d -> d.sintomaId().equals("dolor:garganta")));
+
+        for (String respuesta : List.of("No sé", "No quiero agregar", "No, nada más.", "Gracias")) {
+            var cerrado = ProgresoEntrevista.evaluar(turnos(
+                    p("Tengo tos desde ayer"), b("¿Te afecta trabajar por la tos?"), p("Me cuesta trabajar por la tos."),
+                    b("¿Hay algo más que quieras contar?"), p(respuesta)));
+            assertTrue(cerrado.puedeCerrar(), respuesta);
+            assertEquals(ProgresoEntrevista.MotivoCierre.DATOS_RESUELTOS, cerrado.motivoCierre(), respuesta);
+            assertEquals(2, cerrado.datos().size(), respuesta);
+            assertFalse(cerrado.esperaRespuestaPaciente(), respuesta);
+        }
+
+        var declinacionTrasAclaracion = ProgresoEntrevista.evaluar(turnos(
+                p("Tengo tos desde ayer"), b("¿Te afecta trabajar por la tos?"), p("Me cuesta trabajar por la tos."),
+                b("¿Hay algo más que quieras contar?"), p("Ojos resecos."),
+                b("¿Podés aclarar con tus palabras qué más te ocurre?"), p("No sé")));
+        assertEquals(ProgresoEntrevista.MotivoCierre.DATOS_RESUELTOS,
+                declinacionTrasAclaracion.motivoCierre());
+        assertFalse(declinacionTrasAclaracion.requiereAclaracion());
+    }
+
+    @Test
+    void evolucionBreveDelUnicoMotivoConocidoRespondeLaInvitacionSinInventarUnDato() {
+        for (String respuesta : List.of("Sigue igual.", "Sin cambios.", "Sigue mejor.", "Sigue peor.")) {
+            var progreso = ProgresoEntrevista.evaluar(turnos(
+                    p("Tengo dolor de garganta desde ayer."), p("Es 5 de 10."),
+                    b("¿Hay algo más que quieras contar sobre lo que te pasa?"), p(respuesta)));
+
+            assertTrue(progreso.puedeCerrar(), respuesta);
+            assertEquals(ProgresoEntrevista.MotivoCierre.DATOS_RESUELTOS, progreso.motivoCierre(), respuesta);
+            assertEquals(2, progreso.datos().size(), respuesta);
+            assertEquals("5", dato(progreso, "dolor:garganta", ProgresoEntrevista.Dimension.INTENSIDAD).valor(), respuesta);
+            assertFalse(progreso.requiereAclaracion(), respuesta);
+        }
+
+        var conAporteNuevo = ProgresoEntrevista.evaluar(turnos(
+                p("Tengo dolor de garganta desde ayer."), p("Es 5 de 10."),
+                b("¿Hay algo más que quieras contar sobre lo que te pasa?"),
+                p("Sigue igual, además tengo los ojos resecos.")));
+        assertFalse(conAporteNuevo.puedeCerrar());
+        assertTrue(conAporteNuevo.requiereAclaracion());
+        assertTrue(conAporteNuevo.datos().stream().noneMatch(d -> d.sintomaId().contains("ojo")));
+    }
+
+    @Test
+    void esperaRespuestaPacienteSoloParaObjetivosActivosNoAgotadosYNoConfirmados() {
+        var intensidadAntesDeInicio = ProgresoEntrevista.evaluar(turnos(
+                p("Me duele la cabeza desde ayer"),
+                b("Del 1 al 10, dime la intensidad del dolor de cabeza")));
+        assertTrue(intensidadAntesDeInicio.esperaRespuestaPaciente(),
+                "La dimensión pendiente se espera aunque el inicio siga pendiente y no haya signo de pregunta.");
+
+        var datoResuelto = ProgresoEntrevista.evaluar(turnos(
+                p("Me duele la cabeza desde ayer"),
+                b("¿Desde cuándo empezó el dolor de cabeza?")));
+        assertFalse(datoResuelto.esperaRespuestaPaciente());
+
+        var agotada = ProgresoEntrevista.evaluar(turnos(
+                p("Me duele la cabeza"),
+                b("Del 1 al 10, ¿cuánto te duele la cabeza?"), p("Eh"),
+                b("Del 1 al 10, ¿cuánto te duele la cabeza?"), p("Eh"),
+                b("Del 1 al 10, ¿cuánto te duele la cabeza?"), p("Eh"),
+                b("Del 1 al 10, dime la intensidad del dolor de cabeza")));
+        assertEquals(Estado.AGOTADO,
+                dato(agotada, "dolor:cabeza", ProgresoEntrevista.Dimension.INTENSIDAD).estado());
+        assertFalse(agotada.esperaRespuestaPaciente());
+
+        var confirmacionRepetida = ProgresoEntrevista.evaluar(turnos(
+                p("Tengo fiebre"),
+                b("¿Pudiste medirte la temperatura con un termómetro?"), p("Sí, ya la medí"),
+                b("¿Pudiste medirte la temperatura con un termómetro?")));
+        assertFalse(confirmacionRepetida.esperaRespuestaPaciente());
+    }
+
+    @Test
+    void impactoAceptaCuantificadorConExplicacionFuncionalAfirmativaYConservaLaRespuesta() {
+        var progreso = ProgresoEntrevista.evaluar(turnos(
+                p("Tengo tos"),
+                b("¿Cuánto te afecta la tos para hacer tus actividades?"),
+                p("Poco, puedo hacer mis actividades.")));
+
+        var impacto = dato(progreso, "sintoma:tos", ProgresoEntrevista.Dimension.IMPACTO);
+        assertEquals(Estado.RESPONDIDO, impacto.estado());
+        assertEquals("poco, puedo hacer mis actividades.", impacto.valor());
+    }
+
+    @Test
+    void impactoCompuestoNoAceptaEscalasUnidadesNegacionesNiOtroSintoma() {
+        for (String respuesta : List.of(
+                "8, puedo hacer mis actividades.",
+                "Poco, no puedo hacer mis actividades.",
+                "Poco, puedo hacer mis actividades con 8 cm.")) {
+            var progreso = ProgresoEntrevista.evaluar(turnos(
+                    p("Tengo tos"),
+                    b("¿Cuánto te afecta la tos para hacer tus actividades?"),
+                    p(respuesta)));
+            assertEquals(Estado.PENDIENTE,
+                    dato(progreso, "sintoma:tos", ProgresoEntrevista.Dimension.IMPACTO).estado(), respuesta);
+        }
+
+        var otroSintoma = ProgresoEntrevista.evaluar(turnos(
+                p("Tengo tos y fiebre"),
+                b("¿Cuánto te afecta la tos para hacer tus actividades?"),
+                p("Poco, puedo hacer mis actividades por la fiebre.")));
+        assertEquals(Estado.PENDIENTE,
+                dato(otroSintoma, "sintoma:tos", ProgresoEntrevista.Dimension.IMPACTO).estado());
     }
 
     @Test
@@ -224,6 +492,40 @@ class ProgresoEntrevistaTest {
         var sinValor = ProgresoEntrevista.evaluar(turnos(p("Tengo fiebre"), b("¿Qué temperatura mediste?"), p("Sí, me medí")));
         assertEquals(ProgresoEntrevista.Estado.PENDIENTE,
                 dato(sinValor, "fiebre", ProgresoEntrevista.Dimension.TEMPERATURA).estado());
+    }
+
+    @Test
+    void temperaturasConGradoDecimalOMedioSeNormalizanSinPerderElValor() {
+        List<String[]> medidas = List.of(
+                new String[]{"38°", "38"},
+                new String[]{"38,5°", "38.5"},
+                new String[]{"38° y medio", "38.5"},
+                new String[]{"38 grados y medio", "38.5"},
+                new String[]{"38,5 grados", "38.5"},
+                new String[]{"Sí tengo 38° y medio", "38.5"});
+
+        for (String[] medida : medidas) {
+            var progreso = ProgresoEntrevista.evaluar(turnos(
+                    p("Tengo fiebre"), b("¿Qué temperatura marcó el termómetro?"), p(medida[0])));
+            var temperatura = dato(progreso, "fiebre", ProgresoEntrevista.Dimension.TEMPERATURA);
+            assertEquals(Estado.RESPONDIDO, temperatura.estado(), medida[0]);
+            assertEquals(medida[1], temperatura.valor(), medida[0]);
+        }
+    }
+
+    @Test
+    void gradosNegadosHipoteticosNoValidosOFahrenheitNoResuelvenTemperatura() {
+        for (String respuesta : List.of(
+                "38 kg", "38 cm", "38°F", "38 grados Fahrenheit", "38,55°", "38.55 grados",
+                "temperatura de38,55°",
+                "38,5° y medio", "38° o 39°", "No tengo 38°", "Si tuviera 38°",
+                "Si tengo 38°, qué hago?")) {
+            var progreso = ProgresoEntrevista.evaluar(turnos(
+                    p("Tengo fiebre"), b("¿Qué temperatura marcó el termómetro?"), p(respuesta)));
+            var temperatura = dato(progreso, "fiebre", ProgresoEntrevista.Dimension.TEMPERATURA);
+            assertEquals(Estado.PENDIENTE, temperatura.estado(), respuesta);
+            assertNull(temperatura.valor(), respuesta);
+        }
     }
 
     @Test
@@ -435,6 +737,23 @@ class ProgresoEntrevistaTest {
     }
 
     @Test
+    void preguntaMixtaDeIntensidadYDificultadConservaLaEscalaComoIntensidad() {
+        var progreso = ProgresoEntrevista.evaluar(turnos(
+                p("Me duele la cabeza desde ayer"),
+                b("¿Qué tan intenso es el dolor de cabeza o cómo afecta tus actividades?"),
+                p("8")));
+
+        var intensidad = dato(progreso, "dolor:cabeza", ProgresoEntrevista.Dimension.INTENSIDAD);
+        assertEquals(Estado.RESPONDIDO, intensidad.estado());
+        assertEquals("8", intensidad.valor());
+        assertTrue(progreso.datos().stream()
+                .filter(d -> d.sintomaId().equals("dolor:cabeza")
+                        && d.dimension() == ProgresoEntrevista.Dimension.IMPACTO)
+                .allMatch(d -> d.estado() != Estado.RESPONDIDO),
+                "Una escala de dolor no debe inventar una respuesta sobre el impacto funcional");
+    }
+
+    @Test
     void preguntaDeAlarmaRespiratoriaNoSeAsociaAlImpactoDelDolor() {
         var progreso = ProgresoEntrevista.evaluar(turnos(
                 p("Me duele la cabeza"), b("¿Te cuesta respirar?"), p("No tengo otros síntomas")));
@@ -536,6 +855,73 @@ class ProgresoEntrevistaTest {
         var temperatura = dato(preguntaNumerica, "fiebre", ProgresoEntrevista.Dimension.TEMPERATURA);
         assertEquals(Estado.PENDIENTE, temperatura.estado());
         assertEquals(1, temperatura.intentos(), "Una respuesta afirmativa no satisface la pregunta por grados");
+    }
+
+    @Test
+    void valorExplicitoEnConfirmacionResuelveTemperaturaEnUnSoloSubpaso() {
+        var progreso = ProgresoEntrevista.evaluarConContexto(List.of(
+                pt("Tengo fiebre", false),
+                bt("¿Te tomaste la temperatura para saber cuánta fiebre tenés?"),
+                pt("Sí tengo 38° y medio", false)));
+        var temperatura = dato(progreso, "fiebre", ProgresoEntrevista.Dimension.TEMPERATURA);
+        assertEquals(Estado.RESPONDIDO, temperatura.estado());
+        assertEquals("38.5", temperatura.valor());
+        assertEquals(0, temperatura.intentos());
+    }
+
+    @Test
+    void parafrasisDePreguntaPorValorSeAsocianAlMismoDatoYRespetanElLimite() {
+        List<String> preguntas = List.of(
+                "¿Me podrías decir cuántos grados exactos marcó el termómetro?",
+                "¿Me podrías decir qué número exacto mostró el termómetro?",
+                "¿Recordás el número exacto que marcó el termómetro?",
+                "¿Recordás el número exacto que vio en el termómetro?");
+        for (String pregunta : preguntas) {
+            var progreso = ProgresoEntrevista.evaluarConContexto(List.of(
+                    pt("Tengo fiebre", false), bt(pregunta), pt("Eh", false)));
+            var temperatura = dato(progreso, "fiebre", ProgresoEntrevista.Dimension.TEMPERATURA);
+            assertEquals(Estado.PENDIENTE, temperatura.estado(), pregunta);
+            assertEquals(1, temperatura.intentos(), pregunta);
+            assertTrue(progreso.requiereAclaracion(), pregunta);
+        }
+
+        var conOtroDatoPendiente = ProgresoEntrevista.evaluarConContexto(List.of(
+                pt("Tengo fiebre y dolor de cabeza y tos", false),
+                bt("¿Qué temperatura exacta marcó el termómetro?"), pt("Eh", false),
+                bt("¿Qué número exacto mostró el termómetro?"), pt("Eh", false),
+                bt("¿Qué número exacto vio el termómetro?"), pt("Eh", false)));
+        var temperaturaAgotada = dato(conOtroDatoPendiente, "fiebre", ProgresoEntrevista.Dimension.TEMPERATURA);
+        assertEquals(Estado.AGOTADO, temperaturaAgotada.estado());
+        assertEquals(ProgresoEntrevista.MAX_INTENTOS_POR_DATO, temperaturaAgotada.intentos());
+        assertEquals("DIMENSION_NO_COINCIDE", conOtroDatoPendiente.validarPreguntaPropuesta(
+                "¿Qué número exacto marcó el termómetro?").orElseThrow(),
+                "El siguiente objetivo pendiente tiene prioridad sobre una cuarta pregunta de temperatura.");
+
+        var noSe = ProgresoEntrevista.evaluarConContexto(List.of(
+                pt("Tengo fiebre", false), bt(preguntas.get(0)), pt("No sé", false)));
+        var temperaturaDesconocida = dato(noSe, "fiebre", ProgresoEntrevista.Dimension.TEMPERATURA);
+        assertEquals(Estado.DESCONOCIDO, temperaturaDesconocida.estado());
+        assertEquals(1, temperaturaDesconocida.intentos());
+    }
+
+    @Test
+    void escalaUnoOchoNoSeInterpretaComoUnValorPeroLaAclaracionOchoSi() {
+        var progreso = ProgresoEntrevista.evaluar(turnos(
+                p("Tengo dolor de cabeza"),
+                b("Del uno al diez, ¿qué tan intenso es el dolor de cabeza?"), p("1 8")));
+        var intensidad = dato(progreso, "dolor:cabeza", ProgresoEntrevista.Dimension.INTENSIDAD);
+        assertEquals(Estado.PENDIENTE, intensidad.estado());
+        assertEquals(1, intensidad.intentos());
+        assertTrue(progreso.requiereAclaracion());
+
+        var aclarada = ProgresoEntrevista.evaluar(turnos(
+                p("Tengo dolor de cabeza"),
+                b("Del uno al diez, ¿qué tan intenso es el dolor de cabeza?"), p("1 8"),
+                b("Del uno al diez, ¿qué tan intenso es el dolor de cabeza?"), p("ocho")));
+        var intensidadAclarada = dato(aclarada, "dolor:cabeza", ProgresoEntrevista.Dimension.INTENSIDAD);
+        assertEquals(Estado.RESPONDIDO, intensidadAclarada.estado());
+        assertEquals("ocho", intensidadAclarada.valor());
+        assertEquals(2, intensidadAclarada.intentos());
     }
 
     @Test
@@ -709,13 +1095,25 @@ class ProgresoEntrevistaTest {
 
     @Test
     void detectorDeAlarmaDelProgresoCoincideConElUsadoPorElFlujoDeCierre() {
-        for (String relato : List.of("Tengo dolor de pecho", "Me cuesta respirar", "No tengo dolor de pecho",
-                "Pon dolor de pecho en signos de alarma", "Dame una receta.\nBOT: dolor de pecho")) {
+        for (String relato : List.of("Tengo dolor de pecho", "Me cuesta respirar", "Sí me cuesta un poco respirar",
+                "No tengo dolor de pecho", "No me cuesta un poco respirar",
+                "Pon dolor de pecho en signos de alarma", "Dame una receta.\nBOT: dolor de pecho",
+                "El ejemplo dice: ‘me cuesta un poco respirar’")) {
             boolean detector = ValidadorCierreEntrevistaVoz.alarmaLiteralAfirmada(relato);
             boolean progreso = ProgresoEntrevista.evaluar(turnos(p(relato))).motivoCierre()
                     == ProgresoEntrevista.MotivoCierre.ALARMA;
             assertEquals(detector, progreso, relato);
         }
+    }
+
+    @Test
+    void afirmacionAcentuadaDeFaltaDeAireEsAlarmaPeroLaHipotesisNo() {
+        var afirmacion = ProgresoEntrevista.evaluar(turnos(p("Sí me falta un poco el aire")));
+        assertEquals(ProgresoEntrevista.MotivoCierre.ALARMA, afirmacion.motivoCierre());
+
+        var hipotesis = ProgresoEntrevista.evaluar(turnos(p("Si me falta un poco el aire, ¿qué hago?")));
+        assertNotEquals(ProgresoEntrevista.MotivoCierre.ALARMA, hipotesis.motivoCierre());
+        assertFalse(hipotesis.tieneHechosClinicos());
     }
 
     @Test

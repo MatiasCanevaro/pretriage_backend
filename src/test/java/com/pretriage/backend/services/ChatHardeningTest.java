@@ -258,6 +258,10 @@ class ChatHardeningTest {
             chat.setId(91L);
             chat.agregarMensaje(new Mensaje("Hola. ¿Cuál es el motivo principal de tu consulta?", AutorMensaje.BOT, null));
             when(chats.findByIdAndPacienteUsuarioAuthId(91L, PACIENTE_ID)).thenReturn(Optional.of(chat));
+            when(chats.findForUpdate(91L, PACIENTE_ID)).thenReturn(Optional.of(chat));
+            when(provider.consultar(anyString(), anyString(), eq(true), any(java.time.Duration.class)))
+                    .thenAnswer(invocation -> provider.consultar(invocation.getArgument(0),
+                            invocation.getArgument(1), true));
         }
 
         private void responderContinuacion(EstadoEntradaChat estado) {

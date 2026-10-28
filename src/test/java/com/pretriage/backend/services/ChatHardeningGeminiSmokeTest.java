@@ -2,6 +2,7 @@ package com.pretriage.backend.services;
 
 import com.pretriage.backend.controllers.dtos.EstadoEntradaChat;
 import com.pretriage.backend.controllers.dtos.TurnoVoz;
+import com.pretriage.backend.controllers.dtos.ResumenEntrevistaVoz;
 import com.pretriage.backend.model.chat.Chat;
 import com.pretriage.backend.model.chat.Mensaje;
 import com.pretriage.backend.model.chat.AutorMensaje;
@@ -241,6 +242,62 @@ class ChatHardeningGeminiSmokeTest {
         assertEquals(EstadoEntradaChat.AMBIGUO, response.estadoEntrada());
         assertFalse(response.finalizado());
         assertNull(response.resultado());
+    }
+
+    @ParameterizedTest(name = "cierre de voz sintético, alarma={0}")
+    @CsvSource({"false", "true"})
+    void cierreRealVozConDatosCompartidosYTemperaturaDictada(boolean alarma) {
+        Chat chat = new Chat(new Paciente());
+        chat.setId(91L);
+        addBot(chat, "Hola. Contame qué te pasa.");
+        List<TurnoVoz> turns = List.of(
+                patient("Tengo tos y fiebre."),
+                new TurnoVoz(AutorMensaje.BOT, "¿Desde cuándo tenés estos síntomas?"),
+                patient("Desde anteayer."),
+                new TurnoVoz(AutorMensaje.BOT, "¿Cuánto te afecta la tos para hacer tus actividades?"),
+                patient("Poco, puedo hacer mis actividades."),
+                new TurnoVoz(AutorMensaje.BOT, "¿Te tomaste la temperatura?"),
+                patient("Sí, tengo 39° y medio."),
+                new TurnoVoz(AutorMensaje.BOT, "¿Hay algo más que quieras agregar?"),
+                patient(alarma ? "Sí, desde hace diez minutos me falta un poco el aire." : "No, nada más."));
+        var progress = ProgresoEntrevista.evaluar(turns);
+        assertEquals(alarma ? ProgresoEntrevista.MotivoCierre.ALARMA
+                : ProgresoEntrevista.MotivoCierre.DATOS_RESUELTOS, progress.motivoCierre());
+        assertTrue(progress.datos().stream().allMatch(d -> d.estado() == ProgresoEntrevista.Estado.RESPONDIDO));
+
+        RepoChat chats = mock(RepoChat.class);
+        AtencionHospitalService queue = mock(AtencionHospitalService.class);
+        when(chats.findByIdAndPacienteUsuarioAuthId(91L, "auth0|synthetic-smoke"))
+                .thenReturn(java.util.Optional.of(chat));
+        when(chats.save(any(Chat.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(queue.finalizarTriageEIngresarACola(anyString(), any(), anyString(), any(Chat.class)))
+                .thenReturn(new com.pretriage.backend.controllers.dtos.TiempoEstimadoAtencionResponse());
+        var service = new ChatService(chats, mock(RepoPacientes.class), mock(RepoConsultasMedicas.class),
+                mock(RepoEntradasCola.class), queue, client(), mapper);
+        var symptoms = alarma ? List.of("tos", "fiebre", "falta de aire") : List.of("tos", "fiebre");
+        var summary = new ResumenEntrevistaVoz("Tos y fiebre", symptoms,
+                "Tos y fiebre desde anteayer", "no informado", null,
+                alarma ? List.of("falta de aire") : List.of(), List.of(), List.of(), List.of(),
+                "no informado", "Temperatura de 39,5 grados. Tos con poco impacto en las actividades."
+                + (alarma ? " Falta de aire desde hace diez minutos." : ""));
+
+        service.finalizarEntrevistaVoz("91", "auth0|synthetic-smoke", turns, summary);
+
+        assertTrue(chat.isFinalizado());
+        assertEquals(EstadoClasificacionChat.COMPLETADA, chat.getEstadoClasificacion());
+        var saved = mapper.readTree(chat.getResultadoTriageJson());
+        assertEquals(progress.motivoCierre().name(), saved.path("seguimientoEntrevista").path("motivoCierre").asText());
+        assertTrue(saved.path("sintomas").size() >= 2);
+        assertTrue(saved.path("observaciones").asText()
+                        .matches("(?s).*39(?:[,.]5|\\s*(?:°|grados)?\\s*y medio).*"),
+                "la clasificación debe conservar la fracción de la temperatura dictada");
+        assertTrue(saved.path("nivelPrioridad").asInt() >= 1 && saved.path("nivelPrioridad").asInt() <= 5);
+        if (alarma) {
+            assertTrue(saved.path("requiereAtencionInmediata").asBoolean());
+            assertTrue(saved.path("nivelPrioridad").asInt() >= 4);
+        }
+        assertEquals(5, chat.getMensajes().stream().filter(m -> m.getAutor() == AutorMensaje.PACIENTE).count());
+        verify(queue, times(1)).finalizarTriageEIngresarACola(anyString(), any(), anyString(), any(Chat.class));
     }
 
     @Test

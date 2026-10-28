@@ -149,6 +149,49 @@ class ValidadorCierreEntrevistaVozTest {
     }
 
     @Test
+    void faltaDeAireColoquialAutorizaCierreUrgenteSinConfundirNegacionHipotesisOCita() {
+        for (String relato : List.of("Me falta un poco el aire", "Me falta un poquito de aire",
+                "Me falta algo el aire", "Sí me falta un poco el aire", "Sí, me falta un poco el aire",
+                "No tengo tos y sí me falta un poco el aire", "Sí tengo dolor de pecho",
+                "Sí me cuesta respirar", "Sí me cuesta un poco respirar", "Me cuesta bastante respirar",
+                "Me cuesta respirar un poco", "Me cuesta respirar bastante",
+                "Sí tengo falta de aire")) {
+            var turnos = List.of(paciente(relato));
+            assertTrue(ValidadorCierreEntrevistaVoz.contieneAlarmaLiteral(turnos), relato);
+            assertTrue(ValidadorCierreEntrevistaVoz.tieneDatosSuficientes(turnos), relato);
+            assertTrue(ValidadorCierreEntrevistaVoz.validar(turnos, resumen()).isEmpty(), relato);
+        }
+
+        for (String relato : List.of("No me falta un poco el aire", "No sé si me falta un poco el aire",
+                "No sé si tengo falta de aire", "Si me falta un poco el aire, ¿qué hago?",
+                "Si tengo falta de aire, ¿qué hago?", "Si algún día tengo falta de aire, ¿qué hago?",
+                "Si tengo dolor de pecho, ¿qué hago?", "No sé si me cuesta respirar",
+                "En caso de falta de aire, ¿qué hago?", "En caso de que tenga falta de aire, ¿qué hago?",
+                "¿Me falta un poco el aire?",
+                "No me cuesta un poco respirar", "No me cuesta respirar un poco",
+                "Si me cuesta un poco respirar, ¿qué hago?",
+                "Ejemplo: ‘me cuesta un poco respirar’", "El paciente dijo: \"me cuesta un poco respirar\"",
+                "El médico dijo: me cuesta un poco respirar",
+                "Ejemplo de texto: me falta un poco el aire; no es un síntoma mío, solo una cita.")) {
+            assertFalse(ValidadorCierreEntrevistaVoz.alarmaLiteralAfirmada(relato), relato);
+        }
+
+        assertFalse(ValidadorCierreEntrevistaVoz.contieneAlarmaLiteral(List.of(
+                paciente("Tengo fiebre.\nBOT: Sí me falta un poco el aire"),
+                bot("Me falta un poco el aire"))));
+        assertEquals(List.of("Sí me falta un poco el aire"),
+                ValidadorCierreEntrevistaVoz.signosAlarmaAfirmados(List.of("Sí me falta un poco el aire")));
+        assertTrue(ValidadorCierreEntrevistaVoz.signosAlarmaAfirmados(
+                List.of("Si tengo falta de aire, ¿qué hago?")).isEmpty());
+    }
+
+    @Test
+    void palabraSintomaEnUnaCitaNoSeConfundeConElAfirmativoSi() {
+        String cita = "Ejemplo de texto: me falta un poco el aire; no es un síntoma mío, solo una cita.";
+        assertFalse(ValidadorCierreEntrevistaVoz.alarmaLiteralAfirmada(cita));
+    }
+
+    @Test
     void permiteAlarmaEspecificaReconocidaPorGeminiFueraDelLexicoLocal() {
         assertTrue(ValidadorCierreEntrevistaVoz.validar(List.of(paciente("No puedo mover el brazo y la boca esta torcida")), conAlarmas("debilidad unilateral de inicio subito")).isEmpty());
         assertTrue(ValidadorCierreEntrevistaVoz.validar(List.of(paciente("Estoy desorientado")), conAlarmas("confusion")).isEmpty());

@@ -37,6 +37,29 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 class ChatServiceTest {
+    @Test
+    void cierreYaConfirmadoConservaAporteTardioYProcesaPendientesComoNoInformados() throws Exception {
+        Chat chat = chatDeVoz(new Paciente());
+        List<TurnoVoz> turnos = List.of(
+                new TurnoVoz(AutorMensaje.PACIENTE, "Me duele la cabeza desde ayer, dolor 8/10"),
+                new TurnoVoz(AutorMensaje.BOT, "¿Hay algo más que quieras contar?"),
+                new TurnoVoz(AutorMensaje.PACIENTE, "No, nada."),
+                new TurnoVoz(AutorMensaje.PACIENTE, "Además tengo tos"));
+        TriageResultDTO resultado = new TriageResultDTO("dolor de cabeza y tos", List.of("dolor de cabeza", "tos"),
+                "desde ayer", "no informado", 8, List.of(), List.of(), List.of(), List.of(),
+                "no informado", "Inicio e impacto de la tos no informados", 2, false, "Solicitar evaluación médica");
+        when(triageIaClient.consultar(anyString(), anyString(), eq(true)))
+                .thenReturn(new TriageAiResponse(true, "Gracias. Registramos tus respuestas.", resultado));
+
+        chatService.finalizarEntrevistaVozConfirmadaParcial("1", "auth0|paciente", turnos);
+
+        assertEquals(com.pretriage.backend.model.chat.EstadoClasificacionChat.COMPLETADA, chat.getEstadoClasificacion());
+        assertTrue(chat.getMensajes().stream().anyMatch(m -> m.getContenido().equals("Además tengo tos")));
+        assertEquals("CIERRE_PREVIO", new ObjectMapper().readTree(chat.getResultadoTriageJson())
+                .path("seguimientoEntrevista").path("motivoCierre").asText());
+        verify(atencionHospitalService).finalizarTriageEIngresarACola(anyString(), any(), anyString(), same(chat));
+    }
+
     private RepoChat repoChat;
     private RepoPacientes repoPacientes;
     private RepoConsultasMedicas repoConsultasMedicas;
@@ -48,11 +71,16 @@ class ChatServiceTest {
     @BeforeEach
     void setUp() {
         repoChat = mock(RepoChat.class);
+        when(repoChat.findForUpdate(any(), anyString())).thenAnswer(invocation ->
+                repoChat.findByIdAndPacienteUsuarioAuthId(invocation.getArgument(0), invocation.getArgument(1)));
         repoPacientes = mock(RepoPacientes.class);
         repoConsultasMedicas = mock(RepoConsultasMedicas.class);
         repoEntradasCola = mock(RepoEntradasCola.class);
         atencionHospitalService = mock(AtencionHospitalService.class);
         triageIaClient = mock(TriageIaClient.class);
+        when(triageIaClient.consultar(anyString(), anyString(), eq(true), any(java.time.Duration.class)))
+                .thenAnswer(invocation -> triageIaClient.consultar(invocation.getArgument(0),
+                        invocation.getArgument(1), true));
         chatService = new ChatService(repoChat, repoPacientes, repoConsultasMedicas, repoEntradasCola, atencionHospitalService, triageIaClient, new ObjectMapper());
     }
 
@@ -813,7 +841,7 @@ class ChatServiceTest {
         verify(triageIaClient, never()).consultar(anyString(), anyString(), eq(true));
         verify(triageIaClient, never()).consultar(anyString(), anyString(), eq(true), any(java.time.Duration.class));
         verify(triageIaClient, never()).consultarCorreccionFinal(anyString(), anyString(), any());
-        verify(repoChat).save(chat);
+        verify(repoChat, atLeastOnce()).save(chat);
         verifyNoInteractions(atencionHospitalService);
     }
 
@@ -885,10 +913,10 @@ class ChatServiceTest {
                     && turno.contenido().equals(m.getContenido())).count(),
                     "Se conserva la respuesta literal ante fallo del proveedor: " + turno.contenido());
         }
-        verify(repoChat).save(chat);
+        verify(repoChat, atLeastOnce()).save(chat);
         verify(triageIaClient, never()).consultarAlcance(anyString(), any(java.time.Duration.class));
         verify(triageIaClient).consultar(anyString(), anyString(), eq(true));
-        verify(triageIaClient, never()).consultar(anyString(), anyString(), eq(true), any(java.time.Duration.class));
+        verify(triageIaClient).consultar(anyString(), anyString(), eq(true), argThat(plazo -> !plazo.isNegative() && !plazo.isZero() && plazo.compareTo(java.time.Duration.ofSeconds(45)) <= 0));
         verifyNoInteractions(atencionHospitalService);
     }
 
@@ -924,10 +952,10 @@ class ChatServiceTest {
         assertTrue(chat.getMensajes().stream().anyMatch(m -> m.getAutor() == AutorMensaje.PACIENTE
                 && "Me duele la cabeza desde ayer.".equals(m.getContenido())));
         assertFalse(chat.getMensajes().stream().anyMatch(m -> "No se pudo clasificar.".equals(m.getContenido())));
-        verify(repoChat).save(chat);
+        verify(repoChat, atLeastOnce()).save(chat);
         verify(triageIaClient, never()).consultarAlcance(anyString(), any(java.time.Duration.class));
         verify(triageIaClient).consultar(anyString(), anyString(), eq(true));
-        verify(triageIaClient, never()).consultar(anyString(), anyString(), eq(true), any(java.time.Duration.class));
+        verify(triageIaClient).consultar(anyString(), anyString(), eq(true), argThat(plazo -> !plazo.isNegative() && !plazo.isZero() && plazo.compareTo(java.time.Duration.ofSeconds(45)) <= 0));
         verifyNoInteractions(atencionHospitalService);
     }
 
@@ -996,7 +1024,7 @@ class ChatServiceTest {
         verify(triageIaClient).consultarAlcance(anyString(), any(java.time.Duration.class));
         verify(triageIaClient, never()).consultar(anyString(), anyString(), eq(true));
         verify(triageIaClient, never()).consultar(anyString(), anyString(), eq(true), any(java.time.Duration.class));
-        verify(repoChat).save(chat);
+        verify(repoChat, atLeastOnce()).save(chat);
         verifyNoInteractions(atencionHospitalService);
     }
 
@@ -1016,7 +1044,7 @@ class ChatServiceTest {
         assertEquals(com.pretriage.backend.model.chat.EstadoClasificacionChat.FALLIDA, chat.getEstadoClasificacion());
         assertNull(chat.getResultadoTriageJson());
         assertTrue(chat.getMensajes().size() > mensajesPrevios);
-        verify(repoChat).save(chat);
+        verify(repoChat, atLeastOnce()).save(chat);
         verifyNoInteractions(atencionHospitalService);
     }
 
@@ -1037,7 +1065,7 @@ class ChatServiceTest {
         assertEquals(com.pretriage.backend.model.chat.EstadoClasificacionChat.FALLIDA, chat.getEstadoClasificacion());
         assertNull(chat.getResultadoTriageJson());
         assertTrue(chat.getMensajes().size() > mensajesPrevios);
-        verify(repoChat).save(chat);
+        verify(repoChat, atLeastOnce()).save(chat);
         verifyNoInteractions(atencionHospitalService);
     }
 
@@ -1068,7 +1096,7 @@ class ChatServiceTest {
         assertEquals(com.pretriage.backend.model.chat.EstadoClasificacionChat.FALLIDA, chat.getEstadoClasificacion());
         assertNull(chat.getResultadoTriageJson());
         assertTrue(chat.getMensajes().size() > mensajesPrevios);
-        verify(repoChat).save(chat);
+        verify(repoChat, atLeastOnce()).save(chat);
         verifyNoInteractions(atencionHospitalService);
     }
 
@@ -1085,7 +1113,7 @@ class ChatServiceTest {
         assertEquals(com.pretriage.backend.model.chat.EstadoClasificacionChat.FALLIDA, chat.getEstadoClasificacion());
         assertNull(chat.getResultadoTriageJson());
         assertTrue(chat.getMensajes().size() > mensajesPrevios);
-        verify(repoChat).save(chat);
+        verify(repoChat, atLeastOnce()).save(chat);
         verifyNoInteractions(atencionHospitalService);
     }
 
@@ -1100,7 +1128,7 @@ class ChatServiceTest {
         assertEquals(com.pretriage.backend.model.chat.EstadoClasificacionChat.FALLIDA, chat.getEstadoClasificacion());
         assertNull(chat.getResultadoTriageJson());
         assertTrue(chat.getMensajes().size() > mensajesPrevios);
-        verify(repoChat).save(chat);
+        verify(repoChat, atLeastOnce()).save(chat);
         verifyNoInteractions(atencionHospitalService);
     }
 
@@ -1118,7 +1146,7 @@ class ChatServiceTest {
         assertEquals(com.pretriage.backend.model.chat.EstadoClasificacionChat.FALLIDA, chat.getEstadoClasificacion());
         assertNull(chat.getResultadoTriageJson());
         assertTrue(chat.getMensajes().size() > mensajesPrevios);
-        verify(repoChat).save(chat);
+        verify(repoChat, atLeastOnce()).save(chat);
         verifyNoInteractions(atencionHospitalService);
     }
 
@@ -1142,7 +1170,7 @@ class ChatServiceTest {
         assertEquals(com.pretriage.backend.model.chat.EstadoClasificacionChat.FALLIDA, chat.getEstadoClasificacion());
         assertNull(chat.getResultadoTriageJson());
         assertTrue(chat.getMensajes().size() > mensajesPrevios);
-        verify(repoChat).save(chat);
+        verify(repoChat, atLeastOnce()).save(chat);
         verifyNoInteractions(atencionHospitalService);
     }
 
@@ -1185,7 +1213,7 @@ class ChatServiceTest {
         assertEquals(com.pretriage.backend.model.chat.EstadoClasificacionChat.FALLIDA, chat.getEstadoClasificacion());
         assertNull(chat.getResultadoTriageJson());
         assertTrue(chat.getMensajes().size() > mensajesPrevios);
-        verify(repoChat).save(chat);
+        verify(repoChat, atLeastOnce()).save(chat);
         verifyNoInteractions(atencionHospitalService);
     }
 
@@ -1204,7 +1232,7 @@ class ChatServiceTest {
         assertEquals(com.pretriage.backend.model.chat.EstadoClasificacionChat.FALLIDA, chat.getEstadoClasificacion());
         assertNull(chat.getResultadoTriageJson());
         assertTrue(chat.getMensajes().size() > mensajesPrevios);
-        verify(repoChat).save(chat);
+        verify(repoChat, atLeastOnce()).save(chat);
         verifyNoInteractions(atencionHospitalService);
     }
 
@@ -1218,7 +1246,7 @@ class ChatServiceTest {
         assertEquals(com.pretriage.backend.model.chat.EstadoClasificacionChat.FALLIDA, chat.getEstadoClasificacion());
         assertNull(chat.getResultadoTriageJson());
         assertTrue(chat.getMensajes().size() > mensajesPrevios);
-        verify(repoChat).save(chat);
+        verify(repoChat, atLeastOnce()).save(chat);
         verifyNoInteractions(atencionHospitalService);
     }
 
@@ -1236,7 +1264,7 @@ class ChatServiceTest {
         assertEquals(com.pretriage.backend.model.chat.EstadoClasificacionChat.FALLIDA, chat.getEstadoClasificacion());
         assertNull(chat.getResultadoTriageJson());
         assertTrue(chat.getMensajes().size() > mensajesPrevios);
-        verify(repoChat).save(chat);
+        verify(repoChat, atLeastOnce()).save(chat);
         verifyNoInteractions(atencionHospitalService);
     }
 
@@ -1254,7 +1282,7 @@ class ChatServiceTest {
         assertEquals(com.pretriage.backend.model.chat.EstadoClasificacionChat.FALLIDA, chat.getEstadoClasificacion());
         assertNull(chat.getResultadoTriageJson());
         assertTrue(chat.getMensajes().size() > mensajesPrevios);
-        verify(repoChat).save(chat);
+        verify(repoChat, atLeastOnce()).save(chat);
         verifyNoInteractions(atencionHospitalService);
     }
 

@@ -16,8 +16,10 @@ Desde el endurecimiento del chat, la clasificación final y las continuaciones d
 texto marcadas relevantes o ambiguas hacen una petición de verificación semántica antes de
 publicar o guardar la respuesta. Generación, verificación y eventual corrección
 comparten el presupuesto restante de 45 segundos. Las respuestas fijas de alcance
-no requieren una segunda verificación. El cierre de voz tiene además una comprobación previa de alcance,
-antes de aceptar el cierre y drenar las transcripciones; no escribe datos clínicos.
+no requieren una segunda verificación. El cierre de voz conserva una comprobación
+previa de alcance para los casos ambiguos o sin hechos clínicos admitidos; evita
+esa consulta redundante cuando el progreso local ya autoriza el cierre clínico.
+La comprobación de alcance no escribe datos clínicos.
 Véase [alcance y validación semántica](20-chat-hardening.md).
 
 Si el verificador rechaza semánticamente una clasificación final y proporciona un motivo
@@ -25,7 +27,23 @@ seguro de la lista cerrada, el orquestador puede incluir ese motivo como orienta
 una sola solicitud de corrección. Si el verificador no proporciona motivo, se usa una
 orientación genérica. El sistema no copia texto de rechazo ni citas del proveedor al
 prompt correctivo o a los logs; la corrección comparte el mismo presupuesto de 45 segundos.
-Un segundo rechazo conserva el chat cerrado en `FALLIDA` para procesamiento manual.
+Un segundo rechazo semántico conserva el chat cerrado en `FALLIDA`; no habilita
+otro bucle de clasificación ni un botón de reprocesamiento en mobile.
+
+Desde el cambio de cierre controlado por el servidor, `ProveedorIaException`
+transporta una marca técnica de fallo transitorio. El flujo automático de cierre
+puede reservar hasta dos intentos de clasificación, con presupuesto persistido,
+sin reenviar turnos ni depender del paciente. Cada intento de voz conserva un
+máximo de 45 s para generación/verificación/corrección; el coordinador limita el
+flujo a 91 s, incluida la espera de 500 ms. Los contadores no se reinician al
+recuperar un trabajo pendiente. Texto permite un intento restante tras un primer
+fallo transitorio de clasificación final y confirma la reserva antes de llamar
+de nuevo al proveedor. `PENDIENTE` se mantiene visible durante esta recuperación.
+
+Las respuestas 429 y 503 con `Retry-After` no habilitan un reintento de flujo que
+ignore la espera pedida; su tratamiento HTTP sigue en `GeminiJsonClient`. TLS,
+credenciales, seguridad, JSON y rechazo semántico no habilitan la recuperación
+técnica. Ver [el flujo completo](23-server-owned-voice-closure.md).
 
 `OMISION_INICIO` es un motivo permitido solo en la verificación final. Su feedback
 fijo pide conservar la referencia temporal afirmada, aun si se desconoce la fecha
@@ -118,3 +136,17 @@ fuerza una primera propuesta vacía y usa Gemini real para corregirla y verifica
 con una entrevista emocional ficticia. Comprueba cierre `DATOS_RESUELTOS`, estado
 `COMPLETADA`, tres llamadas al generador —la primera simulada—, un solo mensaje
 final y un único ingreso a cola. No usa Spring, base de datos ni entrevistas reales.
+
+## Text turn ownership (28 October 2026)
+
+The public message endpoint now commits the patient input and returns `202 ChatDTO`.
+An asynchronous worker owns intermediate question retries as well as newly accepted
+text closures. It reserves each attempt durably and permits at most two operations
+of 45 seconds for typed transient failures. A semantic rejection still permits
+only the existing correction within its operation; it does not itself justify a
+workflow retry. The same saved patient input is used throughout. The final answer
+and completed turn state commit together. Once automatic processing ends without
+an acceptable answer, `NO_DISPONIBLE` stops client waiting and blocks text/voice
+input. The mobile client reads status; it does not resend the patient message.
+This supersedes earlier synchronous-client behavior described above. See
+[durable text turns](24-durable-text-turns.md) for restart recovery and API details.

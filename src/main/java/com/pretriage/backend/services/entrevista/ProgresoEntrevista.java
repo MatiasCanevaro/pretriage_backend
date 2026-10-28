@@ -45,15 +45,28 @@ public final class ProgresoEntrevista {
     private static final Pattern AFIRMACION = Pattern.compile("(?:\\b(?:pero|aunque|si|y)\\s+|[,;]\\s*)(?:me|tengo|(?:lo\\s+)?siento|presento|aparecio|aparecen|noto)\\b");
     private static final Pattern ORDEN_INVENTAR = Pattern.compile("\\b(?:pon|ponga|agrega|agregue|anade|anada|incluye|incluya|marca|marque|anota|anote|escribe|escriba|registra|registre|inventa|invente)\\b.{0,60}$");
     private static final Pattern FECHA = Pattern.compile("\\b(?:desde\\s+(?:ayer|hoy|anoche|anteayer|el\\s+amanecer|esta\\s+(?:manana|tarde|noche)|que\\s+me\\s+dejo)|desde\\s+hace\\s+(?:un\\s+)?(?:rato|momento|poco)|hace\\s+\\d+\\s*(?:minutos?|horas?|dias?|semanas?|meses?|anos?)|(?:ayer|anoche|anteayer|hoy|el\\s+amanecer|esta\\s+(?:manana|tarde|noche)|hace\\s+\\S+\\s+(?:minutos?|horas?|dias?|semanas?|meses?|anos?))|(?:desde\\s+que\\s+(?:empezo|comenzo|aparecio)))\\b");
+    private static final Pattern FECHA_TRAMO_DIA = Pattern.compile("\\s+(?:por|a|en)\\s+(?:la\\s+)?(?:manana|tarde|noche)\\b");
     private static final Pattern DURACION_COMPUESTA = Pattern.compile("\\bhace\\s+\\d+\\s*(?:minutos?|horas?|dias?|semanas?|meses?|anos?)(?:\\s+y\\s+\\d+\\s*(?:minutos?|horas?|dias?|semanas?|meses?|anos?))*\\b");
     private static final Pattern INICIO_RELATIVO = Pattern.compile("\\bdesde\\s+que\\s+[^,;.!?]{1,80}");
-    private static final Pattern MEDICION = Pattern.compile("\\b(\\d{2}(?:[.,]\\d)?)\\s*(?:grados?|°(?:\\s*c)?|celsius)\\b|\\btemperatura\\s*(?:de|:)?\\s*(\\d{2}(?:[.,]\\d)?)\\b");
+    private static final Pattern MEDICION = Pattern.compile(
+            "(?<![\\d.,])\\b(\\d{2}(?:[.,]\\d)?)(?![.,]\\d)\\s*(?:grados?|°(?:\\s*c)?|celsius)"
+                    + "(?![\\p{L}\\p{N}])(?:\\s+y\\s+medio\\b)?"
+                    + "|\\btemperatura\\s*(?:de|:)?\\s*(\\d{2}(?:[.,]\\d)?)(?![.,]\\d)(?![\\p{L}\\p{N}])"
+                    + "(?!(?:\\s*(?:grados?|°(?:\\s*c)?|celsius)))(?:\\s+y\\s+medio\\b)?");
     private static final Pattern IMPACTO = Pattern.compile("\\b(?:mucho|muchisimo|bastante|poco|muy poco|nada|un poco|si|no|me limita|no me limita|me impide|no me impide|no puedo (?:trabajar|dormir|comer|caminar|hacer mis actividades)|me cuesta (?:trabajar|dormir|comer|caminar))\\b");
+    private static final Pattern IMPACTO_CUALIFICADO_FUNCIONAL = Pattern.compile(
+            "^(?:mucho|muchisimo|bastante|poco|muy poco|nada|un poco),?\\s+puedo\\s+(?:hacer|realizar)\\s+(?:mis|las)\\s+actividades(?:\\s+habituales)?[.!]?$");
     private static final Pattern TEMPERATURA_BARE = Pattern.compile("^(\\d{2}(?:[.,]\\d)?)$|^(\\d{2}(?:[.,]\\d)?)[.!]$");
+    private static final Pattern ANAFORA_PLURAL_SINTOMAS = Pattern.compile("\\b(?:estos|estas|esos|esas)\\s+(?:sintomas|signos|molestias)\\b");
+    private static final Pattern PREGUNTA_VALOR_TERMOMETRO_ANTES = Pattern.compile("\\b(?:numero|valor|medicion)\\b.{0,40}\\b(?:termometro|temperatura)\\b");
+    private static final Pattern PREGUNTA_VALOR_TERMOMETRO_DESPUES = Pattern.compile("\\b(?:termometro|temperatura)\\b.{0,40}\\b(?:numero|valor|mostro|marco|vio)\\b");
     private static final Pattern UNKNOWN = Pattern.compile("\\b(?:no se|no recuerdo|desconozco|no lo se|no la medi|no me la medi|no medi|no me medi|no se mi temperatura|no recuerdo mi temperatura)\\b");
     private static final Pattern REFUSAL = Pattern.compile("\\b(?:no quiero|no deseo|prefiero no|no voy a|no puedo)\\s+(?:decir|responder|contestar|informar|medir|compartir)\\b|\\bno quiero hablar de eso\\b");
-    private static final Pattern STOP = Pattern.compile("\\b(?:no quiero seguir|no quiero continuar|no quiero responder mas|no deseo seguir|quiero terminar|prefiero terminar|terminemos|dejemoslo aca)\\b");
+    private static final Pattern STOP = Pattern.compile("^(?:(?:por favor|yo)\\s+)?(?:no quiero seguir(?: respondiendo(?: preguntas?)?)?|no quiero continuar|no quiero responder mas|no deseo seguir|quiero terminar(?: la entrevista| el chat)?|prefiero terminar(?: la entrevista| el chat)?|terminemos(?: la entrevista| el chat)?|dejemoslo aca|termina el chat|termina la entrevista|finaliza(?: el chat| la entrevista)?)(?:\\s+(?:ahora|por favor|porfa|ya|porque\\b.{0,60}|estoy (?:cansado|cansada|agotado|agotada)))?$");
     private static final Pattern INVITATION = Pattern.compile("\\b(?:algo mas|otra cosa|algo para agregar|algo que quieras (?:contar|agregar)|queres agregar algo|quieres agregar algo|tenes algun otro sintoma|hay algun otro sintoma|que mas queres contar)\\b");
+    private static final Pattern ACLARACION_ABIERTA = Pattern.compile("\\b(?:podrias|podes|puedes|decime|dime|explica(?:me)?|aclara(?:me)?|describe(?:me)?|contame|cuentame)\\b");
+    private static final Pattern EVOLUCION_BREVE = Pattern.compile(
+            "^(?:sigue igual|esta igual|sin cambios|sigue sin cambios|sigue mejor|sigue peor|sigue mejorando|sigue empeorando|va mejor|va peor)[.!]?$");
     private static final Pattern ADDITIONAL_INFORMATION_CUE = Pattern.compile("\\b(?:algo\\s+mas|mas|otra cosa|otro[s]?\\s+(?:detalle|dato|aspecto|tema)|alguna otra\\s+(?:cosa|idea)|detalle adicional)\\b");
     private static final Pattern CONTRIBUTION_VERB = Pattern.compile("\\b(?:(?:queres|quieres|quieras|deseas|te gustaria|podrias|podes)\\s+)?(?:contar(?:me|nos)?|compartir(?:me)?|agregar|anadir|decir(?:me|nos)?|comentar(?:me)?|mencionar|sumar)\\b");
     private static final Pattern REGISTRATION_OR_CLOSURE = Pattern.compile("\\b(?:registrad[oa]s?|registro|registrar|registrarse|cerrar|cierre|finalizad[oa]s?|finalizar|terminad[oa]s?|terminar)\\b");
@@ -90,11 +103,13 @@ public final class ProgresoEntrevista {
     private final boolean ultimoTurnoPacienteTieneHechos;
     private final ObjetivoTurno objetivoTurno;
     private final boolean medicionConfirmadaObjetivo;
+    private final boolean esperaRespuestaPaciente;
 
     private ProgresoEntrevista(List<Dato> datos, MotivoCierre motivoCierre,
                                String instruccionSiguientePaso, boolean requiereAclaracion,
                                boolean tieneHechosClinicos, boolean ultimoTurnoPacienteTieneHechos,
-                               ObjetivoTurno objetivoTurno, boolean medicionConfirmadaObjetivo) {
+                               ObjetivoTurno objetivoTurno, boolean medicionConfirmadaObjetivo,
+                               boolean esperaRespuestaPaciente) {
         this.datos = List.copyOf(datos);
         this.motivoCierre = Objects.requireNonNull(motivoCierre);
         this.instruccionSiguientePaso = Objects.requireNonNull(instruccionSiguientePaso);
@@ -103,6 +118,7 @@ public final class ProgresoEntrevista {
         this.ultimoTurnoPacienteTieneHechos = ultimoTurnoPacienteTieneHechos;
         this.objetivoTurno = Objects.requireNonNull(objetivoTurno);
         this.medicionConfirmadaObjetivo = medicionConfirmadaObjetivo;
+        this.esperaRespuestaPaciente = esperaRespuestaPaciente;
     }
 
     public static ProgresoEntrevista evaluar(List<TurnoVoz> historial) {
@@ -123,6 +139,7 @@ public final class ProgresoEntrevista {
     public boolean requiereAclaracion() { return requiereAclaracion; }
     public boolean tieneHechosClinicos() { return tieneHechosClinicos; }
     public boolean ultimoTurnoPacienteTieneHechos() { return ultimoTurnoPacienteTieneHechos; }
+    public boolean esperaRespuestaPaciente() { return esperaRespuestaPaciente; }
     public ObjetivoTurno objetivoDelTurno() { return objetivoTurno; }
 
     /** Returns only fixed, non-sensitive local validation codes; unrecognized phrasing is delegated remotely. */
@@ -269,8 +286,11 @@ public final class ProgresoEntrevista {
         private boolean stop;
         private boolean invitacionAbierta;
         private boolean respondioInvitacion;
+        private boolean invitacionAporteOpacoPendiente;
+        private boolean invitacionAporteNoClaro;
         private boolean yaDijoQueNoAgrega;
         private boolean requiereAclaracion;
+        private boolean preguntaDatoTienePresupuesto;
 
         private Builder(List<Turno> history) { this.history = history; }
 
@@ -283,7 +303,22 @@ public final class ProgresoEntrevista {
                     .map(t -> new Dato(t.clave.sintomaId(), t.dimension, t.estado, t.intentos, t.valor))
                     .toList();
             return new ProgresoEntrevista(output, reason, instruction, requiereAclaracion, hechosClinicos,
-                    ultimoTurnoPacienteTieneHechos, selection.objetivo(), selection.medicionConfirmada());
+                    ultimoTurnoPacienteTieneHechos, selection.objetivo(), selection.medicionConfirmada(),
+                    esperaRespuestaPacienteEnTarea());
+        }
+
+        private boolean esperaRespuestaPacienteEnTarea() {
+            return switch (tarea.tipo()) {
+                case INVITACION, ACLARACION -> true;
+                case DATO -> preguntaDatoTienePresupuesto && tarea.claves().stream()
+                        .map(trackers::get)
+                        .anyMatch(target -> target != null && target.estado == Estado.PENDIENTE);
+                case CONFIRMACION_MEDICION -> tarea.claves().stream()
+                        .map(trackers::get)
+                        .anyMatch(target -> target != null && target.estado == Estado.PENDIENTE
+                                && !target.medicionConfirmada);
+                case NINGUNA -> false;
+            };
         }
 
         private void process(Turno turn) {
@@ -299,9 +334,9 @@ public final class ProgresoEntrevista {
             boolean advanced = false;
             ultimoTurnoPacienteTieneHechos = false;
             requiereAclaracion = false;
-            if (STOP.matcher(text).find()) stop = true; // explicit patient intent is not a clinical fact
             if (!turn.excluido()) {
-                boolean alarmaTurno = ValidadorCierreEntrevistaVoz.alarmaLiteralAfirmada(text);
+                stop |= stopSolicitado(text); // explicit patient intent is not a clinical fact
+                boolean alarmaTurno = ValidadorCierreEntrevistaVoz.alarmaLiteralAfirmada(turn.contenido());
                 alarma |= alarmaTurno;
                 boolean emocionTurno = affirmatedPattern(text, EMOTION);
                 emocional |= emocionTurno;
@@ -325,9 +360,25 @@ public final class ProgresoEntrevista {
             }
 
             if (tarea.tipo() == TipoTarea.INVITACION) {
-                respondioInvitacion |= !turn.excluido();
-                if (isNoMoreSymptoms(text)) yaDijoQueNoAgrega = true;
-                if (!turn.excluido()) advanced = true;
+                if (!turn.excluido()) {
+                    if (esDeclinacionInvitacion(text)) {
+                        respondioInvitacion = true;
+                        yaDijoQueNoAgrega = true;
+                        advanced = true;
+                    } else if (ultimoTurnoPacienteTieneHechos) {
+                        respondioInvitacion = true;
+                        invitacionAporteOpacoPendiente = false;
+                        advanced = true;
+                    } else if (evolucionBreveDeMotivoConocido(text)) {
+                        respondioInvitacion = true;
+                        invitacionAporteOpacoPendiente = false;
+                        ultimoTurnoPacienteTieneHechos = true;
+                        advanced = true;
+                    } else {
+                        invitacionAporteOpacoPendiente = true;
+                        requiereAclaracion = true;
+                    }
+                }
             } else if (tarea.tipo() == TipoTarea.CONFIRMACION_MEDICION && !tarea.claves().isEmpty()) {
                 for (Clave key : tarea.claves()) {
                     Tracker target = trackers.get(key);
@@ -386,7 +437,27 @@ public final class ProgresoEntrevista {
                     advanced = true;
                 }
                 advanced |= !symptoms(text).isEmpty() || affirmatedPattern(text, EMOTION);
-                if (!advanced) requiereAclaracion = true;
+                if (invitacionAbierta && !respondioInvitacion) {
+                    if (esDeclinacionInvitacion(text)) {
+                        respondioInvitacion = true;
+                        invitacionAporteOpacoPendiente = false;
+                        yaDijoQueNoAgrega = true;
+                        advanced = true;
+                    } else if (ultimoTurnoPacienteTieneHechos) {
+                        respondioInvitacion = true;
+                        invitacionAporteOpacoPendiente = false;
+                        advanced = true;
+                    } else if (evolucionBreveDeMotivoConocido(text)) {
+                        respondioInvitacion = true;
+                        invitacionAporteOpacoPendiente = false;
+                        ultimoTurnoPacienteTieneHechos = true;
+                        advanced = true;
+                    } else if (invitacionAporteOpacoPendiente) {
+                        invitacionAporteOpacoPendiente = false;
+                        invitacionAporteNoClaro = true;
+                    }
+                }
+                if (!advanced && !invitacionAporteNoClaro) requiereAclaracion = true;
             } else if (tarea.tipo() == TipoTarea.NINGUNA && !turn.excluido()
                     && exploratoryAnswer(tarea.contenidoBot(), text)) {
                 // A bounded negative/unknown answer to an explicit safety or history
@@ -394,6 +465,36 @@ public final class ProgresoEntrevista {
                 advanced = true;
             } else if (!motivoClinico && !emocional && !turn.excluido()) {
                 requiereAclaracion = true;
+            }
+
+            if (!turn.excluido() && invitacionAbierta && !respondioInvitacion
+                    && tarea.tipo() == TipoTarea.NINGUNA && invitacionAporteOpacoPendiente) {
+                if (esDeclinacionInvitacion(text)) {
+                    respondioInvitacion = true;
+                    invitacionAporteOpacoPendiente = false;
+                    yaDijoQueNoAgrega = true;
+                    advanced = true;
+                } else if (ultimoTurnoPacienteTieneHechos) {
+                    respondioInvitacion = true;
+                    invitacionAporteOpacoPendiente = false;
+                    advanced = true;
+                } else if (evolucionBreveDeMotivoConocido(text)) {
+                    respondioInvitacion = true;
+                    invitacionAporteOpacoPendiente = false;
+                    ultimoTurnoPacienteTieneHechos = true;
+                    advanced = true;
+                } else {
+                    invitacionAporteOpacoPendiente = false;
+                    invitacionAporteNoClaro = true;
+                    requiereAclaracion = false;
+                }
+            }
+
+            if (!turn.excluido() && invitacionAporteNoClaro
+                    && (advanced || ultimoTurnoPacienteTieneHechos)) {
+                invitacionAporteNoClaro = false;
+                invitacionAporteOpacoPendiente = false;
+                respondioInvitacion = true;
             }
 
             if (advanced) noAvance = 0;
@@ -404,10 +505,18 @@ public final class ProgresoEntrevista {
         private void processBot(String text) {
             // Preserve the unresolved objective from the patient turn that led to this prompt.
             // An open clarification is still an interview task even when it has no dimension words.
-            boolean aclaracionAbiertaPendiente = requiereAclaracion && tareaAclarar == null
-                    && !motivoClinico && !emocional;
+            boolean aclaracionAbiertaPendiente = requiereAclaracion && tareaAclarar == null;
             SeleccionObjetivo objetivoAntesDelBot = seleccionarObjetivo(determineReason());
             requiereAclaracion = false;
+            if (aclaracionAbiertaPendiente) {
+                if (hasQuestionForm(text) || ACLARACION_ABIERTA.matcher(text).find()) {
+                    tarea = new Tarea(TipoTarea.ACLARACION, List.of(), text);
+                } else {
+                    tarea = new Tarea(TipoTarea.NINGUNA, List.of(), text);
+                    requiereAclaracion = true;
+                }
+                return;
+            }
             if (INVITATION.matcher(text).find()) {
                 if (!respondioInvitacion) {
                     invitacionAbierta = true;
@@ -417,11 +526,8 @@ public final class ProgresoEntrevista {
                 }
                 return;
             }
-            if (text.contains("emocional") && (text.contains("fisic") || text.contains("corporal"))) {
-                tarea = new Tarea(TipoTarea.ACLARACION, List.of(), text);
-                return;
-            }
-            if (aclaracionAbiertaPendiente) {
+            if ((hasQuestionForm(text) || ACLARACION_ABIERTA.matcher(text).find())
+                    && text.contains("emocional") && (text.contains("fisic") || text.contains("corporal"))) {
                 tarea = new Tarea(TipoTarea.ACLARACION, List.of(), text);
                 return;
             }
@@ -451,7 +557,8 @@ public final class ProgresoEntrevista {
                     tarea = new Tarea(TipoTarea.INVITACION, List.of(), text);
                     return;
                 }
-                if (hasQuestionForm(text) && tareaAclarar == null && !motivoClinico && !emocional) {
+                if ((hasQuestionForm(text) || ACLARACION_ABIERTA.matcher(text).find())
+                        && tareaAclarar == null && !motivoClinico && !emocional) {
                     tarea = new Tarea(TipoTarea.ACLARACION, List.of(), text);
                     return;
                 }
@@ -498,18 +605,27 @@ public final class ProgresoEntrevista {
                 tarea = new Tarea(TipoTarea.NINGUNA, List.of(), text);
                 return;
             }
-            boolean preguntaCompartida = text.matches(".*\\b(?:ambos|ambas|los dos|las dos)\\b.*")
-                    || explicitlyMentioned.size() == 2;
+            boolean anaforaPlural = ANAFORA_PLURAL_SINTOMAS.matcher(text).find();
+            boolean referenciaBinaria = candidates.size() == 2
+                    && text.matches(".*\\b(?:ambos|ambas|los dos|las dos)\\b.*");
+            boolean preguntaCompartida = referenciaBinaria
+                    || anaforaPlural && dimension == Dimension.INICIO && candidates.size() > 1
+                    || explicitlyMentioned.size() > 1;
             if (mentioned.isEmpty() && candidates.size() > 1 && !preguntaCompartida) {
                 tarea = new Tarea(TipoTarea.NINGUNA, List.of(), text);
                 return;
             }
-            List<Tracker> targets = explicitlyMentioned.isEmpty()
-                    ? (preguntaCompartida && candidates.size() == 2 ? candidates : List.of(candidates.get(0)))
-                    : explicitlyMentioned;
-            if (!(preguntaCompartida && targets.size() == 2)) {
+            List<Tracker> targets = !explicitlyMentioned.isEmpty()
+                    ? explicitlyMentioned
+                    : anaforaPlural && dimension == Dimension.INICIO && candidates.size() > 1
+                        ? candidates
+                        : referenciaBinaria && candidates.size() == 2 ? candidates : List.of(candidates.get(0));
+            if (!(preguntaCompartida && targets.size() > 1)) {
                 targets = List.of(targets.get(0));
             }
+            preguntaDatoTienePresupuesto = targets.stream()
+                    .anyMatch(target -> target.estado == Estado.PENDIENTE
+                            && target.intentos < MAX_INTENTOS_POR_DATO);
             for (Tracker target : targets) {
                 if (target.intentos < MAX_INTENTOS_POR_DATO) target.intentos++;
             }
@@ -533,6 +649,12 @@ public final class ProgresoEntrevista {
         private boolean esPreguntaDeAporteAdicional(String text) {
             return ADDITIONAL_INFORMATION_CUE.matcher(text).find()
                     && CONTRIBUTION_VERB.matcher(text).find();
+        }
+
+        private boolean evolucionBreveDeMotivoConocido(String text) {
+            long motivosConocidos = trackers.keySet().stream()
+                    .map(Clave::sintomaId).distinct().count();
+            return motivoClinico && motivosConocidos == 1 && EVOLUCION_BREVE.matcher(text.strip()).matches();
         }
 
         private boolean ensureObjectives(Hallazgo symptom) {
@@ -737,6 +859,7 @@ public final class ProgresoEntrevista {
             if (alarma) return MotivoCierre.ALARMA;
             if (stop) return MotivoCierre.SOLICITUD_PACIENTE;
             if (totalRespuestas >= MAX_TURNOS) return MotivoCierre.LIMITE_RECURSOS;
+            if (invitacionAporteNoClaro) return MotivoCierre.LIMITE_RECURSOS;
             if (totalRespuestas >= MAX_SIN_AVANCE && noAvance >= MAX_SIN_AVANCE) return MotivoCierre.SIN_AVANCE;
             if (!motivoClinico && !emocional) return MotivoCierre.EN_CURSO;
             boolean allTerminal = trackers.values().stream().allMatch(t -> t.estado != Estado.PENDIENTE);
@@ -783,6 +906,9 @@ public final class ProgresoEntrevista {
         private String instruction(MotivoCierre reason, SeleccionObjetivo selection) {
             if (reason == MotivoCierre.ALARMA) return "La entrevista requiere cierre inmediato por una alarma literal afirmada; conserva solo los hechos del paciente.";
             if (reason == MotivoCierre.SOLICITUD_PACIENTE) return "La persona pidió terminar; cierra la entrevista y conserva los datos desconocidos sin completarlos.";
+            if (reason == MotivoCierre.LIMITE_RECURSOS && invitacionAporteNoClaro) {
+                return "Cierra como entrevista parcial: el aporte adicional siguió sin ser claro tras una aclaración. Conserva literalmente el aporte y los pendientes para la evaluación final; no inventes ni descartes síntomas.";
+            }
             if (reason == MotivoCierre.LIMITE_RECURSOS) return "Cierra como entrevista parcial por límite de recursos. Conserva pendientes y valores desconocidos; no los declares resueltos.";
             if (reason == MotivoCierre.SIN_AVANCE) return "Cierra como entrevista parcial por falta de avance. Conserva pendientes; no repitas la pregunta ni inventes un valor.";
             if (reason == MotivoCierre.DATOS_RESUELTOS) return "Los objetivos de entrevista están terminales y la invitación única fue contestada; se puede cerrar.";
@@ -793,6 +919,9 @@ public final class ProgresoEntrevista {
                     return "La respuesta no aportó un valor reconocible para " + target.etiqueta + " (" + target.dimension
                             + "). Pide una aclaración concreta de ese dato; conserva el objetivo pendiente.";
                 }
+            }
+            if (requiereAclaracion && tareaAclarar == null && invitacionAbierta && !respondioInvitacion) {
+                return "La respuesta a la invitación no fue clara. Pide una sola aclaración abierta y breve sobre qué más le ocurre, sin sugerir síntomas ni inventar datos.";
             }
             if (tarea.tipo() == TipoTarea.DATO) return "Espera la respuesta al único dato pendiente preguntado; no avances a otro objetivo en este turno.";
             if (tarea.tipo() == TipoTarea.CONFIRMACION_MEDICION) return "Espera la respuesta a si pudo medirse la temperatura; una confirmación no sustituye el valor numérico.";
@@ -825,13 +954,19 @@ public final class ProgresoEntrevista {
                         .matcher(text).find()
                 || Pattern.compile("\\bcuant[oa]\\s+tiempo\\s+(?:hace|lleva|paso)\\b").matcher(text).find()) return Dimension.INICIO;
         if (text.contains("temperatura") || text.contains("cuantos grados") || text.contains("marco el termometro")
-                || text.contains("cuanto marco") || text.contains("que marco el termometro")) return Dimension.TEMPERATURA;
+                || text.contains("cuanto marco") || text.contains("que marco el termometro")
+                || PREGUNTA_VALOR_TERMOMETRO_ANTES.matcher(text).find()
+                || PREGUNTA_VALOR_TERMOMETRO_DESPUES.matcher(text).find()) return Dimension.TEMPERATURA;
         if (text.contains("intensidad") && (text.contains("vacio") || text.contains("sensacion"))) return Dimension.IMPACTO;
+        // When one question offers functional impact as an alternative, an explicit
+        // pain-severity question still owns a numeric answer such as "8".
+        if (Pattern.compile("\\bque tan (?:fuerte|intens[oa])\\b").matcher(text).find()
+                && Pattern.compile("\\b(?:dolor|doli\\w*|duele(?:n)?|cefalea)\\b").matcher(text).find()) {
+            return Dimension.INTENSIDAD;
+        }
         if (text.contains("impacto") || text.contains("te impide") || text.contains("limita") || text.contains("funcional")
                 || text.contains("afecta") || text.contains("actividades") || text.contains("hacer tus cosas")
                 || esPreguntaDeImpactoFuncional(text)) return Dimension.IMPACTO;
-        if (Pattern.compile("\\bque tan (?:fuerte|intens[oa])\\b").matcher(text).find()
-                && Pattern.compile("\\b(?:dolor|doli\\w*|duele(?:n)?|cefalea)\\b").matcher(text).find()) return Dimension.INTENSIDAD;
         if (text.contains("intensidad") || text.contains("cuanto te duele") || text.contains("0 al 10")
                 || text.contains("1 al 10") || text.contains("escala")) return Dimension.INTENSIDAD;
         return null;
@@ -981,7 +1116,11 @@ public final class ProgresoEntrevista {
 
     private static String extractTime(String text) {
         Matcher m = FECHA.matcher(text);
-        if (m.find()) return m.group();
+        if (m.find()) {
+            Matcher tramoDia = FECHA_TRAMO_DIA.matcher(text);
+            tramoDia.region(m.end(), text.length());
+            return tramoDia.lookingAt() ? text.substring(m.start(), tramoDia.end()).strip() : m.group();
+        }
         Matcher duration = Pattern.compile("\\b\\d+\\s*(?:minutos?|horas?|dias?|semanas?|meses?|anos?)\\b").matcher(text);
         return duration.find() ? duration.group() : null;
     }
@@ -1077,6 +1216,7 @@ public final class ProgresoEntrevista {
     private static String impactValue(String text) {
         if (UNKNOWN.matcher(text).find()) return null;
         if (REFUSAL.matcher(text).find()) return null;
+        if (IMPACTO_CUALIFICADO_FUNCIONAL.matcher(text.strip()).matches()) return text.strip();
         if (text.matches("^(?:no|no me limita|no me impide|nada|no[, ]+no me limita|no[, ]+no me impide)[.!]?$")) return "sin impacto";
         if (text.matches("^si[, ]+(?:me )?(?:limita|impide|cuesta|resulta dificil|no puedo)\\b.*[.!]?$")) return text.strip();
         if (text.matches("^(?:si|mucho|muchisimo|bastante|poco|muy poco|un poco|me cuesta .+|no puedo .+)[.!]?$")) return text.strip();
@@ -1098,12 +1238,32 @@ public final class ProgresoEntrevista {
     }
 
     private static String extractTemperature(String text, boolean allowBareValue) {
-        if (text.matches(".*\\b(?:kg|kilos?|cm|milimetros?|metros?)\\b.*")) return null;
+        if (text.matches(".*\\b(?:kg|kilos?|cm|milimetros?|metros?|fahrenheit)\\b.*")
+                || text.matches("(?s).*\\b\\d{2}(?:[.,]\\d)?\\s*°\\s*f(?:ahrenheit)?\\b.*")) return null;
         Matcher measurement = MEDICION.matcher(text);
-        if (measurement.find()) return measurement.group(1) != null ? measurement.group(1).replace(',', '.') : measurement.group(2).replace(',', '.');
+        String value = null;
+        while (measurement.find()) {
+            if (!affirmedAt(text, measurement.start()) || esMedicionHipotetica(text, measurement.start())) continue;
+            String measured = (measurement.group(1) != null ? measurement.group(1) : measurement.group(2))
+                    .replace(',', '.');
+            if (measurement.group().matches("(?s).*\\s+y\\s+medio\\b.*")) {
+                if (measured.contains(".")) return null;
+                measured += ".5";
+            }
+            if (value != null && !value.equals(measured)) return null;
+            value = measured;
+        }
+        if (value != null) return value;
         if (!allowBareValue) return null;
         Matcher bare = TEMPERATURA_BARE.matcher(text.strip());
         return bare.matches() ? (bare.group(1) != null ? bare.group(1) : bare.group(2)).replace(',', '.') : null;
+    }
+
+    private static boolean esMedicionHipotetica(String text, int start) {
+        String prefix = text.substring(0, start).stripTrailing();
+        boolean hypotheticalMood = prefix.matches("(?s).*\\bsi\\s+(?:tuviera|tuviese|fuera|estuviera|llegara a tener)\\b.*$");
+        boolean conditionalQuestion = text.matches("(?s).*\\bsi\\s+(?:tengo|me|siento|presento)\\b.{0,60}\\b(?:que hago|que debo hacer|que deberia hacer|que puedo hacer|que pasa)\\b.*");
+        return hypotheticalMood || conditionalQuestion;
     }
 
     private static boolean physicalAffirmation(String text) {
@@ -1127,6 +1287,20 @@ public final class ProgresoEntrevista {
 
     private static boolean isNoMoreSymptoms(String text) {
         return text.matches(".*\\b(?:no tengo (?:nada mas|mas sintomas|otros sintomas)|no hay (?:nada mas|otros sintomas)|nada mas que agregar|no quiero (?:agregar|seguir|contar)|no deseo (?:agregar|seguir|contar))\\b.*");
+    }
+
+    private static boolean esDeclinacionInvitacion(String text) {
+        // STT commonly punctuates a single negative answer as "No. Nada." or "No, no.".
+        // Match the whole reply so an additional complaint is never discarded as courtesy.
+        return isNoMoreSymptoms(text) || text.matches(
+                "^(?:no|nada(?: mas)?|gracias)(?:[\\s,;.!]+(?:no|nada(?: mas)?|gracias))*[.! ]*$") || text.matches(
+                "^(?:no|no,? gracias|no,?\\s+nada mas|no se|no recuerdo|desconozco|nada|nada mas|gracias|muchas gracias|eso es todo|prefiero no agregar(?: nada)?|no quiero agregar(?: nada)?|no deseo agregar(?: nada)?)[.! ]*$");
+    }
+
+    private static boolean stopSolicitado(String text) {
+        return java.util.Arrays.stream(text.split("[,;.!?\\n]"))
+                .map(String::strip)
+                .anyMatch(segment -> STOP.matcher(segment).matches());
     }
 
     private static boolean exploratoryAnswer(String question, String answer) {

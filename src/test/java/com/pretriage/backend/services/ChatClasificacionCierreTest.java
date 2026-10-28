@@ -24,10 +24,15 @@ class ChatClasificacionCierreTest {
             mock(RepoEntradasCola.class), cola, ia, new ObjectMapper());
     final Chat chat = new Chat(new Paciente());
     ChatClasificacionCierreTest() {
+        simularConsultaConPresupuesto();
         chat.setId(1L);
         when(repo.findByIdAndPacienteUsuarioAuthId(1L, "patient")).thenReturn(Optional.of(chat));
         when(repo.findForUpdate(1L, "patient")).thenReturn(Optional.of(chat));
         when(repo.findFirstByPacienteUsuarioAuthIdOrderByFechaHoraCreacionDescIdDesc("patient")).thenReturn(Optional.of(chat));
+    }
+    private void simularConsultaConPresupuesto() {
+        when(ia.consultar(anyString(), anyString(), eq(true), any(java.time.Duration.class)))
+                .thenAnswer(invocation -> ia.consultar(invocation.getArgument(0), invocation.getArgument(1), true));
     }
     TriageAiResponse result(int priority, boolean immediate, List<String> alarms, List<String> allergies) {
         return new TriageAiResponse(true, "Gracias", new TriageResultDTO("dolor de pecho", List.of("dolor de pecho"),
@@ -41,6 +46,7 @@ class ChatClasificacionCierreTest {
     @Test void textoYVozCorrigenLaMismaIncoherenciaSinCambiarPrioridadLocalmente() {
         for (boolean voice : List.of(false, true)) {
             reset(ia, cola);
+            simularConsultaConPresupuesto();
             chat.setFinalizado(false); chat.getMensajes().clear();
             when(ia.consultar(anyString(), anyString(), eq(true))).thenReturn(result(2, false, List.of("dolor toracico"), List.of()));
             when(ia.consultarCorreccionFinal(anyString(), anyString(), any())).thenReturn(result(4, true, List.of("dolor toracico"), List.of()));

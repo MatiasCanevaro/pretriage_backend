@@ -339,6 +339,116 @@ The reported phrase was replayed only in local tests with simulated providers.
 No completed chat, priority, symptom list or application record was rewritten.
 Restart the backend to load the change; no mobile rebuild is needed.
 
+For repeated questions in voice interviews, check `seguimientoEntrevista` as well
+as the literal transcript: a shared onset question must resolve the symptoms it
+referred to, temperature spellings such as `38° y medio` must preserve the half
+degree, and thermometer paraphrases must share one attempt budget. A later symptom
+must not inherit that earlier onset. An affirmed colloquial breathing alarm permits
+closure even if other data remain pending; when Live omits its tool, the bounded
+closure recovery may process the saved transcript once. See the current regression
+commands and verification limits in [the progress policy](21-cierre-por-datos-resueltos.md).
+
+Read-only diagnosis on 2026-10-28 found that chats 35, 36 and 37 were all persisted
+as `COMPLETADA`, despite the reported voice warning. Each contained an additional
+invitation after the first negative reply. STT variants `No, no.`, `No. Nada.` and
+`No, nada.` were not recognized as declines and triggered an unnecessary
+clarification. The local matcher now accepts those complete short negatives;
+it preserves additional complaints, excluded-turn filtering and unresolved data.
+Chat 36 also contains an out-of-range pain-scale transcription; accepting a
+negative invitation does not turn that value into a valid intensity.
+
+The lack of an error log does not identify the cause of a client voice warning.
+Mobile now preserves an in-memory navigation snapshot, avoids replacing it with
+a shorter pending server history, and automatically reads `GET /api/chat/{id}`
+while confirming voice closure. Only a prolonged unconfirmed result exposes a
+manual state check. A completed server result clears voice warnings; a late
+socket failure cannot replace a received successful result. This requires an
+updated APK and does not change historical chats or send their contents to Gemini.
+
+Verified on 2026-10-28: 184 focused Java tests passed in
+`ProgresoEntrevistaTest`, `EntrevistaVozBucleRegresionTest`, `SesionVozChatTest` and
+`ValidadorCierreEntrevistaVozTest`. The initial regression reproduced the rejected
+oral negatives before the matcher change. The session regression closes after one
+`No, nada.` without another patient answer. These are unit tests with simulated
+providers; no Spring integration context or application database is used. Mockito
+was loaded as a startup Java agent to avoid a blocked dynamic attach in the sandbox.
+
+Android `assembleDebug` and `testDebugUnitTest` passed with 38 unit tests, zero
+failures/errors/skips, and Gradle stopped afterward. Nine recovery regressions cover
+navigation snapshots, old/short GET histories, authoritative terminal results,
+transient failures while classifying, read failures, bounded polling and cancellation.
+The generated APK uses `http://192.168.100.241:8080`. This does not verify a new
+phone recording or iOS compilation. Restart the backend and install the updated APK
+to exercise both sides; no application process was restarted by the diagnostic.
+
+The next read-only voice diagnosis found chat 38 closed as `FALLIDA`, with no
+structured result. One negative was transcribed as `Nona`, followed by a request
+for clarification and a second clear negative. Preserve that literal transcript;
+do not silently reinterpret an unclear word as a clinical denial. All voice turns
+had the batch-persistence timestamp, so the database cannot identify the exact
+post-answer delay or prove which closure/provider step failed.
+
+Two mobile regressions reproduced a separate display bug: `EstadoVoz.PROCESANDO`
+unconditionally hid a persisted failure even after an explicit processing error
+or the polling deadline. The revised precedence accepts those confirmed failures,
+leaves the voice state inactive and permits processing retry. If no result can be
+confirmed by the deadline, the UI stops loading and offers a state check without
+inventing failure or reopening the interview. Cancellation of that exhausted client
+channel must not reset the state to `PENDIENTE` in its `finally` block.
+
+For a new attempt, correlate the safe `Voice closure ...`, `Voice provider ...`
+and `Voice classification ...` records using chat ID. They include technical phase
+timing and an explicit warning on incomplete closure, without logging patient
+content. An incomplete closure could previously persist `FALLIDA` without a warning
+from that branch. The new diagnostics do not establish the historic chat's cause.
+
+Verification on 2026-10-28: both new stuck-processing regressions failed before
+the display fix. The final Android build and all 42 unit tests passed, including
+four new checks for server-confirmed failure with an open socket, a persisted
+failure after the deadline, releasing the client voice state, and unknown results
+without reopening/truncating the interview. Gradle was stopped afterward. The 184
+focused Java tests passed with the phase diagnostics added. No provider request
+used the historic chat, no chat was rewritten or reclassified, and no new phone
+recording was tested. The latest APK was generated at 11:29 -03:00 with the existing
+LAN backend URL; restart the backend for the new diagnostics and install that APK.
+
+The subsequent report of shuffled messages when reopening the chat exposed a
+separate persistence-order defect. `Chat.mensajes` ordered only by timestamp,
+while all voice turns in a batch could have an identical timestamp. A PostgreSQL
+regression with synthetic turns and reversed physical row order returned the
+entire equal-time batch in reverse order before the fix. JPA now orders by
+`fechaHoraEnvio ASC, id ASC`, stabilizing both the DTO and histories used by voice
+and classification. A second regression preserves timestamp precedence over ID.
+This does not establish why a historic classification failed, but removes an
+unstable input order from later processing. No historical row is rewritten and
+no result is manufactured. The reprocessing button remains appropriate for a
+persisted `FALLIDA` chat; it retries classification of the saved responses.
+
+Verified on 2026-10-28: the equal-timestamp PostgreSQL test failed before the
+tie-breaker (`[5,6,7,8,9,10]` expected, reversed IDs returned). After the change,
+260 focused tests passed without failures, errors or skips, including the three
+history persistence tests and the chat/progress/voice regressions. Both runs used
+`scripts/test_backend_isolated.py` with independent temporary databases and Compose
+disabled; both temporary databases were removed by the runner. The domain diagrams
+were regenerated and have no structural changes. The ordering fix needs a backend
+restart and no additional mobile rebuild beyond the latest APK already generated.
+
+```powershell
+python -B scripts/test_backend_isolated.py --test ChatHistoryPersistenceTest,ChatServiceTest,ChatClasificacionCierreTest,ProgresoEntrevistaTest,EntrevistaVozBucleRegresionTest,SesionVozChatTest,ValidadorCierreEntrevistaVozTest
+```
+
+For a silent or generic assistant response, inspect `procesando_respuesta` separately
+from `entrevista_finalizada`: the first keeps the interview/microphone open, while
+the second confirms closure. A bot acknowledgement or a transcription chunk must
+not clear server-owned processing. A stalled open transcript is saved before the
+session offers resume; it must not invoke classification retry. Optional synthetic
+session tests exercise omitted tools with a real REST classifier and mocked
+repositories/transport, without using a microphone or the application database:
+
+```powershell
+./mvnw.cmd "-Dtest=SesionVozContinuidadGeminiSmokeTest" "-Dpretriage.gemini.hardening.live=true" "-Dspring.docker.compose.enabled=false" test
+```
+
 ```powershell
 ./mvnw.cmd "-Dtest=ChatHardeningGeminiSmokeTest#chatRealAclaraAbiertamenteAntesDeRegistrarUnMotivoEmocional+verificadorRealRechazaSintomaSoloEnBotAunqueLaCitaSeaDelPaciente+verificadorRealRechazaInicioOmitidoPeseAReferenciaRelativaAfirmada" "-Dpretriage.gemini.hardening.live=true" "-Dspring.docker.compose.enabled=false" test
 ```
@@ -363,3 +473,39 @@ After stopping the isolated backend, remove the disposable database:
 ```powershell
 docker exec postgre psql -U myuser -d postgres -c "DROP DATABASE pretriage_chat_e2e"
 ```
+
+## Cierre y recuperación del chat 39 (28/10/2026)
+
+El flujo vigente está documentado en `23-server-owned-voice-closure.md`: cierre del
+servidor en la frontera de turno con datos resueltos, clasificación pendiente
+persistida y recuperación automática acotada sin botón de reprocesar en mobile.
+Verificación final: 748 pruebas backend registradas (730 aprobadas, 18 opcionales
+omitidas), cero fallos/errores; 43 pruebas Android aprobadas y APK generado. Se
+regeneraron los diagramas del dominio. No se alteró ni reclasificó el chat 39 y no
+se probaron nuevas grabaciones de teléfono ni se usaron historiales reales en Gemini.
+
+## Turnos de texto y timeouts del chat 42 (28/10/2026)
+
+`POST /api/chat/{id}/mensajes` ahora devuelve `202 ChatDTO`: guarda el turno antes
+de procesarlo y GET expone `estadoTurnoTexto`, UUID e intentos. El script E2E envía
+una sola vez con UUID y espera por GET hasta 180 segundos; no repite el POST.
+Conserva compatibilidad con la respuesta síncrona de servidores anteriores.
+`NO_DISPONIBLE` o clasificación `FALLIDA` fallan la prueba; la procedencia clínica
+se comprueba en el resultado persistido, no se deduce de una respuesta HTTP 202.
+
+Para diagnosticar un turno, correlacionar `Text turn completed`,
+`Text turn attempt failed` y `Text turn stopped` con chatId, requestId, intento,
+categoría y tiempo. No registrar el contenido clínico. Los timeouts de transporte
+pueden habilitar un segundo intento automático; `COMUNICACION` es el rechazo de
+una propuesta de pregunta y conserva una sola corrección dentro del mismo plazo.
+Ver [turnos durables de texto](24-durable-text-turns.md).
+
+Verificación backend: suite completa de 755 pruebas registradas, 737 aprobadas y
+18 opcionales omitidas, sin fallos ni errores. Después se agregó una regresión del
+cierre final fallido y pasaron las siete pruebas PostgreSQL de
+`TextoTurnoServicePersistenceTest`. Los 15 tests Python de los helpers E2E pasan.
+Todas las pruebas de persistencia usaron bases temporales eliminadas por el runner.
+El historial del chat 42 se consultó sin modificarlo ni enviarlo a Gemini.
+El APK Android final se generó a las 14:59 -03:00 con la URL LAN existente; pasaron
+las 52 pruebas unitarias, sin fallos/errores/omisiones, y se detuvo Gradle. No se
+probó un teléfono ni se compiló iOS.

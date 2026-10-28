@@ -52,8 +52,11 @@ class SesionVozIntegracionTest {
         assertTrue(flujo.canal.contiene("triage_finalizado"));
         assertEquals(3, flujo.chat.getMensajes().stream()
                 .filter(mensaje -> mensaje.getAutor() == AutorMensaje.PACIENTE).count());
+        assertEquals(1, flujo.chat.getMensajes().stream()
+                .filter(mensaje -> mensaje.getAutor() == AutorMensaje.BOT && mensaje.getContenido().equals("Listo"))
+                .count());
         verify(flujo.ia, times(1)).consultar(anyString(), anyString(), eq(true));
-        verify(flujo.repo, times(1)).save(flujo.chat);
+        verify(flujo.cola, times(1)).finalizarTriageEIngresarACola(eq("auth0|voz"), any(), anyString(), any(Chat.class));
     }
 
     @Test
@@ -87,9 +90,11 @@ class SesionVozIntegracionTest {
         assertEquals(4, resultado.path("nivelPrioridad").intValue());
         assertEquals("GEMINI", resultado.path("origenClasificacion").asText());
         assertTrue(flujo.chat.getMensajes().stream().anyMatch(m -> m.getContenido().contains("ahora es 8/10")));
+        assertEquals(1, flujo.chat.getMensajes().stream()
+                .filter(m -> m.getAutor() == AutorMensaje.BOT && m.getContenido().equals("Listo"))
+                .count());
         verify(flujo.ia, times(1)).consultar(anyString(), anyString(), eq(true));
         verify(flujo.cola, times(1)).finalizarTriageEIngresarACola(eq("auth0|voz"), any(), anyString(), any(Chat.class));
-        verify(flujo.repo, times(1)).save(flujo.chat);
     }
 
     @Test
@@ -107,27 +112,31 @@ class SesionVozIntegracionTest {
         assertTrue(flujo.canal.contiene("error"));
         assertFalse(flujo.canal.contiene("triage_finalizado"));
         assertEquals(3, flujo.chat.getMensajes().stream().filter(m -> m.getAutor() == AutorMensaje.PACIENTE).count());
+        assertFalse(flujo.chat.getMensajes().stream()
+                .anyMatch(m -> m.getAutor() == AutorMensaje.BOT && m.getContenido().equals("Listo")));
+        verify(flujo.ia, times(1)).consultar(anyString(), anyString(), anyBoolean());
         verifyNoInteractions(flujo.cola);
-        verify(flujo.repo, times(1)).save(flujo.chat);
     }
 
     @Test
-    void falloTecnicoEnPreflightPersisteElSnapshotComoFallidoSinClasificar() throws Exception {
+    void falloTecnicoEnPreflightSinDatosClinicosPersisteElSnapshotComoFallido() throws Exception {
         Flujo flujo = new Flujo();
         when(flujo.ia.consultarAlcance(anyString(), any()))
                 .thenThrow(new ProveedorIaException(new IllegalStateException("sin cuota")));
-        flujo.entrada("Me duele la cabeza desde ayer.");
-        flujo.completarEntrevista();
+        flujo.entrada("No quiero seguir respondiendo.");
         flujo.finalizar(resumen());
         flujo.terminarGemini();
 
         assertTrue(flujo.chat.isFinalizado());
         assertEquals(EstadoClasificacionChat.FALLIDA, flujo.chat.getEstadoClasificacion());
         assertNull(flujo.chat.getResultadoTriageJson());
-        assertEquals(3, flujo.chat.getMensajes().stream()
+        assertEquals(1, flujo.chat.getMensajes().stream()
                 .filter(mensaje -> mensaje.getAutor() == AutorMensaje.PACIENTE).count());
+        assertTrue(flujo.chat.getMensajes().stream()
+                .anyMatch(mensaje -> mensaje.getAutor() == AutorMensaje.PACIENTE
+                        && mensaje.getContenido().equals("No quiero seguir respondiendo.")));
+        verify(flujo.ia, times(1)).consultarAlcance(anyString(), any());
         verify(flujo.ia, never()).consultar(anyString(), anyString(), anyBoolean());
-        verify(flujo.repo, times(1)).save(flujo.chat);
         verifyNoInteractions(flujo.cola);
     }
 
@@ -151,12 +160,15 @@ class SesionVozIntegracionTest {
                 .filter(e -> e.contains("\"tipo\":\"triage_finalizado\"")).count());
         assertEquals(3, flujo.chat.getMensajes().stream().filter(m -> m.getAutor() == AutorMensaje.PACIENTE).count());
         assertTrue(flujo.chat.getMensajes().stream().anyMatch(m -> m.getContenido().contains("No, no tengo más síntomas.")));
+        assertEquals(1, flujo.chat.getMensajes().stream()
+                .filter(m -> m.getAutor() == AutorMensaje.BOT && m.getContenido().equals("Listo"))
+                .count());
         verify(flujo.ia, times(1)).consultar(anyString(), anyString(), eq(true));
-        verify(flujo.repo, times(2)).save(flujo.chat);
+        verify(flujo.cola, times(1)).finalizarTriageEIngresarACola(eq("auth0|voz"), any(), anyString(), any(Chat.class));
     }
 
     @Test
-    void fallaRestTrasNoToolDejaElChatFallidoYPermiteReintentoPosterior() throws Exception {
+    void falloNoTransitorioRestTrasNoToolDejaFALLIDASinActualizarLaCola() throws Exception {
         Flujo flujo = new Flujo();
         when(flujo.ia.consultar(anyString(), anyString(), anyBoolean()))
                 .thenThrow(new ProveedorIaException(new IllegalStateException("sin cuota")));
@@ -174,7 +186,9 @@ class SesionVozIntegracionTest {
         assertNull(flujo.chat.getResultadoTriageJson());
         assertFalse(flujo.canal.contiene("triage_finalizado"));
         assertEquals(3, flujo.chat.getMensajes().stream().filter(m -> m.getAutor() == AutorMensaje.PACIENTE).count());
-        verify(flujo.repo, times(2)).save(flujo.chat);
+        assertFalse(flujo.chat.getMensajes().stream()
+                .anyMatch(m -> m.getAutor() == AutorMensaje.BOT && m.getContenido().equals("Listo")));
+        verify(flujo.ia, times(1)).consultar(anyString(), anyString(), anyBoolean());
         verifyNoInteractions(flujo.cola);
     }
 
@@ -245,6 +259,8 @@ class SesionVozIntegracionTest {
         private String ultimaLlamadaFinalizar;
 
         Flujo() {
+            when(ia.consultar(anyString(), anyString(), eq(true), any(java.time.Duration.class)))
+                    .thenAnswer(inv -> ia.consultar(inv.getArgument(0), inv.getArgument(1), true));
             chat.setId(7L);
             chat.agregarMensaje(new Mensaje("Cual es el motivo?", AutorMensaje.BOT, null));
             when(repo.findByIdAndPacienteUsuarioAuthId(7L, "auth0|voz")).thenReturn(Optional.of(chat));

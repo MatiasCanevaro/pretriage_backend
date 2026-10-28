@@ -1,5 +1,9 @@
 # Cierre de entrevista según datos resueltos
 
+La ejecución vigente del cierre por voz y los reintentos de clasificación desde el
+servidor están documentados en [23-server-owned-voice-closure.md](23-server-owned-voice-closure.md).
+El cierre no requiere otra negativa, una cortesía ni el botón de reprocesar de mobile.
+
 ## Objetivo y plan
 
 La entrevista conserva el relato espontáneo y las preguntas sencillas sobre los
@@ -33,6 +37,11 @@ de un síntoma concreto, se guarda como referencia relativa sin inventar una fec
 Esa asociación no completa el inicio de otro síntoma ni transforma una referencia
 sin contexto en evidencia espontánea sobre todos los síntomas.
 
+Una pregunta plural como «¿Desde cuándo tenés estos síntomas?» puede vincular la
+respuesta a los síntomas ya identificados a los que se refiere esa pregunta. La
+asociación se fija al preguntar: un síntoma agregado después conserva su inicio
+pendiente. Una pregunta que nombra solo un síntoma mantiene su destinatario único.
+
 | Estado | Significado |
 | --- | --- |
 | `PENDIENTE` | Falta una respuesta que pueda interpretarse para ese dato. |
@@ -58,6 +67,18 @@ Se reconocen formas habituales como «¿mediste la temperatura?» o «¿te tomas
 la temperatura?». «No tengo termómetro» y «no me la tomé» dejan el valor desconocido
 tanto ante la confirmación como ante una pregunta directa por los grados.
 
+Se admiten las transcripciones de mediciones con símbolo de grado, por ejemplo
+`38°`, `38,5°` y `38° y medio`, así como `38 grados y medio`. La última forma se
+interpreta como `38.5`, sin perder la fracción. Un valor válido que acompaña al
+«sí» de la confirmación también resuelve el valor de temperatura. Las preguntas
+por el número o valor que mostró, marcó o se vio en el termómetro corresponden al
+mismo dato y comparten sus intentos; cambiar las palabras no reinicia el límite.
+Las unidades incompatibles y una escala ambigua como `1 8` siguen sin convertirse
+en mediciones válidas.
+En una pregunta de impacto, una cuantificación acompañada de una explicación
+funcional como «Poco, puedo hacer mis actividades» conserva esa respuesta literal;
+no exige contestar únicamente una palabra ni se transforma en intensidad de dolor.
+
 `AGOTADO` impide seguir proponiendo preguntas sobre el dato, pero no invalida una
 corrección válida aportada después. Si la persona responde «38» a una pregunta
 explícita de temperatura, el valor puede recuperar ese dato
@@ -70,6 +91,15 @@ corresponde. Si aparecen más síntomas, se completan sus datos pertinentes sin
 repetir esa invitación. «No tengo otros síntomas» evita explorar síntomas nuevos,
 pero no completa por sí solo los datos pendientes de los síntomas ya mencionados.
 «No sé» y el rechazo de un dato permiten continuar sin insistir en él.
+
+Contestar la invitación con un aporte que el seguimiento local aún no entiende
+no completa automáticamente todos los objetivos. Se permite una aclaración abierta
+breve. Si esa aclaración también permanece sin interpretar, se cierra parcialmente
+por `LIMITE_RECURSOS` conservando los turnos admitidos y los datos pendientes para
+la evaluación de Gemini. Ese límite no convierte el léxico local en una lista de
+síntomas permitidos ni crea un síntoma o prioridad por reglas. Si la aclaración
+aporta un síntoma reconocido, se agregan sus propios datos pendientes. Una cortesía,
+una declinación o un «no sé» en respuesta a la invitación no inicia otra invitación.
 
 ## Límites de recursos
 
@@ -192,12 +222,33 @@ ni sus presupuestos. El cierre de voz conserva la herramienta, validación,
 drenaje de transcripciones y procesamiento posteriores existentes. El móvil no
 decide el cierre contando mensajes y no requiere un protocolo nuevo.
 
-Si los datos permiten cerrar y se respondió negativamente a la invitación abierta,
-la sesión de voz no exige otro «no» si Live omite su herramienta de finalización.
+Si el progreso permite cerrar, la sesión de voz no exige otro «no» ni un pedido de
+terminación si Live omite su herramienta de finalización. La recuperación cubre
+todos los motivos terminales, con reevaluación del progreso y resguardos sobre
+transcripciones tardías y rechazos de alcance. Una alarma afirmada por el paciente,
+incluidas expresiones como «me falta un poco el aire» o «me cuesta un poco respirar»,
+permite terminar sin esperar los datos de otros síntomas. Una negación, una
+hipótesis o una cita del bot no establece esa alarma.
 Tras un único aviso y un margen acotado, puede cerrar usando la transcripción
 literal y el procesamiento de Gemini REST existente, sin construir un resumen
 clínico local. Antes de confirmar el cierre vuelve a comprobar el progreso y las
 transcripciones tardías. Un rechazo de alcance pendiente no se salta por esa vía.
+
+La proyección también expone `esperaRespuestaPaciente()`, sin persistir otro campo:
+indica si el último turno del bot dejó una tarea de respuesta activa sobre un dato
+realmente pendiente. No sustituye al motivo de cierre. En voz, las preguntas de
+cuantificación pueden cambiar de orden entre datos pendientes; preguntar intensidad
+antes de inicio no invalida por sí solo una pregunta. Los datos resueltos, agotados
+y las confirmaciones de medición ya contestadas no habilitan otra espera. Un acuse
+genérico no equivale a una pregunta; la puntuación de una transcripción de voz
+tampoco determina por sí sola si la pregunta es válida.
+
+El estado transitorio `procesando_respuesta` y el watchdog de continuidad aseguran
+una indicación visible entre la respuesta del paciente y la siguiente pregunta o
+confirmación de cierre. Un fallo de continuación antes de terminar la entrevista
+guarda los turnos recibidos sin clasificarlos, conserva la entrevista abierta y
+ofrece retomar. No se usa el reintento de clasificación para procesar una frase
+abierta ni se requiere que el paciente adivine que debe enviar otra respuesta.
 
 El reconocimiento local de síntomas y expresiones es acotado. No es una lista de
 consultas permitidas: un motivo de salud comprensible fuera de ese léxico conserva
@@ -261,4 +312,74 @@ compuesta y sin inventar intensidad numérica de dolor:
 
 ```powershell
 ./mvnw.cmd "-Dtest=ChatHardeningGeminiSmokeTest#flujoRealConservaDuracionNaturalDelDolorDeRodillaSinRepreguntarla" "-Dpretriage.gemini.hardening.live=true" "-Dspring.docker.compose.enabled=false" test
+```
+
+Verificación del 28 de octubre de 2026 para las repreguntas por voz:
+
+- La reconstrucción de una entrevista compuesta resuelve el inicio compartido,
+  la intensidad y la medición dictada antes de aceptar el cierre. Un síntoma
+  agregado después mantiene su propio inicio pendiente.
+- Las paráfrasis del termómetro comparten tres intentos. Las unidades incorrectas,
+  las cifras ambiguas, los decimales parciales y los turnos excluidos no completan
+  valores conocidos. La prueba de «sí» usa límites Unicode para conservar palabras
+  como «síntoma» y los filtros de citas.
+- La sesión simulada comprueba cierre por alarma cuando Live omite la herramienta,
+  incorporación del turno tardío, un único procesamiento y respeto del rechazo
+  de alcance. El síntoma del paciente autoriza el cierre; la voz del bot no lo hace.
+- 254 verificaciones enfocadas aprobadas, incluidas dos pruebas opcionales con
+  Gemini REST real y relatos ficticios de tos y fiebre. Se comprueban los cierres
+  `DATOS_RESUELTOS` y `ALARMA`, la conservación de `39,5` grados, clasificación
+  `COMPLETADA` y una única actualización de cola. La alarma exige prioridad al
+  menos 4 y atención inmediata.
+- Suite completa final: 724 pruebas registradas, sin fallos ni errores y 17
+  opcionales omitidas, ejecutada con `python -B scripts/test_backend_isolated.py`
+  en una base temporal creada y eliminada por el runner, con Compose desactivado.
+
+Las pruebas de voz simulan los eventos y transcripciones de Live; no incluyen
+una grabación nueva desde un teléfono. Los casos con Gemini REST usan repositorios
+y cola simulados, sin escribir en la base de la app. No se reescriben resultados
+históricos. Reiniciar el backend carga los cambios; el contrato de mobile se mantiene.
+
+Con `GEMINI_API_KEY` en el entorno, repetir únicamente los dos casos reales:
+
+```powershell
+./mvnw.cmd "-Dtest=ChatHardeningGeminiSmokeTest#cierreRealVozConDatosCompartidosYTemperaturaDictada" "-Dpretriage.gemini.hardening.live=true" "-Dspring.docker.compose.enabled=false" test
+```
+
+El reconocimiento de la respuesta a la invitación única acepta negativas orales
+repetidas o puntuadas por STT: «No, no.», «No. Nada.», «No, nada.» y «No, nada más,
+gracias.». Resuelven la invitación en la primera respuesta, sin otra confirmación.
+Estas fórmulas deben abarcar la respuesta completa: «No, pero veo luces extrañas»
+sigue requiriendo aclaración. Los turnos excluidos no resuelven la invitación;
+una negativa tampoco completa una intensidad u otro dato pendiente. En ese caso
+se conserva el dato por aclarar, sin repetir la invitación.
+
+La regresión de estas negativas pasó 184 pruebas Java enfocadas el 28/10/2026,
+sin fallos ni errores. Incluye un cierre simulado de sesión tras una sola respuesta
+«No, nada.». La recuperación de mobile pasó 38 pruebas unitarias y `assembleDebug`.
+No se probaron nuevas grabaciones desde un teléfono ni se modificaron los chats
+históricos. Ver los límites del diagnóstico en [08-e2e-chat-debugging.md](08-e2e-chat-debugging.md).
+
+La verificación anterior de continuidad y cierre del mismo día había registrado:
+
+- Suite backend final: 735 pruebas registradas, cero fallos y errores, 18
+  opcionales omitidas. Se usó la base temporal del runner aislado.
+- Tres casos ficticios de `SesionVozContinuidadGeminiSmokeTest` aprobados:
+  `DATOS_RESUELTOS`, `ALARMA` y `SOLICITUD_PACIENTE`. Se simulan los eventos de
+  Live y la omisión de la herramienta, y Gemini REST clasifica realmente con
+  repositorios/cola simulados. Se exige una única clasificación/actualización de
+  cola, una finalización visible y ninguna respuesta adicional del paciente.
+- Android: `assembleDebug` y `testDebugUnitTest`, 29 pruebas aprobadas. Gradle se
+  detuvo al terminar. El APK apunta a `http://192.168.100.241:8080` mediante el
+  override de compilación; la configuración local/default del repositorio no cambia.
+- Las regresiones de mobile cubren transcripción fragmentada, progreso controlado
+  por el servidor, acuses del bot que no cancelan el indicador, cierre pendiente
+  y errores abiertos frente a entrevista ya terminada.
+
+Esta verificación no incluye una grabación nueva en un teléfono. Es necesario
+reiniciar el backend e instalar el APK actualizado para probar conjuntamente el
+evento de continuidad y su presentación. Los resultados históricos no se alteran.
+
+```powershell
+./mvnw.cmd "-Dtest=SesionVozContinuidadGeminiSmokeTest" "-Dpretriage.gemini.hardening.live=true" "-Dspring.docker.compose.enabled=false" test
 ```

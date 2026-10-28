@@ -4,6 +4,7 @@ import com.pretriage.backend.controllers.dtos.ChatDTO;
 import com.pretriage.backend.controllers.dtos.MensajeDTO;
 import com.pretriage.backend.exceptions.ChatNoEncontradoException;
 import com.pretriage.backend.services.ChatService;
+import com.pretriage.backend.model.chat.EstadoTurnoTexto;
 import com.pretriage.backend.services.voz.GeminiLiveProperties;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.server.ServerHttpRequest;
@@ -62,7 +63,8 @@ public class ChatVozHandshakeInterceptor implements HandshakeInterceptor {
             response.setStatusCode(HttpStatus.NOT_FOUND);
             return false;
         }
-        if (chat.finalizado()) {
+        if (chat.finalizado() || chat.estadoTurnoTexto() == EstadoTurnoTexto.PENDIENTE
+                || chat.estadoTurnoTexto() == EstadoTurnoTexto.NO_DISPONIBLE) {
             response.setStatusCode(HttpStatus.CONFLICT);
             return false;
         }

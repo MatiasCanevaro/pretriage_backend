@@ -120,10 +120,15 @@ failures use [bounded retries](19-gemini-retries.md), two HTTP attempts per invo
 by default; all calls and corrections share the operation's 45-second budget.
 Do not automatically resend mobile POST messages or replay Live audio.
 Unfinished text-turn failures remove the undelivered patient message;
-classification failures after closure preserve answers with `finalizado=true` and
-`estadoClasificacion=FALLIDA`. Both modalities share final-result validation and
-one bounded semantic correction. Retry `POST /api/chat/{id}/clasificacion` adds no
-patient message and accepts only the latest failed chat, locking it against concurrent retries.
+classification failures after closure preserve answers with `finalizado=true`.
+New voice jobs commit `PENDIENTE` before external work and automatically recover
+typed transient faults, with at most two persisted attempts. Final text transient
+faults schedule the remaining attempt after commit. Exhausted/permanent faults
+leave `FALLIDA`; current mobile has no reprocessing button. Both modalities share
+final-result validation and one bounded semantic correction. Compatibility retry
+`POST /api/chat/{id}/clasificacion` adds no patient message and accepts only the
+latest `FALLIDA` chat, never an in-flight `PENDIENTE` job. See
+[the current closure/recovery contract](23-server-owned-voice-closure.md).
 Reception form fallback remains active in `AdmisionRecepcionService`. Preserve
 valid final AI classifications instead of overwriting them with local rules.
 Immediate-attention final messages must include the result's safety recommendation.
@@ -301,6 +306,11 @@ Full tests need Docker Desktop access.
 - Do not count delayed or manually waiting patients as in queue.
 - Do not add admin module assumptions yet; admin is planned but not in scope.
 - Do not expose raw `.env` values in logs or docs.
+- Text messages use `TextoTurnoService`: accept once with a stable UUID, return
+  `202 ChatDTO`, then poll GET. Durable `estadoTurnoTexto` is independent of
+  `estadoClasificacion`. Never replay POST to recover a lost response. A pending
+  or unavailable text turn blocks text and voice; automatic retries are bounded.
+  See `docs/24-durable-text-turns.md` before changing this lifecycle.
 
 ## Documentation Maintenance
 

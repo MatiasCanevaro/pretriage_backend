@@ -400,13 +400,29 @@ Body:
 
 ```json
 {
-  "contenido": "Tengo fiebre desde ayer"
+  "contenido": "Tengo fiebre desde ayer",
+  "solicitudId": "b8ce94e9-83fd-48c1-92e3-36b7ae45cc77"
 }
 ```
 
-Returns `ChatTurnResponse` with `respuesta`, `atencionEstimada` and the additive
-field `origenRespuesta` (`GEMINI` for new successful chat turns). When triage finalizes,
-`atencionEstimada` is populated and the existing queue entry's priority is
+Returns **`202 ChatDTO`** after committing the patient message and durable
+`estadoTurnoTexto=PENDIENTE`. `solicitudId` is an optional UUID; current clients
+send one stable key per submission. A known key and identical content return the
+current snapshot without adding another message, including after subsequent turns.
+Reusing a key with different content, or sending a new key while `PENDIENTE` or
+`NO_DISPONIBLE`, returns `409`. Invalid UUID format returns `400`.
+
+The backend processes the saved turn asynchronously. Clients poll GET; they do
+not replay the POST after losing its response. `ChatDTO` adds `estadoTurnoTexto`
+(`SIN_SOLICITAR`, `PENDIENTE`, `COMPLETADA`, `NO_DISPONIBLE`),
+`solicitudTurnoTextoId` and `intentosTurnoTexto`. State and messages survive screen
+navigation and process restart. `COMPLETADA` describes the text turn; final triage
+must still be checked through `finalizado` and `estadoClasificacion`.
+See [durable text turns](24-durable-text-turns.md).
+
+Internally a verified turn uses `ChatTurnResponse` with `respuesta`,
+`atencionEstimada` and `origenRespuesta`; this is no longer the HTTP response body
+of this endpoint. When triage finalizes, the existing queue entry's priority is
 updated. When the bot finalizes, the patient's `ConsultaMedica` is linked to this chat
 (`ConsultaMedica.chat`, FK `consulta_medica.id_chat`); that link is what the hospital metrics
 count as "pretriage realizado". The final stored `Chat.resultadoTriageJson` includes
@@ -419,8 +435,9 @@ clarification, off-topic input a fixed redirection. These turns have
 `atencionEstimada=null`, keep the chat open and store no classification.
 Excluded patient text remains visible locally and counts toward technical resource
 limits, but is not resent as provider context or accepted as clinical evidence.
-Provider failures and invalid model responses
-return HTTP 500 with an `error` message; no local classification is created.
+Provider failures and invalid model responses are recorded by the asynchronous
+worker. A terminal failure sets `estadoTurnoTexto=NO_DISPONIBLE`; no local
+classification is created and new text/voice input is blocked.
 During interviewing, Gemini receives a question schema (`mensaje`, `estadoEntrada`); the
 backend decides when to request final classification. The internal continuation
 input also carries backend-generated `objetivoDelTurno` (type, canonical symptom
@@ -446,9 +463,11 @@ they must not infer `COMPLETADA` from interview closure alone. See
 [closure by resolved data](21-cierre-por-datos-resueltos.md).
 Transient REST failures have [bounded automatic retries](19-gemini-retries.md):
 two HTTP attempts per Gemini invocation by default, sharing the turn's 45-second
-budget with semantic verification and any correction. If an unfinished turn still fails, the
-request returns HTTP 500 and its patient message is removed so it can be retried.
-If final classification fails, answers remain saved in a closed `FALLIDA` chat.
+budget with semantic verification and any correction. A typed transient failure
+permits one further workflow attempt against the saved patient message, with a
+persisted two-attempt budget. If interviewing still fails, the message remains
+saved and the assistant becomes `NO_DISPONIBLE`; the patient does not resend it.
+Final-classification failure retains its clinical closure state and no result.
 Existing
 historical chat results may still contain `FALLBACK_LOCAL` or `OLLAMA`.
 For a final result requiring immediate attention, `respuesta.contenido` includes
@@ -468,7 +487,23 @@ it remains nonblank for every final or immediate-attention response.
 GET /api/chat/{id}
 ```
 
+Returns messages in `fechaHoraEnvio ASC, id ASC` order. The message ID is an
+internal tie-breaker and is not added to the DTO. Voice transcripts can share the
+same batch-persistence timestamp; equal timestamps must preserve saved turn order
+instead of relying on database row order. The same ordering is used when the
+backend reconstructs interview progress, voice context and classification input.
+This read order also applies to existing chats without rewriting their messages.
+The returned text-turn status is authoritative even if the POST response was lost
+or the client left the screen while the provider was answering.
+
 ### Retry Processing a Closed Interview
+
+This endpoint remains for compatibility. Current mobile does not expose a
+reprocessing button: newly closed voice interviews and transient final text
+classification failures are recovered by the backend with a persisted, bounded
+budget. Their state remains `PENDIENTE` until completion, administrative closure or
+terminal failure. Automatic work never replays a patient message. See
+[server-owned closure and recovery](23-server-owned-voice-closure.md).
 
 ```http
 POST /api/chat/{id}/clasificacion
@@ -476,6 +511,7 @@ POST /api/chat/{id}/clasificacion
 
 Authenticated patient, no request body. Processes saved answers without adding a
 message. Requires the caller's latest chat in `FALLIDA` classification state.
+An owned automatic `PENDIENTE` job is not accepted by this public retry endpoint.
 Returns `200 ChatTurnResponse` on success; only a valid Gemini result updates the
 queue. Completed/open/historical chats are rejected with `ChatFinalizadoException`
 (`400`); another patient's chat is not accessible. Concurrent retries are serialized
@@ -489,7 +525,7 @@ that correction; arbitrary verifier text is not exposed.
 `NO_SOLICITADA`, `PENDIENTE`, `COMPLETADA` or `FALLIDA`. `finalizado=true` means the
 interview is closed, including when processing failed. It no longer guarantees a
 stored classification. After closure, `POST /mensajes` rejects an additional `ok`;
-clients must use the processing retry operation instead. No clinical priority is
+current mobile follows backend-owned processing with GET. No clinical priority is
 fabricated on failure and the receptionist form fallback is unaffected.
 
 ### Voice Chat (Gemini Live)
@@ -504,7 +540,8 @@ collected summary (see `docs/05-ai-triage.md#voice-chat-gemini-live`).
 The JWT may be sent as `Authorization: Bearer` or, because browsers cannot set
 headers on a WebSocket handshake, as the `access_token` query parameter
 (accepted only on this path). Handshake errors: `401` unauthenticated, `404`
-chat missing or owned by another patient, `409` chat already finalized, `503`
+chat missing or owned by another patient, `409` chat already finalized or text
+turn `PENDIENTE`/`NO_DISPONIBLE`, `503`
 Gemini Live not configured (`GEMINI_API_KEY` empty).
 
 Client -> server:
@@ -523,6 +560,11 @@ Server -> client:
 - `{"tipo":"transcripcion_paciente","texto":...}` /
   `{"tipo":"transcripcion_bot","texto":...}`: incremental transcription chunks.
 - `{"tipo":"interrumpido"}`: patient spoke over Gemini; drop queued playback.
+- `{"tipo":"procesando_respuesta","activo":true|false}`: transient waiting for a
+  useful assistant response. Show a neutral processing indicator while active;
+  keep the microphone/interruption available. This event does not mark interview
+  closure or clinical-classification completion. Clear it on accepted closure,
+  error, session end or a useful assistant question.
 - `{"tipo":"turno_completo"}`, `{"tipo":"sesion_por_expirar"}`,
   `{"tipo":"error","mensaje":...}`.
 - `{"tipo":"entrevista_finalizada","resumen":ResumenEntrevistaVoz}`: the backend
@@ -531,7 +573,7 @@ Server -> client:
   using the saved transcript and the existing final-classification processor.
 - `{"tipo":"triage_finalizado","respuesta":MensajeDTO,"atencionEstimada":...,"origenRespuesta":...}`:
   Gemini REST preclassification, same meaning as the final
-  `ChatTurnResponse` of `POST /api/chat/{id}/mensajes`.
+  internal `ChatTurnResponse` used to persist a completed text turn.
 - `{"tipo":"fin"}`: session over; the server then closes the WebSocket.
 
 Keep the backend socket open after `entrevista_finalizada`: classification is
@@ -542,10 +584,13 @@ transcript as closed with classification `FALLIDA` and emits `error` and `fin`;
 they do not imply a completed classification. A rejected summary keeps
 the interview open and does not emit `entrevista_finalizada`.
 
-When shared progress is terminal and the patient declined the open invitation,
-one tool-call reminder plus bounded timers can recover closure without another
-patient response. Pending data, an unchanged rejected scope preflight or late
-patient input prevent automatic classification. Transcript-only recovery uses
+  When shared progress is terminal, one tool-call reminder plus bounded timers
+  can recover closure without another patient response. This applies to resolved
+  data, alarms, patient stop requests and partial resource/no-progress endings.
+  An unclarified additional contribution first receives a bounded clarification;
+  it is not silently treated as resolved data. Pending data, an unchanged rejected
+  scope preflight or late patient input prevent automatic classification.
+  Transcript-only recovery uses
 the existing bounded Gemini REST classification and verification; it creates no
 local clinical summary or priority. See the interaction guide for drain timing.
 
