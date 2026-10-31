@@ -1,5 +1,11 @@
 # Local Development
 
+For the isolated AWS container profile and temporary hosting, see
+[AWS runtime](27-aws-backend-runtime.md) and
+[demo deployment](28-aws-demo-deployment.md). `compose.aws.yaml` is separate from
+the developer database. `python scripts/test_aws_container.py --build` verifies
+the image with a disposable PostgreSQL and no real provider credentials.
+
 ## Requirements
 
 - Java 21

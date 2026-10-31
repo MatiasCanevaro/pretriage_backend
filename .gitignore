@@ -33,6 +33,15 @@ build/
 .vscode/
 
 .env
+.env.aws
+.env.aws.*
+!.env.aws.example
+infra/aws/certs/
+/certs/
+/data/
+/infra/aws/deploy-bundle/
+*.pem
+*.key
 
 ## codebase MCP ##
 .codebase-memory

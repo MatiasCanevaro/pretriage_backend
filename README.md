@@ -85,8 +85,8 @@ antes de detenerla. Ver [desarrollo local](docs/07-local-development.md).
 
 ## Almacenamiento S3 opcional
 
-Amazon S3 se utiliza exclusivamente para descargar el archivo asociado a un
-estudio clínico mediante el endpoint médico:
+Amazon S3 guarda los archivos de estudios clínicos. El backend permite subirlos,
+descargarlos y eliminarlos; los médicos pueden descargarlos mediante:
 
 ```http
 GET /api/medico/pacientes/{pacienteId}/historial-clinico/{estudioId}/archivo
@@ -108,8 +108,28 @@ AWS_ACCESS_KEY_ID=
 AWS_SECRET_ACCESS_KEY=
 ```
 
-No deben utilizarse valores ficticios cuando S3 está habilitado: las credenciales
-necesitan permiso de lectura sobre el bucket configurado por `aws.s3.bucket-name`.
+El cliente usa la cadena de credenciales del SDK cuando las propiedades locales
+`aws.accessKeyId` y `aws.secretAccessKey` están vacías. En AWS se utiliza un rol de
+EC2, sin claves estáticas. Los permisos requeridos sobre los objetos del bucket
+configurado por `aws.s3.bucket-name` son `s3:GetObject`, `s3:PutObject` y
+`s3:DeleteObject`. La base guarda las claves de objeto, actualmente `UUID.ext`.
+
+## Demo temporal en AWS
+
+La configuración de despliegue está separada del entorno de desarrollo:
+
+- [Despliegue y costos de la demo](docs/28-aws-demo-deployment.md).
+- [Variables, salud, S3 y CORS del backend](docs/27-aws-backend-runtime.md).
+- [Compatibilidad de Amplify, frontend, móvil y Cloudflare](docs/29-aws-frontend-and-dns.md).
+
+`Dockerfile` construye una imagen Java 21 sin credenciales locales.
+`compose.aws.yaml` ejecuta PostgreSQL 18, backend y Caddy. La infraestructura de
+`infra/aws/demo-stack.yaml` prepara EC2, S3 privado y ECR; aplicarla crea recursos
+facturables. El cómputo se puede detener conservando los datos; almacenamiento y
+otros servicios siguen sujetos a sus tarifas. El frontend se adapta a Next.js
+15.5.28 para Amplify Hosting compute; resta validar la vista previa del hosting.
+La demo usará una base nueva; la carga inicial de datos y usuarios queda para
+una etapa posterior.
 
 ## Verificación
 
@@ -119,14 +139,20 @@ Compilar sin ejecutar pruebas:
 .\mvnw.cmd test -DskipTests
 ```
 
-Ejecutar la suite completa:
+Ejecutar la suite completa con una base desechable:
 
 ```powershell
-.\mvnw.cmd test
+python scripts/test_backend_isolated.py
 ```
 
 Las pruebas de integración requieren PostgreSQL/Docker disponible. S3 permanece
 desactivado durante las pruebas salvo que se habilite explícitamente.
+
+Validar la imagen AWS sin usar la base ni las claves de la aplicación:
+
+```powershell
+python scripts/test_aws_container.py --build
+```
 
 ## Integración continua
 
