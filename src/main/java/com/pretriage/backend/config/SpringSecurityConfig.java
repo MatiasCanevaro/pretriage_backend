@@ -13,13 +13,18 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver;
+import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.client.RestTemplate;
 
 import java.net.Proxy;
+import java.util.regex.Pattern;
 
 @Configuration
 public class SpringSecurityConfig {
+
+        private static final Pattern RUTA_CHAT_VOZ = Pattern.compile("^/api/chat/[^/]+/voz/?$");
 
         @Bean
         public SecurityFilterChain mainConfig(HttpSecurity http) {
@@ -48,6 +53,21 @@ public class SpringSecurityConfig {
                                 .oauth2ResourceServer(oauth -> oauth.jwt(Customizer.withDefaults()));
 
                 return http.build();
+        }
+
+        /**
+         * Los navegadores no pueden enviar Authorization en el handshake WebSocket, por eso
+         * solo el chat de voz acepta el token en {@code ?access_token=}.
+         */
+        @Bean
+        public BearerTokenResolver bearerTokenResolver() {
+                DefaultBearerTokenResolver porHeader = new DefaultBearerTokenResolver();
+                DefaultBearerTokenResolver conQueryParam = new DefaultBearerTokenResolver();
+                conQueryParam.setAllowUriQueryParameter(true);
+                return request -> RUTA_CHAT_VOZ.matcher(request.getRequestURI()).matches()
+                                && "GET".equals(request.getMethod())
+                                                ? conQueryParam.resolve(request)
+                                                : porHeader.resolve(request);
         }
 
         @Bean

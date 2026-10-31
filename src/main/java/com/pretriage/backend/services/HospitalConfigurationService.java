@@ -6,6 +6,7 @@ import com.pretriage.backend.exceptions.RecursoNoEncontradoException;
 import com.pretriage.backend.model.acceso.AuditoriaHospital;
 import com.pretriage.backend.model.consultas.EstadoConsulta;
 import com.pretriage.backend.model.consultas.EstadoSesionMedica;
+import com.pretriage.backend.model.consultas.GestorDeCola;
 import com.pretriage.backend.model.hospitales.EspecialidadMedica;
 import com.pretriage.backend.model.hospitales.Hospital;
 import com.pretriage.backend.model.hospitales.Sala;
@@ -14,6 +15,7 @@ import com.pretriage.backend.model.personas.UsuarioAuth;
 import com.pretriage.backend.repositories.RepoAuditoriasHospital;
 import com.pretriage.backend.repositories.RepoConsultasMedicas;
 import com.pretriage.backend.repositories.RepoEspecialidadesMedicas;
+import com.pretriage.backend.repositories.RepoGestoresDeColas;
 import com.pretriage.backend.repositories.RepoHospitales;
 import com.pretriage.backend.repositories.RepoSalas;
 import com.pretriage.backend.repositories.RepoSectores;
@@ -38,6 +40,7 @@ public class HospitalConfigurationService {
     private final RepoSectores sectores;
     private final RepoConsultasMedicas consultasMedicas;
     private final RepoSesionesAtencionMedica sesionesAtencionMedica;
+    private final RepoGestoresDeColas gestoresDeColas;
     private final RepoAuditoriasHospital auditorias;
 
     @Transactional(readOnly = true)
@@ -154,6 +157,8 @@ public class HospitalConfigurationService {
         validarSalaEnSector(sala, sector);
         if (request.activa())
             especialidadHabilitada(hospital, sala.getEspecialidad().getId());
+        else
+            validarSalaSinSesionesActivas(salaId);
         sala.setActiva(request.activa());
         sala = salas.save(sala);
         auditar(hospital, actor, request.activa() ? "SALA_ACTIVADA" : "SALA_DESACTIVADA",
@@ -194,7 +199,8 @@ public class HospitalConfigurationService {
         }
         validarSectorSinPacientes(sectorId);
 
-        if(!request.activa()){
+        if (!request.activa()) {
+            validarSectorSinSesionesActivas(sectorId);
             desactivarSalasDeSector(sector, actor);
         }
 
@@ -215,9 +221,27 @@ public class HospitalConfigurationService {
         validarSectorSinPacientes(sectorId);
         validarSectorSinSesionesActivas(sectorId);
         List<Sala> salasDelSector = salas.findBySectorId(sectorId);
+        List<Long> salaIds = salasDelSector.stream().map(Sala::getId).toList();
+        if (consultasMedicas.existsBySectorId(sectorId)
+                || (!salaIds.isEmpty() && consultasMedicas.existsBySalaIdIn(salaIds))
+                || sesionesAtencionMedica.existsBySectorId(sectorId)
+                || (!salaIds.isEmpty() && sesionesAtencionMedica.existsBySalaIdIn(salaIds))
+                || (sector.getPacientesAsignados() != null && !sector.getPacientesAsignados().isEmpty())) {
+            throw new ConflictoDeEstadoException(
+                    "El sector tiene consultas, sesiones o pacientes vinculados; desactivalo para conservar el historial");
+        }
+        GestorDeCola gestor = gestoresDeColas.findBySectorId(sectorId).orElse(null);
+        if (gestor != null) {
+            if ((gestor.getConsultasEnEspera() != null && !gestor.getConsultasEnEspera().isEmpty())
+                    || (gestor.getEntradas() != null && !gestor.getEntradas().isEmpty())) {
+                throw new ConflictoDeEstadoException(
+                        "El sector tiene actividad de cola asociada; desactivalo para conservar el historial");
+            }
+            gestoresDeColas.delete(gestor);
+        }
         for (Sala sala : salasDelSector) {
             salas.delete(sala);
-            auditar(hospital, actor, "SALA_ELIMINADA", "salaId:"+ sala.getId() + " sector:" + sectorId, sala.getNombre());
+            auditar(hospital, actor, "SALA_ELIMINADA", "salaId:" + sala.getId() + " sector:" + sectorId, sala.getNombre());
         }
         sectores.delete(sector);
         auditar(hospital, actor, "SECTOR_ELIMINADO", "sector:" + sectorId, sector.getNombre());
@@ -262,34 +286,42 @@ public class HospitalConfigurationService {
 
     private void validarSectorSinPacientes(Long sectorId) {
         List<Sala> salasDelSector = salas.findBySectorId(sectorId);
-        if (salasDelSector.isEmpty()) return;
         List<Long> salaIds = salasDelSector.stream().map(Sala::getId).toList();
-        if (consultasMedicas.existsBySalaIdInAndEstadoConsultaNotIn(salaIds,
-                List.of(EstadoConsulta.FINALIZADA, EstadoConsulta.CANCELADA))) {
+        List<EstadoConsulta> estadosFinalizados = List.of(EstadoConsulta.FINALIZADA, EstadoConsulta.CANCELADA);
+        if (consultasMedicas.existsBySectorIdAndEstadoConsultaNotIn(sectorId, estadosFinalizados)
+                || (!salaIds.isEmpty() && consultasMedicas.existsBySalaIdInAndEstadoConsultaNotIn(salaIds, estadosFinalizados))) {
             throw new ConflictoDeEstadoException(
-                    "No se puede modificar/eliminar un sector con salas que aún tienen pacientes asignados");
+                    "No se puede modificar o eliminar un sector con pacientes pendientes o en atención");
         }
     }
 
-    private void desactivarSalasDeSector(Sector sector, UsuarioAuth actor){
+    private void desactivarSalasDeSector(Sector sector, UsuarioAuth actor) {
         List<Sala> salasDelSector = salas.findBySectorId(sector.getId());
         if (salasDelSector.isEmpty()) return;
         salasDelSector.forEach(sala -> {
             sala.setActiva(false);
             auditar(sector.getHospital(), actor, "SALA_DESACTIVADA",
-            "sala:" + sala.getId(), sala.getNombre() + " · " + sector.getNombre());
+                    "sala:" + sala.getId(), sala.getNombre() + " · " + sector.getNombre());
             salas.save(sala);
         });
     }
 
     private void validarSectorSinSesionesActivas(Long sectorId) {
         List<Sala> salasDelSector = salas.findBySectorId(sectorId);
-        if (salasDelSector.isEmpty()) return;
         List<Long> salaIds = salasDelSector.stream().map(Sala::getId).toList();
-        if (sesionesAtencionMedica.existsBySalaIdInAndEstadoIn(salaIds,
+        List<EstadoSesionMedica> estadosActivos = List.of(EstadoSesionMedica.ACTIVA, EstadoSesionMedica.PAUSADA);
+        if (sesionesAtencionMedica.existsBySectorIdAndEstadoIn(sectorId, estadosActivos)
+                || (!salaIds.isEmpty() && sesionesAtencionMedica.existsBySalaIdInAndEstadoIn(salaIds, estadosActivos))) {
+            throw new ConflictoDeEstadoException(
+                    "No se puede modificar o eliminar un sector con sesiones de atención activas o pausadas");
+        }
+    }
+
+    private void validarSalaSinSesionesActivas(Long salaId) {
+        if (sesionesAtencionMedica.existsBySalaIdAndEstadoIn(salaId,
                 List.of(EstadoSesionMedica.ACTIVA, EstadoSesionMedica.PAUSADA))) {
             throw new ConflictoDeEstadoException(
-                    "No se puede eliminar un sector con sesiones de atención activas o pausadas");
+                    "No se puede desactivar una sala con sesiones de atención activas o pausadas");
         }
     }
 

@@ -45,12 +45,11 @@ separately in `10-staff-identity-memberships-and-invitations.md`.
 
 - Reception classification uses provider-native structured output with schema
   validation.
-- Ollama runs reception classification with temperature 0 and a fixed seed for
-  reproducibility.
-- Spring AI retry attempts are limited so the deterministic fallback is reached
-  promptly.
-- Connect and read timeouts bound unavailable or stalled Ollama calls.
-- The corrected Spring AI model property is `spring.ai.ollama.chat.model`.
+- Gemini REST runs reception classification with temperature 0 and JSON Schema;
+  this does not guarantee identical classifications across calls.
+- A single request without retries reaches the deterministic fallback promptly.
+- Connect and request timeouts bound unavailable or stalled Gemini calls.
+- `GEMINI_CHAT_MODEL` configures the REST model; `GEMINI_API_KEY` stays in the backend.
 
 ## Local persistence behavior
 

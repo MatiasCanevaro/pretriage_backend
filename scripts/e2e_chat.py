@@ -8,6 +8,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+import uuid
 from pathlib import Path
 
 DEFAULT_MESSAGES = [
@@ -45,6 +46,7 @@ SEVERITY_BY_PRIORITY = {
     1: "NO_URGENTE",
 }
 FAILURE_CONTEXT = None
+MAX_TEXT_TURN_WAIT_SECONDS = 180
 
 
 def load_dotenv(path: Path) -> dict:
@@ -78,9 +80,10 @@ def load_messages_file(path: Path) -> list[str]:
     return messages
 
 
-def http_json(method, url, body=None, token=None, timeout=120):
+def http_json(method, url, body=None, token=None, timeout=120, extra_headers=None):
     data = None
     headers = {"Accept": "application/json"}
+    headers.update(extra_headers or {})
     if body is not None:
         data = json.dumps(body).encode("utf-8")
         headers["Content-Type"] = "application/json"
@@ -199,6 +202,12 @@ WHERE cm.id_paciente = p.id
   AND p.auth_id = {sql_quote(subject)}
   AND cm.estado_consulta IN ({active_consultas});
 
+UPDATE consulta_medica cm
+SET id_chat = NULL
+FROM chat c, paciente p
+WHERE cm.id_chat = c.id AND c.paciente_id = p.id
+  AND p.auth_id = {sql_quote(subject)};
+
 DELETE FROM mensaje m
 USING chat c, paciente p
 WHERE m.chat_id = c.id
@@ -259,14 +268,16 @@ COMMIT;
     run_psql(sql, args.db_user, args.db_name, args.db_container)
 
 
-def check_ollama(model: str, timeout=5):
-    try:
-        response = http_json("GET", "http://localhost:11434/api/tags", timeout=timeout)
-    except RuntimeError as exc:
-        raise RuntimeError("Ollama is not reachable at http://localhost:11434") from exc
-    models = [item.get("name") for item in response.get("models", [])]
-    if model not in models:
-        raise RuntimeError(f"Ollama model {model!r} is not installed. Available models: {models}")
+def check_gemini(model: str, api_key: str, base_url: str, timeout=10):
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY is required for the Gemini precheck")
+    model = model.removeprefix("models/")
+    if not model or any(char not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-" for char in model):
+        raise RuntimeError("Invalid Gemini model name")
+    response = http_json("GET", f"{base_url.rstrip('/')}/models/{model}", timeout=timeout,
+                         extra_headers={"x-goog-api-key": api_key})
+    if "generateContent" not in response.get("supportedGenerationMethods", []):
+        raise RuntimeError("Selected Gemini model does not support generateContent")
 
 
 def write_debug(path, payload):
@@ -283,6 +294,60 @@ def set_failure_stage(stage):
 def ensure_no_early_finalization(turn_index, min_turns, allow=False):
     if turn_index < min_turns and not allow:
         raise RuntimeError(f"Chat finalized early after {turn_index} turns; expected at least {min_turns}")
+
+
+def last_bot_message(chat):
+    for message in reversed(chat.get("mensajes") or []):
+        if message.get("autor") == "BOT":
+            return message.get("contenido")
+    return None
+
+
+def submit_text_turn(backend_url, chat_id, message, token, poll_interval=0.5,
+                     timeout_seconds=MAX_TEXT_TURN_WAIT_SECONDS):
+    """Submit once, then poll the durable ChatDTO until this turn reaches a terminal state."""
+    timeout_seconds = min(timeout_seconds, MAX_TEXT_TURN_WAIT_SECONDS)
+    request_id = str(uuid.uuid4())
+    accepted = http_json(
+        "POST", f"{backend_url}/api/chat/{chat_id}/mensajes",
+        {"contenido": message, "solicitudId": request_id}, token=token, timeout=MAX_TEXT_TURN_WAIT_SECONDS,
+    )
+    if not isinstance(accepted, dict):
+        raise RuntimeError("Text turn POST did not return a JSON object")
+    # Older servers return ChatTurnResponse synchronously. Keep that path usable while
+    # the E2E client migrates to the durable 202 ChatDTO contract.
+    if "respuesta" in accepted:
+        return {"legacyResponse": accepted, "requestId": request_id}
+    if accepted.get("solicitudTurnoTextoId") != request_id:
+        raise RuntimeError("Accepted ChatDTO does not match the submitted request ID")
+
+    deadline = time.monotonic() + timeout_seconds
+    current = accepted
+    while True:
+        state = current.get("estadoTurnoTexto")
+        classification = current.get("estadoClasificacion")
+        if state == "NO_DISPONIBLE" or classification == "FALLIDA":
+            raise RuntimeError(f"Text turn failed: estadoTurnoTexto={state}, estadoClasificacion={classification}")
+        if state == "COMPLETADA":
+            return {"chat": current, "requestId": request_id}
+        if state != "PENDIENTE":
+            raise RuntimeError(f"Unexpected text-turn state: {state}")
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise RuntimeError(f"Timed out waiting for text turn {request_id} after {timeout_seconds}s")
+        if poll_interval > 0:
+            time.sleep(min(poll_interval, remaining))
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise RuntimeError(f"Timed out waiting for text turn {request_id} after {timeout_seconds}s")
+        current = http_json(
+            "GET", f"{backend_url}/api/chat/{chat_id}", token=token,
+            timeout=min(15, remaining),
+        )
+        if not isinstance(current, dict):
+            raise RuntimeError("Chat polling did not return a JSON object")
+        if current.get("solicitudTurnoTextoId") != request_id:
+            raise RuntimeError("ChatDTO moved to a different text-turn request while polling")
 
 
 def parse_result_json(raw):
@@ -337,7 +402,7 @@ FROM (
          g.id_sector AS gestor_sector_id
   FROM chat c
   JOIN paciente p ON p.id = c.paciente_id
-  JOIN consulta_medica cm ON cm.id_paciente = p.id
+  JOIN consulta_medica cm ON cm.id_chat = c.id AND cm.id_paciente = p.id
   LEFT JOIN entrada_cola ec ON ec.id_consulta_medica = cm.id
   LEFT JOIN gestor_de_cola g ON g.id = ec.id_gestor_de_cola
   LEFT JOIN sector s ON s.id = cm.id_sector
@@ -387,9 +452,8 @@ FROM (
         checks["immediate attention has alarm signs"] = bool(result["signosAlarma"])
         checks["immediate attention has urgent priority"] = result["nivelPrioridad"] in (4, 5)
     origin = result.get("origenClasificacion")
-    checks["classification origin is recognized"] = origin in ("OLLAMA", "FALLBACK_LOCAL")
-    if expect_immediate_attention or not args.allow_fallback:
-        checks["classification origin is OLLAMA"] = origin == "OLLAMA"
+    checks["classification origin is recognized"] = origin == "GEMINI"
+    checks["classification origin is GEMINI"] = origin == "GEMINI"
     failed = [name for name, passed in checks.items() if not passed]
     if failed:
         raise RuntimeError("Persisted state validation failed: " + "; ".join(failed))
@@ -398,7 +462,7 @@ FROM (
 
 def main():
     global FAILURE_CONTEXT
-    parser = argparse.ArgumentParser(description="Run a real E2E chat flow against the backend and Ollama.")
+    parser = argparse.ArgumentParser(description="Run a real E2E chat flow against the backend and Gemini.")
     parser.add_argument("--backend-url", default=os.environ.get("BACKEND_URL", "http://localhost:8080"))
     parser.add_argument("--env-file", default=".env")
     parser.add_argument("--db-user", default=os.environ.get("DB_USER", "myuser"))
@@ -411,8 +475,8 @@ def main():
     parser.add_argument("--room-name", default=os.environ.get("E2E_ROOM_NAME", "Sala E2E Chat"))
     parser.add_argument("--specialty", default=os.environ.get("E2E_ESPECIALIDAD", "CLINICA_MEDICA"))
     parser.add_argument("--specialty-name", default=os.environ.get("E2E_ESPECIALIDAD_NOMBRE", "Clinica medica"))
-    parser.add_argument("--ollama-model", default=os.environ.get("E2E_OLLAMA_MODEL", "llama3.2:3b"))
-    parser.add_argument("--skip-ollama-check", action="store_true")
+    parser.add_argument("--gemini-model", help="Override GEMINI_CHAT_MODEL for the availability precheck")
+    parser.add_argument("--skip-gemini-check", action="store_true")
     parser.add_argument("--message", action="append", dest="messages", help="Message to send. Repeat to override defaults.")
     parser.add_argument("--messages-file", default=os.environ.get("E2E_MESSAGES_FILE"), help="Text file with one patient message per non-empty line.")
     parser.add_argument("--debug-log", default=os.environ.get("E2E_DEBUG_LOG", "target/e2e_chat_last_debug.json"))
@@ -422,9 +486,8 @@ def main():
     parser.add_argument("--expected-symptom", action="append", default=None, help="Expected symptom term; repeat for multiple terms")
     parser.add_argument("--min-turns", type=int, default=None, help="Minimum patient turns before accepting finalization")
     parser.add_argument("--allow-early-finalization", action="store_true", help="Allow the scripted chat to finalize before all messages are sent")
-    parser.add_argument("--allow-fallback", action="store_true", help="Allow FALLBACK_LOCAL in persisted origenClasificacion")
     parser.add_argument("--expected-alarm", action="append", default=None, help="Expected alarm sign term; repeat for multiple terms")
-    parser.add_argument("--expect-immediate-attention", action="store_true", help="Require immediate attention and OLLAMA provenance")
+    parser.add_argument("--expect-immediate-attention", action="store_true", help="Require immediate attention and GEMINI provenance")
     args = parser.parse_args()
     FAILURE_CONTEXT = {"path": args.debug_log, "stage": "argument parsing", "turnosScript": []}
 
@@ -458,10 +521,12 @@ def main():
         raise RuntimeError("--min-turns must be at least 1")
     backend_url = args.backend_url.rstrip("/")
 
-    if not args.skip_ollama_check:
-        set_failure_stage("ollama preflight")
-        check_ollama(args.ollama_model)
-        print(f"Ollama OK: {args.ollama_model}")
+    if not args.skip_gemini_check:
+        set_failure_stage("gemini preflight")
+        model = args.gemini_model or env_value(dotenv, "GEMINI_CHAT_MODEL", "gemini-3.5-flash-lite")
+        check_gemini(model, env_value(dotenv, "GEMINI_API_KEY"),
+                     env_value(dotenv, "GEMINI_API_BASE_URL", "https://generativelanguage.googleapis.com/v1beta"))
+        print(f"Gemini OK: {model}")
 
     set_failure_stage("login")
     login = http_json("POST", f"{backend_url}/api/login", {"email": email, "password": password})
@@ -498,29 +563,43 @@ def main():
     try:
         set_failure_stage("chat turns")
         for index, message in enumerate(messages, start=1):
-            turn = http_json(
-                "POST", f"{backend_url}/api/chat/{chat_id}/mensajes", {"contenido": message},
-                token=token, timeout=180,
-            )
-            bot_text = (turn.get("respuesta") or {}).get("contenido")
-            debug_turns.append({"turno": index, "paciente": message, "bot": bot_text,
-                                "atencionEstimada": turn.get("atencionEstimada"),
-                                "origenRespuesta": turn.get("origenRespuesta")})
+            completed_turn = submit_text_turn(backend_url, chat_id, message, token)
+            legacy_turn = completed_turn.get("legacyResponse")
+            chat_snapshot = completed_turn.get("chat")
+            if legacy_turn is not None:
+                bot_text = (legacy_turn.get("respuesta") or {}).get("contenido")
+                classification = None
+                final = legacy_turn.get("atencionEstimada") is not None
+                attention_estimate = legacy_turn.get("atencionEstimada")
+            else:
+                bot_text = last_bot_message(chat_snapshot)
+                classification = chat_snapshot.get("estadoClasificacion")
+                final = bool(chat_snapshot.get("finalizado")) and classification == "COMPLETADA"
+                attention_estimate = None
+            turn_debug = {"turno": index, "paciente": message, "bot": bot_text,
+                          "solicitudId": completed_turn["requestId"],
+                          "estadoClasificacion": classification}
+            if attention_estimate is not None:
+                turn_debug["atencionEstimada"] = attention_estimate
+            debug_turns.append(turn_debug)
             print(f"Turno {index} OK | bot={bot_text!r}")
-            if turn.get("atencionEstimada") is not None:
-                final_turn = turn
-                print(f"Triage finalizado OK | atencionEstimada={turn['atencionEstimada']}")
-                if args.expect_immediate_attention and turn.get("origenRespuesta") != "OLLAMA":
-                    raise RuntimeError("Alarm final turn must have origenRespuesta=OLLAMA")
+            if final:
+                final_turn = {"respuesta": {"contenido": bot_text}, "chat": chat_snapshot,
+                              "legacyResponse": legacy_turn}
+                print("Triage finalizado OK | estadoClasificacion=COMPLETADA")
                 ensure_no_early_finalization(index, min_turns, args.allow_early_finalization)
                 break
-            time.sleep(0.2)
     except Exception:
         write_debug(debug_path, debug_base)
         raise
 
     current_chat = http_json("GET", f"{backend_url}/api/chat/{chat_id}", token=token)
-    if final_turn is None and current_chat.get("finalizado"):
+    if current_chat.get("estadoTurnoTexto") == "NO_DISPONIBLE" or current_chat.get("estadoClasificacion") == "FALLIDA":
+        write_debug(debug_path, debug_base)
+        raise RuntimeError("Chat reached a failed terminal state")
+    if final_turn is None and current_chat.get("finalizado") and current_chat.get("estadoClasificacion") == "COMPLETADA":
+        final_bot_text = last_bot_message(current_chat)
+        final_turn = {"respuesta": {"contenido": final_bot_text}, "chat": current_chat}
         print("Chat finalizado OK")
     elif final_turn is None:
         write_debug(debug_path, debug_base)
@@ -532,7 +611,8 @@ def main():
             args, subject, chat_id, expected_symptoms, expected_alarms, args.expect_immediate_attention
         )
         if args.expect_immediate_attention:
-            final_message = ((final_turn or {}).get("respuesta") or {}).get("contenido") or ""
+            snapshot = (final_turn or {}).get("chat") or current_chat
+            final_message = last_bot_message(snapshot) or ((final_turn or {}).get("respuesta") or {}).get("contenido") or ""
             if triage["recomendacionSeguridad"].strip().casefold() not in final_message.casefold():
                 raise RuntimeError("Alarm final message must include the safety recommendation")
         if args.expected_priority is not None and triage["nivelPrioridad"] != args.expected_priority:

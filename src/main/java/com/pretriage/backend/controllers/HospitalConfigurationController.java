@@ -1,7 +1,9 @@
 package com.pretriage.backend.controllers;
 
 import com.pretriage.backend.controllers.dtos.acceso.HospitalConfigurationDtos.*;
+import com.pretriage.backend.controllers.dtos.acceso.SesionMedicaAdminResponse;
 import com.pretriage.backend.services.HospitalConfigurationService;
+import com.pretriage.backend.services.SesionesMedicasAdminService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
@@ -10,11 +12,14 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/admin/hospitales")
 public class HospitalConfigurationController {
     private final HospitalConfigurationService service;
+    private final SesionesMedicasAdminService sesionesMedicasAdminService;
 
     @GetMapping("/{hospitalId}/configuracion")
     public ConfiguracionHospitalResponse obtener(@AuthenticationPrincipal Jwt jwt, @PathVariable Long hospitalId) {
@@ -69,6 +74,18 @@ public class HospitalConfigurationController {
             @PathVariable Long sectorId) {
         service.eliminarSector(jwt.getSubject(), hospitalId, sectorId);
         return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{hospitalId}/configuracion/sectores/{sectorId}/sesiones")
+    public List<SesionMedicaAdminResponse> listarSesionesDeSector(@AuthenticationPrincipal Jwt jwt,
+            @PathVariable Long hospitalId, @PathVariable Long sectorId) {
+        return sesionesMedicasAdminService.listar(jwt.getSubject(), hospitalId, sectorId);
+    }
+
+    @PostMapping("/{hospitalId}/configuracion/sectores/{sectorId}/sesiones/{sesionId}/cerrar")
+    public SesionMedicaAdminResponse cerrarSesionDeSector(@AuthenticationPrincipal Jwt jwt,
+            @PathVariable Long hospitalId, @PathVariable Long sectorId, @PathVariable Long sesionId) {
+        return sesionesMedicasAdminService.cerrar(jwt.getSubject(), hospitalId, sectorId, sesionId);
     }
 
 }

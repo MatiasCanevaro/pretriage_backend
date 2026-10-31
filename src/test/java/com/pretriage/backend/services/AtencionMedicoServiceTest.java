@@ -84,7 +84,7 @@ class AtencionMedicoServiceTest {
                 sesion.setMedico(medico);
                 sesion.setEstado(EstadoSesionMedica.ACTIVA);
 
-                when(repoSesionesAtencionMedica.findByIdAndMedicoUsuarioAuthId(20L, "auth0"))
+                when(repoSesionesAtencionMedica.findByIdAndMedicoUsuarioAuthIdForUpdate(20L, "auth0"))
                                 .thenReturn(Optional.of(sesion));
                 when(repoEntradasCola.existsByConsultaMedicaMedicoIdAndEstadoIn(
                                 org.mockito.ArgumentMatchers.eq(10L), org.mockito.ArgumentMatchers.anyCollection()))
@@ -141,6 +141,21 @@ class AtencionMedicoServiceTest {
                 assertEquals(NivelDeGravedad.URGENTE, resultado.getFirst().getPrioridad());
                 assertNull(resultado.getFirst().getSalaId());
                 assertNull(resultado.getFirst().getNombreSala());
+        }
+
+        @Test
+        void llamarProximoRevalidaSesionDespuesDeAdquirirLock() {
+                SesionAtencionMedica sesion = new SesionAtencionMedica();
+                sesion.setId(20L);
+                sesion.setEstado(EstadoSesionMedica.FINALIZADA);
+                when(repoSesionesAtencionMedica.findByIdAndMedicoUsuarioAuthIdForUpdate(20L, "auth0"))
+                                .thenReturn(Optional.of(sesion));
+
+                IllegalStateException error = assertThrows(IllegalStateException.class,
+                                () -> service.llamarProximo("auth0", 20L));
+
+                assertEquals("La sesion medica debe estar activa", error.getMessage());
+                verifyNoInteractions(repoGestoresDeColas, repoEntradasCola, repoConsultasMedicas);
         }
 
         @Test
@@ -253,7 +268,7 @@ class AtencionMedicoServiceTest {
                 sesion.setMedico(medico);
                 sesion.setSala(sala);
                 sesion.setEstado(EstadoSesionMedica.ACTIVA);
-                when(repoSesionesAtencionMedica.findByIdAndMedicoUsuarioAuthId(20L, "auth0"))
+                when(repoSesionesAtencionMedica.findByIdAndMedicoUsuarioAuthIdForUpdate(20L, "auth0"))
                                 .thenReturn(Optional.of(sesion));
                 when(repoEntradasCola.findByConsultaMedicaId(50L)).thenReturn(Optional.of(entrada));
 
@@ -368,7 +383,7 @@ class AtencionMedicoServiceTest {
                 sesion.setMedico(medico);
                 sesion.setSala(sala);
                 sesion.setEstado(EstadoSesionMedica.ACTIVA);
-                when(repoSesionesAtencionMedica.findByIdAndMedicoUsuarioAuthId(20L, "auth0"))
+                when(repoSesionesAtencionMedica.findByIdAndMedicoUsuarioAuthIdForUpdate(20L, "auth0"))
                                 .thenReturn(Optional.of(sesion));
                 when(repoEntradasCola.findByConsultaMedicaId(50L)).thenReturn(Optional.of(entrada));
                 return new ContextoAtencion(consulta);

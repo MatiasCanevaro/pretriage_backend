@@ -4,10 +4,11 @@ import com.pretriage.backend.model.consultas.EstadoConsulta;
 import com.pretriage.backend.model.consultas.EstadoEntradaCola;
 import com.pretriage.backend.model.consultas.NivelDeGravedad;
 import com.pretriage.backend.model.consultas.TipoPausaCola;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.annotation.Order;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -19,25 +20,25 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * Datos sintéticos para probar manualmente
+ * Datos sintéticos opt-in para probar manualmente
  * {@code GET /api/admin/hospitales/{hospitalId}/metricas}.
  *
- * <p>Reutiliza el hospital 1 creado por el seed local {@code UserTestInyection} (mismo {@code place_id}) y
- * siembra 310 ingresos a cola entre el 01/10/2026 y el 23/10/2026, con 269 atenciones
- * finalizadas. No crea usuarios ni membresías: la membresía {@code ADMIN_HOSPITAL} debe
- * existir para poder consultar el endpoint.</p>
+ * <p>Solo se activa con {@code pretriage.seed.metricas-demo.enabled=true}. Al activarlo,
+ * también requiere {@code pretriage.seed.metricas-demo.hospital-place-id}, que debe apuntar
+ * a un hospital de demostración desechable. Siembra 310 ingresos a cola entre el
+ * 01/10/2026 y el 23/10/2026, con 269 atenciones finalizadas. No crea usuarios ni
+ * membresías: la membresía {@code ADMIN_HOSPITAL} debe existir para consultar el endpoint.</p>
  *
  * <p>Si el hospital no existe o ya hay consultas con el prefijo {@value #PREFIJO_LLAMADO},
- * no inserta nada. Con {@code ddl-auto=create-drop} (default) la base se recrea en cada
- * arranque y el seed vuelve a correr desde cero.</p>
+ * no inserta nada. La propiedad de activación no tiene valor predeterminado, por lo que
+ * este seed no participa en el arranque normal de la aplicación.</p>
  */
 @Slf4j
 @Component
 @Order(20)
-@RequiredArgsConstructor
+@ConditionalOnProperty(name = "pretriage.seed.metricas-demo.enabled", havingValue = "true", matchIfMissing = false)
 public class MetricasHospitalTestInyection implements ApplicationRunner {
 
-    private static final String HOSPITAL_PLACE_ID = "ChIJgXyEaW_KvJUReaZPvQVxIwg";
     private static final String ESPECIALIDAD_CODIGO = "CLINICA_MEDICA";
     private static final String PREFIJO_LLAMADO = "MTR-";
     private static final String NOMBRE_SECTOR = "Sector metricas demo";
@@ -68,14 +69,22 @@ public class MetricasHospitalTestInyection implements ApplicationRunner {
     };
 
     private final JdbcTemplate jdbcTemplate;
+    private final String hospitalPlaceId;
+
+    public MetricasHospitalTestInyection(
+            JdbcTemplate jdbcTemplate,
+            @Value("${pretriage.seed.metricas-demo.hospital-place-id}") String hospitalPlaceId) {
+        this.jdbcTemplate = jdbcTemplate;
+        this.hospitalPlaceId = hospitalPlaceId;
+    }
 
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
         Long hospitalId = buscarHospital();
         if (hospitalId == null) {
-            log.warn("Seed de métricas omitido: no existe el hospital con place_id '{}'. "
-                    + "Verificá que UserTestInyection esté presente y activo.", HOSPITAL_PLACE_ID);
+            log.warn("Seed de métricas omitido: no existe el hospital de demostración con place_id '{}'.",
+                    hospitalPlaceId);
             return;
         }
 
@@ -198,7 +207,7 @@ public class MetricasHospitalTestInyection implements ApplicationRunner {
     private Long buscarHospital() {
         List<Long> ids = jdbcTemplate.queryForList(
                 "select id from hospital where place_id = ? order by id limit 1",
-                Long.class, HOSPITAL_PLACE_ID);
+                Long.class, hospitalPlaceId);
         return ids.isEmpty() ? null : ids.getFirst();
     }
 

@@ -2,6 +2,20 @@
 
 This is a practical reference for the main flows. It is not a full OpenAPI replacement.
 
+## HTTP errors
+
+Errors handled by the API use a JSON body with an `error` field unless an
+endpoint documents a validation field map. For requests that reach MVC, a
+missing resource returns a JSON `404` with `{"error":"Recurso no encontrado."}`,
+including when the client requested an SSE response; authentication can reject
+a request before MVC. A request whose `Content-Type`
+is not accepted by the endpoint returns `415` with
+`{"error":"Tipo de contenido no soportado."}`. These generic responses do
+not include request paths or internal exception details. Other endpoint-specific
+status codes and error bodies are documented with their respective flows.
+If a client closes an SSE connection, the backend ends that stream without
+trying to send a JSON error body on the closed `text/event-stream` response.
+
 ## Auth
 
 ### Register
@@ -12,6 +26,11 @@ POST /api/register
 
 Public self-registration. Only patient accounts are allowed; staff or admin
 roles are rejected with `403`.
+
+`rol` is a required `RolSistema` enum, validated with `@NotNull`. If it is
+omitted or `null`, the endpoint returns `400` with
+`{"rol":"Es obligatorio ingresar el rol del usuario"}` before creating any
+Auth0 account or local patient. A patient registration must send `"rol":"USER"`.
 
 Body:
 
@@ -245,7 +264,7 @@ Returns available medical specialties sorted by name.
 GET /api/hospitales/cercanos?latitud=-34.6&longitud=-58.4&codigoEspecialidad=CLINICA_MEDICA&transporte=transporte-publico&ordenarPor=distancia
 ```
 
-Returns nearby hospitals that support the selected specialty. Only hospitals available for attention (`disponible=true` — at least one `SesionAtencionMedica.ACTIVA` for that specialty) are returned; an empty list means the frontend must show "no hay hospitales disponibles" and is not an error. Each hospital includes `tiempoEstimadoArriboMejorRuta` (estimated arrival time of the best route for the transport mode; `transporte` is optional, defaults to `transporte-publico`, and the field is null when no route can be computed) plus the estimated attention wait for a new arrival: `pacientesEnCola`, `minutosEsperaEstimados`, `fechaHoraAtencionEstimada`, `disponible` (always `true` in the response), and its Google Places rating: `valoracionPromedio` (float on Google's 1.0–5.0 scale, or `null` when Google provides no rating — absence of data, not an error) and `cantidadValoraciones` (review count, or `null`); ratings are fetched live from Google on every call and never persisted. `ordenarPor` is optional, defaults to `distancia` when omitted or empty (Google Places proximity); valid values live in `AtencionHospitalService.ORDENES_VALIDOS` (`distancia`, `tiempo-atencion`, `valoracion` y combinados con `|` como `distancia|tiempo-atencion` o `distancia|tiempo-atencion|valoracion`, orden indistinto). Values are case-sensitive (only exact lowercase, e.g. `Valoracion` returns `400`), and a combination containing any invalid or duplicated criterion returns `400` even if the other criteria are valid. `tiempo-atencion` orders by lower `minutosEsperaEstimados` (see `docs/04-queue-and-estimation.md#end-of-queue-estimate-for-hospital-ranking`), tie-broken by arrival time then name; `valoracion` orders by `valoracionPromedio` descending treating `null` as 0 (hospitals without rating go last and are never excluded), tie-broken by `cantidadValoraciones` descending (null = 0) then the Google `nombre` ascending; el combinado ordena por suma de rankings (posición Google + tiempo + valoración) con desempate por `nombre` y luego orden de Google. Invalid values return `400`. The response is always a plain list (no wrapper): when every hospital has `valoracionPromedio = null`, the frontend shows an appropriate "sin valoraciones" message — the backend does not signal this case. `transporte` valid values: `transporte-publico`, `vehiculo`, `vehiculo-dos-ruedas`, `caminar`, `bicicleta` (see `docs/12-hospital-selection-and-arrival.md`).
+Returns only hospitals registered in the app that support the selected specialty and lie within 5 km (geodesic distance). Candidates come from `RepoHospitales.findDistinctByEspecialidadesCodigo`; Google Place Details enriches only those registered Place IDs. Nearby Search and its 20-result limit do not select candidates. Only hospitals available for attention (`disponible=true` — at least one `SesionAtencionMedica.ACTIVA` for that specialty) are returned; an empty list means the frontend must show "no hay hospitales disponibles" and is not an error. Each hospital includes `tiempoEstimadoArriboMejorRuta` (estimated arrival time of the best route for the transport mode; `transporte` is optional, defaults to `transporte-publico`, and the field is null when no route can be computed) plus the estimated attention wait for a new arrival: `pacientesEnCola`, `minutosEsperaEstimados`, `fechaHoraAtencionEstimada`, `disponible` (always `true` in the response), and its Google Places rating: `valoracionPromedio` (float on Google's 1.0–5.0 scale, or `null` when Google provides no rating — absence of data, not an error) and `cantidadValoraciones` (review count, or `null`); ratings are fetched live from Google on every call and never persisted. `ordenarPor` is optional, defaults to `distancia` when omitted or empty (geodesic distance from patient coordinates); valid values live in `AtencionHospitalService.ORDENES_VALIDOS` (`distancia`, `tiempo-atencion`, `valoracion` y combinados con `|` como `distancia|tiempo-atencion` o `distancia|tiempo-atencion|valoracion`, orden indistinto). Values are case-sensitive (only exact lowercase, e.g. `Valoracion` returns `400`), and a combination containing any invalid or duplicated criterion returns `400` even if the other criteria are valid. `tiempo-atencion` orders by lower `minutosEsperaEstimados` (see `docs/04-queue-and-estimation.md#end-of-queue-estimate-for-hospital-ranking`), tie-broken by arrival time then name; `valoracion` orders by `valoracionPromedio` descending treating `null` as 0 (hospitals without rating go last and are never excluded), tie-broken by `cantidadValoraciones` descending (null = 0) then the Google `nombre` ascending; el combinado ordena por suma de rankings (distancia geodésica + tiempo + valoración) con desempate por `nombre` y luego orden por distancia geodésica. Invalid values return `400`. The response is always a plain list (no wrapper): when every hospital has `valoracionPromedio = null`, the frontend shows an appropriate "sin valoraciones" message — the backend does not signal this case. `transporte` valid values: `transporte-publico`, `vehiculo`, `vehiculo-dos-ruedas`, `caminar`, `bicicleta` (see `docs/12-hospital-selection-and-arrival.md`).
 
 ### Select Hospital
 
@@ -278,6 +297,12 @@ GET /api/atencion/hospital
 Returns the hospital selected in the active consultation of the authenticated
 patient, together with its formatted address. `direccion` is `null` when the
 hospital has no stored `Direccion`.
+
+Both `nombre` and `direccion` come from the registered hospital record; this
+endpoint does not fill them from Google Places at read time. A stored Place ID
+alone does not create a structured address. Mobile shows “Dirección no disponible”
+for a null address. The local Clínicas data repair and repeatable load are
+documented in [07-local-development.md](07-local-development.md#local-hospital-development-data).
 
 Example response:
 
@@ -375,26 +400,203 @@ Body:
 
 ```json
 {
-  "contenido": "Tengo fiebre desde ayer"
+  "contenido": "Tengo fiebre desde ayer",
+  "solicitudId": "b8ce94e9-83fd-48c1-92e3-36b7ae45cc77"
 }
 ```
 
-Returns `ChatTurnResponse` with `respuesta`, `atencionEstimada` and the additive
-field `origenRespuesta` (`OLLAMA` or `FALLBACK_LOCAL`). When triage finalizes,
-`atencionEstimada` is populated and the existing queue entry's priority is
+Returns **`202 ChatDTO`** after committing the patient message and durable
+`estadoTurnoTexto=PENDIENTE`. `solicitudId` is an optional UUID; current clients
+send one stable key per submission. A known key and identical content return the
+current snapshot without adding another message, including after subsequent turns.
+Reusing a key with different content, or sending a new key while `PENDIENTE` or
+`NO_DISPONIBLE`, returns `409`. Invalid UUID format returns `400`.
+
+The backend processes the saved turn asynchronously. Clients poll GET; they do
+not replay the POST after losing its response. `ChatDTO` adds `estadoTurnoTexto`
+(`SIN_SOLICITAR`, `PENDIENTE`, `COMPLETADA`, `NO_DISPONIBLE`),
+`solicitudTurnoTextoId` and `intentosTurnoTexto`. State and messages survive screen
+navigation and process restart. `COMPLETADA` describes the text turn; final triage
+must still be checked through `finalizado` and `estadoClasificacion`.
+See [durable text turns](24-durable-text-turns.md).
+
+Internally a verified turn uses `ChatTurnResponse` with `respuesta`,
+`atencionEstimada` and `origenRespuesta`; this is no longer the HTTP response body
+of this endpoint. When triage finalizes, the existing queue entry's priority is
 updated. When the bot finalizes, the patient's `ConsultaMedica` is linked to this chat
 (`ConsultaMedica.chat`, FK `consulta_medica.id_chat`); that link is what the hospital metrics
 count as "pretriage realizado". The final stored `Chat.resultadoTriageJson` includes
-`origenClasificacion` with the source of that classification. An HTTP success
-can therefore represent either a model response or a local fallback.
+`origenClasificacion` with the source of that classification, plus backend-owned
+`seguimientoEntrevista` metadata containing closure reason and datum states/attempts
+(without duplicating values or citations). Historical results without it remain valid.
+An HTTP success may also represent scope handling (`origenRespuesta=CONTROL_CONTEXTO`)
+after Gemini marks input `AMBIGUO` or `FUERA_DE_CONTEXTO`: ambiguity uses a verified
+clarification, off-topic input a fixed redirection. These turns have
+`atencionEstimada=null`, keep the chat open and store no classification.
+Excluded patient text remains visible locally and counts toward technical resource
+limits, but is not resent as provider context or accepted as clinical evidence.
+Provider failures and invalid model responses are recorded by the asynchronous
+worker. A terminal failure sets `estadoTurnoTexto=NO_DISPONIBLE`; no local
+classification is created and new text/voice input is blocked.
+During interviewing, Gemini receives a question schema (`mensaje`, `estadoEntrada`); the
+backend decides when to request final classification. The internal continuation
+input also carries backend-generated `objetivoDelTurno` (type, canonical symptom
+ID and dimension, without values or excluded text). Both generation and semantic
+verification use it; recognizable local mismatches permit one correction. This
+does not add fields to the public `ChatTurnResponse`. A relevant or ambiguous candidate is
+checked independently for scope and consistency with patient facts before it is
+shown. A malformed, out-of-scope or repeated question permits one remote correction.
+A successful question returns a normal
+`GEMINI` turn with `atencionEstimada=null`. The shared policy tracks objectives for
+each reported symptom and datum, plus one open invitation. It allows three attempts
+per datum, 24 total patient turns and four consecutive replies without progress;
+the old eight-answer/four-question conditions do not establish completion. Each turn asks about one
+concept. Saying there are no other symptoms stops the search for new symptoms while
+allowing bounded follow-up about reported symptoms; saying they do not want to
+continue ends the interview. Unknown or unmeasured values remain unknown without
+repetition, and a clear alarm closes immediately. See the [interview policy](17-simple-chat-questions.md).
+When resources are exhausted without comprehensible clinical facts, a terminal
+response uses `origenRespuesta=CIERRE_SIN_DATOS`, `atencionEstimada=null`,
+`finalizado=true` and `estadoClasificacion=NO_SOLICITADA` in the authoritative GET.
+No result or queue update is created. Clients synchronize GET after that origin;
+they must not infer `COMPLETADA` from interview closure alone. See
+[closure by resolved data](21-cierre-por-datos-resueltos.md).
+Transient REST failures have [bounded automatic retries](19-gemini-retries.md):
+two HTTP attempts per Gemini invocation by default, sharing the turn's 45-second
+budget with semantic verification and any correction. A typed transient failure
+permits one further workflow attempt against the saved patient message, with a
+persisted two-attempt budget. If interviewing still fails, the message remains
+saved and the assistant becomes `NO_DISPONIBLE`; the patient does not resend it.
+Final-classification failure retains its clinical closure state and no result.
+Existing
+historical chat results may still contain `FALLBACK_LOCAL` or `OLLAMA`.
 For a final result requiring immediate attention, `respuesta.contenido` includes
 the structured `recomendacionSeguridad` so the urgent advice is visible in chat.
+
+Intermediate question-only responses contain no clinical result. In structured
+results, `observaciones` may be an empty string when no additional
+notes are available. During interviewing, pending descriptive strings
+(`motivoConsulta`, `inicio`, `evolucion`, `posibilidadEmbarazo`) may also be empty;
+they must be nonblank in a final result. Keys and string types remain required.
+The safety recommendation may be blank only in an unfinished non-urgent turn;
+it remains nonblank for every final or immediate-attention response.
 
 ### Get Chat
 
 ```http
 GET /api/chat/{id}
 ```
+
+Returns messages in `fechaHoraEnvio ASC, id ASC` order. The message ID is an
+internal tie-breaker and is not added to the DTO. Voice transcripts can share the
+same batch-persistence timestamp; equal timestamps must preserve saved turn order
+instead of relying on database row order. The same ordering is used when the
+backend reconstructs interview progress, voice context and classification input.
+This read order also applies to existing chats without rewriting their messages.
+The returned text-turn status is authoritative even if the POST response was lost
+or the client left the screen while the provider was answering.
+
+### Retry Processing a Closed Interview
+
+This endpoint remains for compatibility. Current mobile does not expose a
+reprocessing button: newly closed voice interviews and transient final text
+classification failures are recovered by the backend with a persisted, bounded
+budget. Their state remains `PENDIENTE` until completion, administrative closure or
+terminal failure. Automatic work never replays a patient message. See
+[server-owned closure and recovery](23-server-owned-voice-closure.md).
+
+```http
+POST /api/chat/{id}/clasificacion
+```
+
+Authenticated patient, no request body. Processes saved answers without adding a
+message. Requires the caller's latest chat in `FALLIDA` classification state.
+An owned automatic `PENDIENTE` job is not accepted by this public retry endpoint.
+Returns `200 ChatTurnResponse` on success; only a valid Gemini result updates the
+queue. Completed/open/historical chats are rejected with `ChatFinalizadoException`
+(`400`); another patient's chat is not accessible. Concurrent retries are serialized
+by a database row lock. Provider failure retains a closed `FALLIDA` interview.
+The backend may make one bounded correction request after an invalid final classification;
+if the correction also fails, the response remains `FALLIDA` and no triage result or queue
+entry is created. A verified semantic rejection may provide only a safe category to guide
+that correction; arbitrary verifier text is not exposed.
+
+`GET /api/chat/{id}` and chat creation now include additive `estadoClasificacion`:
+`NO_SOLICITADA`, `PENDIENTE`, `COMPLETADA` or `FALLIDA`. `finalizado=true` means the
+interview is closed, including when processing failed. It no longer guarantees a
+stored classification. After closure, `POST /mensajes` rejects an additional `ok`;
+current mobile follows backend-owned processing with GET. No clinical priority is
+fabricated on failure and the receptionist form fallback is unaffected.
+
+### Voice Chat (Gemini Live)
+
+```http
+GET /api/chat/{id}/voz?access_token={jwt}   (WebSocket upgrade)
+```
+
+Speech-to-speech interview for an existing open chat: Gemini Live asks the
+questions; when it has enough data the session ends and Gemini REST preclassifies the
+collected summary (see `docs/05-ai-triage.md#voice-chat-gemini-live`).
+The JWT may be sent as `Authorization: Bearer` or, because browsers cannot set
+headers on a WebSocket handshake, as the `access_token` query parameter
+(accepted only on this path). Handshake errors: `401` unauthenticated, `404`
+chat missing or owned by another patient, `409` chat already finalized or text
+turn `PENDIENTE`/`NO_DISPONIBLE`, `503`
+Gemini Live not configured (`GEMINI_API_KEY` empty).
+
+Client -> server:
+
+- Binary frames: raw PCM 16-bit mono little-endian at 16 kHz (max 256 KB per frame).
+- Text `{"tipo":"fin_audio"}`: microphone paused (sends `audioStreamEnd`).
+- Text `{"tipo":"cerrar"}`: closes the mobile channel. Before the interview is
+  accepted as complete, the backend attempts to save the transcription without finalizing the chat.
+  After acceptance, backend closure processing continues; mobile can retrieve
+  the persisted chat state by HTTP when reconnecting.
+
+Server -> client:
+
+- Binary frames: PCM 16-bit mono little-endian at 24 kHz spoken by Gemini.
+- `{"tipo":"listo"}`: Gemini is ready; start streaming audio.
+- `{"tipo":"transcripcion_paciente","texto":...}` /
+  `{"tipo":"transcripcion_bot","texto":...}`: incremental transcription chunks.
+- `{"tipo":"interrumpido"}`: patient spoke over Gemini; drop queued playback.
+- `{"tipo":"procesando_respuesta","activo":true|false}`: transient waiting for a
+  useful assistant response. Show a neutral processing indicator while active;
+  keep the microphone/interruption available. This event does not mark interview
+  closure or clinical-classification completion. Clear it on accepted closure,
+  error, session end or a useful assistant question.
+- `{"tipo":"turno_completo"}`, `{"tipo":"sesion_por_expirar"}`,
+  `{"tipo":"error","mensaje":...}`.
+- `{"tipo":"entrevista_finalizada","resumen":ResumenEntrevistaVoz}`: the backend
+  confirmed interview closure; microphone audio is ignored from now on. `resumen`
+  is optional: it is absent when the backend recovers a missing Live tool call
+  using the saved transcript and the existing final-classification processor.
+- `{"tipo":"triage_finalizado","respuesta":MensajeDTO,"atencionEstimada":...,"origenRespuesta":...}`:
+  Gemini REST preclassification, same meaning as the final
+  internal `ChatTurnResponse` used to persist a completed text turn.
+- `{"tipo":"fin"}`: session over; the server then closes the WebSocket.
+
+Keep the backend socket open after `entrevista_finalizada`: classification is
+still pending. `triage_finalizado` is sent only after normal Gemini transport
+closure and successful classification/persistence. If that closure cannot be
+confirmed after interview closure, the backend attempts to save the received
+transcript as closed with classification `FALLIDA` and emits `error` and `fin`;
+they do not imply a completed classification. A rejected summary keeps
+the interview open and does not emit `entrevista_finalizada`.
+
+  When shared progress is terminal, one tool-call reminder plus bounded timers
+  can recover closure without another patient response. This applies to resolved
+  data, alarms, patient stop requests and partial resource/no-progress endings.
+  An unclarified additional contribution first receives a bounded clarification;
+  it is not silently treated as resolved data. Pending data, an unchanged rejected
+  scope preflight or late patient input prevent automatic classification.
+  Transcript-only recovery uses
+the existing bounded Gemini REST classification and verification; it creates no
+local clinical summary or priority. See the interaction guide for drain timing.
+
+Voice and text turns share the same `Chat`.
+See [the interaction guide](14-chat-voz-gemini-live.md) for the full sequence,
+mobile responsibilities, persistence and connection recovery semantics.
 
 ## Patient Queue State
 
@@ -652,7 +854,7 @@ GET /api/atencion/tiempos/suscribirse/{consultaId}
 Accept: text/event-stream
 ```
 
-Authenticated SSE stream with `tiempo-estimado` and `heartbeat` events. The patient must own the consultation.
+Authenticated SSE stream with `tiempo-estimado` and `heartbeat` events. The patient must own the consultation. When the client disconnects, the stream is removed from the active notifier connections; no response body is written for the closed connection.
 
 ## Reception Admission
 
@@ -667,9 +869,10 @@ See docs/09-reception-admission.md for the complete reception API and rules.
 > Each implementation of `ValidadorCredencialObraSocial` declares the obra social
 > it covers via `getObraSocial()`. Real integrations with each health insurance
 > are out of scope; the only implementation is `MockValidadorCredencialObraSocial`
-> (demo, covers `OSDE` and always accepts the credential).
-> If no validator is configured for the requested obra social, the API responds
-> `400` with `{ "error": "No hay un validador configurado para la obra social ..." }`.
+> (demo, declares `OSDE` and always accepts the credential). The current factory
+> returns the first registered validator for every requested name; provider-specific
+> selection and the missing-validator exception are in commented-out code. Adding
+> catalog names therefore does not verify coverage with an insurer.
 > If the selected validator rejects the credential, the API responds `400` with
 > `{ "error": "La credencial de obra social no es válida" }` and nothing is persisted.
 
@@ -678,8 +881,20 @@ See docs/09-reception-admission.md for the complete reception API and rules.
 1. Implement `ValidadorCredencialObraSocial` (e.g. `ValidadorCredencialIOMA`).
 2. Annotate it with `@Component`/`@Service` and return the obra social name from
    `getObraSocial()` (e.g. `"IOMA"`).
-3. From then on, `FabricaValidadoresCredencialesObraSocial` picks that
-   implementation automatically for that obra social; no other wiring is needed.
+3. Enable provider-specific selection in `FabricaValidadoresCredencialesObraSocial`
+   (currently commented out) and remove the unconditional demo validator selection.
+
+### List Health Insurance Catalog
+
+```http
+GET /api/obrasocial
+```
+
+Returns the active catalog (`virgente=true`) as `[{ "nombre": "OSDE" }, ...]`.
+No catalog entries yields HTTP 200 with `[]`; mobile displays an error for that
+empty result. The local seed and reload instructions are documented in
+[07-local-development.md](07-local-development.md#local-health-insurance-catalog).
+Credential plans are free text, not a separate catalog endpoint.
 
 ### List Credentials
 
@@ -917,7 +1132,7 @@ Uses the same body as room creation. The room must belong to the sector in the U
 PATCH /api/admin/hospitales/{hospitalId}/configuracion/sectores/{sectorId}/salas/{salaId}/estado
 ```
 
-The room must belong to the sector in the URL; activating re-validates that the room's specialty is still enabled for the hospital.
+The room must belong to the sector in the URL; activating re-validates that the room's specialty is still enabled for the hospital. Deactivation returns `409` if the room is reserved by an `ACTIVA` or `PAUSADA` medical session; the room stays active.
 
 Body:
 
@@ -979,7 +1194,7 @@ Body (`ActualizarSectorRequest`):
 }
 ```
 
-Validation: `nombre` `@NotBlank @Size(max=100)`, `especialidadId` `@NotNull`, `activa` `@NotNull` -> `400`. `404` if hospital/sector/specialty not found or sector does not belong to hospital (`findByIdAndHospitalId`). If any `Sala` of the sector has `ConsultaMedica` with `estadoConsulta NOT IN (FINALIZADA,CANCELADA)` (`RepoConsultasMedicas.existsBySalaIdInAndEstadoConsultaNotIn`) -> `409 { "error": "No se puede modificar/eliminar un sector con salas que aún tienen pacientes asignados" }`. Audits `SECTOR_ACTUALIZADO`.
+Validation: `nombre` `@NotBlank @Size(max=100)`, `especialidadId` `@NotNull`, `activa` `@NotNull` -> `400`. `404` if hospital/sector/specialty not found or sector does not belong to hospital (`findByIdAndHospitalId`). A consultation referencing the sector directly or one of its rooms with `estadoConsulta NOT IN (FINALIZADA,CANCELADA)` returns `409 { "error": "No se puede modificar o eliminar un sector con pacientes pendientes o en atención" }`. This includes queued patients without a room yet. Deactivating also rejects medical sessions in `ACTIVA` or `PAUSADA`, checking both sector and room references. Otherwise deactivating a sector deactivates its rooms in the same transaction. Audits `SECTOR_ACTUALIZADO`.
 
 Success `200` (`SectorHospitalResponse` with updated `activa`).
 
@@ -991,11 +1206,72 @@ DELETE /api/admin/hospitales/{hospitalId}/configuracion/sectores/{sectorId}
 
 Hospital admin only. Returns `204 No Content` on success.
 
-Blocking rules (both checked, `409` if violated):
-* Same patient check as `PUT`: if any `Sala` of the sector has patients (`existsBySalaIdInAndEstadoConsultaNotIn`) -> `409` same message.
-* If any `Sala` of the sector has `SesionAtencionMedica` with `estado IN (ACTIVA, PAUSADA)` (`RepoSesionesAtencionMedica.existsBySalaIdInAndEstadoIn`) -> `409 { "error": "No se puede eliminar un sector con sesiones de atención activas o pausadas" }`.
+Blocking rules (`409` if violated):
 
-If sector has empty salas (no patients/sessions), `DELETE` desvincula salas (`sala.setSector(null)`) and deletes sector. `404` if sector not in hospital. Audits `SECTOR_ELIMINADO`.
+* Same pending-patient check as `PUT`, including consultations assigned directly
+  to the sector before a room is selected.
+* Medical sessions referencing the sector or its rooms in `ACTIVA` or `PAUSADA`
+  return `409 { "error": "No se puede modificar o eliminar un sector con sesiones de atención activas o pausadas" }`.
+* Any historical consultation/session referencing the sector or its rooms, or a
+  patient still linked through `id_sector_asignado`, prevents physical deletion.
+  The conflict explains that the sector should be deactivated to preserve history.
+* A queue manager with consultations or queue-entry history also prevents deletion,
+  including entries that no longer count as waiting patients.
+
+For a never-used sector, an empty queue manager is removed first, followed by its
+rooms and the sector, in one transaction. No consultation, patient, session or
+queue-entry history is deleted. `404` if sector not in hospital. Audits each
+`SALA_ELIMINADA` and `SECTOR_ELIMINADO`. Clients must accept the successful `204`
+without parsing a JSON body, then refetch configuration and audit.
+
+### List Medical Sessions Of A Sector
+
+```http
+GET /api/admin/hospitales/{hospitalId}/configuracion/sectores/{sectorId}/sesiones
+```
+
+Requires `ADMIN_HOSPITAL` access to `{hospitalId}`. Returns `200` with an array of
+`SesionMedicaAdminResponse` for `ACTIVA` or `PAUSADA` sessions, newest first
+(`fechaHoraInicio DESC`, then `id DESC`). A sector can be inactive. Legacy sessions
+without a direct sector are included through their room's sector. No matching
+sessions returns `[]`; this endpoint does not return finalized history.
+After a successful close, refetching this list excludes the closed session even
+though its record remains in the database. Only the close response returns that
+session in `FINALIZADA`; the list endpoint still excludes it.
+
+Each item contains `id`, `medicoId`, `medicoNombre`, `estado`, `sectorId`,
+`sectorNombre`, `salaId`, `salaNombre`, `codigoEspecialidad`,
+`nombreEspecialidad`, and `fechaHoraInicio` (local ISO date-time). Room fields can
+be `null` if the session has no room. No patient details are included.
+Unauthenticated access returns `401`; missing hospital-admin access returns `403`.
+A sector outside the requested hospital or an unknown sector returns `404`.
+
+### Close A Medical Session As Hospital Admin
+
+```http
+POST /api/admin/hospitales/{hospitalId}/configuracion/sectores/{sectorId}/sesiones/{sesionId}/cerrar
+```
+
+No body. Uses the same hospital-admin authorization and sector scope as listing.
+The session must also belong to the hospital and sector in the URL (`404`
+otherwise, including a session in another hospital). Returns `200` with
+`SesionMedicaAdminResponse` in `FINALIZADA`, sets `fechaHoraFin`, and audits
+`SESION_MEDICA_CERRADA_POR_ADMIN` with actor, hospital and `objetivo=sesion:{id}`.
+Closing an already finalized session is idempotent: the existing end time is kept
+and no duplicate audit is written.
+
+Returns `409 { "error": "No se puede cerrar la sesión mientras tenga una consulta llamada o en atención" }`
+if the doctor has an `EntradaCola` in `LLAMADO`/`EN_ATENCION` or the session has an
+`AtencionMedica.EN_CURSO`. It never cancels that consultation. Administrative
+closure and doctor state changes share a pessimistic session lock and validate
+state after acquiring it. The closure releases the doctor/room reservation and
+removes active capacity from estimation, preserving all history and queued
+patients. It does not make a previously used sector physically deletable;
+deactivate it once all pending patients and sessions have been resolved.
+
+The web panel confirms closure per session, then refetches the sector sessions,
+hospital configuration and audit. Mutation controls remain pending through that
+refresh; a rejected close leaves the dialog open with the backend error.
 
 ## Hospital Metrics (Hospital Admin)
 

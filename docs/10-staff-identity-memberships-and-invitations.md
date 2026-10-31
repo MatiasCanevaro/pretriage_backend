@@ -373,6 +373,11 @@ GET    /api/invitaciones/{token}/resumen
 POST   /api/invitaciones/{token}/registro
 POST   /api/invitaciones/{token}/aceptar
 GET    /api/admin/hospitales/{hospitalId}/configuracion
+POST   /api/admin/hospitales/{hospitalId}/configuracion/sectores
+PUT    /api/admin/hospitales/{hospitalId}/configuracion/sectores/{sectorId}
+DELETE /api/admin/hospitales/{hospitalId}/configuracion/sectores/{sectorId}
+GET    /api/admin/hospitales/{hospitalId}/configuracion/sectores/{sectorId}/sesiones
+POST   /api/admin/hospitales/{hospitalId}/configuracion/sectores/{sectorId}/sesiones/{sesionId}/cerrar
 POST   /api/admin/hospitales/{hospitalId}/configuracion/especialidades/{especialidadId}
 DELETE /api/admin/hospitales/{hospitalId}/configuracion/especialidades/{especialidadId}
 POST   /api/admin/hospitales/{hospitalId}/configuracion/sectores/{sectorId}/salas
@@ -386,6 +391,25 @@ one sector: they are created/updated/activated under `/sectores/{sectorId}/salas
 and their specialty must match the sector's specialty. Rooms are activated or
 deactivated rather than deleted to preserve historical references, and disabling a
 specialty requires first deactivating all its rooms in the hospital, including rooms without a sector. No sector selection is required. The operation only removes the hospital-specialty association, preserves the global catalog and existing sectors/rooms, and does not cancel consultations or close medical sessions. Repeating it returns the current configuration without duplicating the audit event.
+
+An active or paused medical session prevents deactivating its room or sector.
+The hospital administrator can list those sessions under each sector, including
+inactive sectors, and confirm their finalization. The API checks hospital-admin
+access before loading sessions, enforces hospital and sector ownership (`404`
+for a mismatch), and rejects closure (`409`) if a patient is called/in attention
+or the session has an attention in progress. It releases the reservation by
+transitioning to `FINALIZADA`, preserves history and audits
+`SESION_MEDICA_CERRADA_POR_ADMIN`; repeated closure does not duplicate the audit.
+Pausing a session is not enough to release its room. The list exposes staff,
+specialty, room and session metadata only, without patient data.
+
+Sector changes also reject pending consultations assigned directly to the sector,
+even before they have a room. Physical sector deletion is limited to never-used
+sectors: an empty queue manager and their unreferenced rooms can be removed in
+the same transaction. Consultations, medical-session history, assigned patients
+or queue-entry history yield `409` with an actionable message instead of a
+database foreign-key error. Deactivate a sector with history after resolving any
+pending patients/sessions. Successful deletion returns an empty `204` response.
 
 The public `/api/register` endpoint now rejects doctor, receptionist and admin
 registration. Invitation registration derives hospital roles from the stored

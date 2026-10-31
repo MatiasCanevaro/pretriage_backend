@@ -65,10 +65,10 @@ A receptionist can admit a patient identified by DNI, collect a structured clini
   intensity in its normalized result and deterministic fallback.
 - If the AI provider fails, a conservative deterministic fallback classifies explicit alarm signs and severe pain.
 - External AI calls have bounded connect/read timeouts. A stopped or stalled
-  Ollama instance must reach the same deterministic fallback instead of leaving
+  Gemini REST request must reach the same deterministic fallback instead of leaving
   the admission request pending indefinitely.
-- Reception classification performs a single provider attempt; Spring AI's
-  exponential retry policy is disabled so the fallback is reached promptly.
+- Reception classification performs a single provider attempt without retries,
+  so the fallback is reached promptly.
 - `EntradaCola` remains the queue source of truth.
 
 ## Endpoints

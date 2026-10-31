@@ -2,6 +2,30 @@
 
 This file gives future AI agents enough context to work on the project without rediscovering the domain from scratch.
 
+## Chat language policy
+
+Patient-facing messages/audio do not announce preclassification or a priority calculation.
+Use a brief acknowledgement for the medical team; retain urgent-care warnings. Switching
+to Live with only the initial greeting uses `Te escucho` instead of repeating that greeting;
+the first bot transcription is suppressed in events and persistence when the greeting
+already exists. Subsequent patient/bot turns are unaffected. Mobile labels describe
+registration of answers and attention, while internal clinical results remain unchanged.
+
+Gemini REST output defaults to 8192 tokens, configurable with
+`GEMINI_MAX_OUTPUT_TOKENS` (1-65536). Non-`STOP` responses are rejected and logged
+with an allowlisted finish reason plus numeric usage counters only. Do not accept
+partial JSON or bypass safety stops. The generic historical error does not prove
+token exhaustion; the chat 17 equivalent completed successfully at both limits.
+
+`LenguajeClinicoChat` shares spelling and ambiguity instructions between text, corrective
+questions, Live interviews and final voice classification. Preserve raw messages;
+normalize only unambiguous wording in structured results. Unknown/ambiguous terms require
+neutral clarification; unresolved expressions remain literal quotes in observations,
+not invented clinical facts. Never guess medication names/doses or diagnoses. Regional
+`moratón` is canonicalized to `moretón` in result motive/symptom/alarm text only; other
+clinical fields and priority are unchanged. Semantic checking is model guidance, not a
+validated medical dictionary. See [clinical language normalization](05-ai-triage.md#clinical-language-normalization).
+
 ## Core Intent
 
 The system manages the first medical attention workflow:
@@ -50,9 +74,62 @@ The system manages the first medical attention workflow:
 - `Mensaje`
 - `TriageResultDTO`
 
-Chat responses expose `origenRespuesta` (`OLLAMA` / `FALLBACK_LOCAL`); final
-`Chat.resultadoTriageJson` also stores `origenClasificacion`. Repeated questions
-must prompt for missing information instead of closing the interview. Preserve
+- Voice: `SesionVozChat`, `GeminiLiveCliente`, `GeminiLiveProperties`
+  (`services/voz`), `ChatVozWebSocketHandler`, `ChatVozHandshakeInterceptor`,
+  `WebSocketConfig`; `ChatService.finalizarEntrevistaVoz` /
+  `registrarTurnosVoz`. Gemini Live conducts the voice interview with a prompt
+  sharing `LenguajeClinicoChat` interview rules and closes it via `finalizar_entrevista`
+  (`ResumenEntrevistaVoz`); priority is never assigned by the Live interview model: Gemini REST
+  classifies the summary + transcription after the Gemini session ends, with the
+  validated output contract and no local replacement on provider failure.
+  `ValidadorCierreEntrevistaVoz` gates closure in both the session and the service
+  using saved plus pending patient turns. Never trust an empty summary or use it
+  to invent sufficient interview evidence. The classification prompt gives literal patient statements precedence over
+  conflicting summary fields. Classify only after normal Gemini transport
+  closure; incomplete closure preserves the transcript for continuation.
+
+Successful new chat responses expose `origenRespuesta=GEMINI`; final
+`Chat.resultadoTriageJson` also stores `origenClasificacion`. Intermediate text
+turns request only `mensaje`, with at most one remote correction for an incompatible
+intermediate response or repeated question. Gemini is instructed to ask about one datum per turn,
+and `LenguajeClinicoChat.REGLAS_PREGUNTA_TEXTO` excludes closure instructions from that task.
+Question-mark count and punctuation do not invalidate the response or trigger a
+format correction; preserve Gemini's returned message. Gemini supplies questions
+and the backend applies shared `ProgresoEntrevista`: objectives per reported symptom
+and datum, one open invitation, and terminal data states (answered, unknown, declined
+or attempts exhausted). Independent budgets are 24 total patient turns, three
+attempts per datum and four replies without progress; budget closure is partial.
+Each turn
+covers one concept; onset/duration and impact are limited to reported symptoms, pain
+may use 0–10 or daily impact, and temperature is requested only when measured.
+Unknown or unmeasured values stay unknown without repetition, and facts are never
+carried from one symptom to another. «No tengo otros síntomas» stops the search for
+new symptoms but permits bounded quantification of those already reported; «no quiero
+seguir» ends the interview. Do not repeat the open invitation. A clear alarm closes
+immediately, and unreported alarm signs remain unknown. See
+[interview policy](17-simple-chat-questions.md).
+See [resolved-data closure](21-cierre-por-datos-resueltos.md) for resource accounting
+and `seguimientoEntrevista` stored-result metadata. Excluded messages count locally
+for resource protection but are not resent to Gemini or accepted as clinical facts.
+A terminal `CIERRE_SIN_DATOS` response has no classification or queue update;
+clients synchronize the closed chat and must not infer COMPLETADA from closure.
+Complete interviews request final classification and reject a provider response
+that keeps asking questions. Chat never generates local questions or classification.
+Final model JSON/schema errors can request one bounded correction. Transient REST
+failures use [bounded retries](19-gemini-retries.md), two HTTP attempts per invocation
+by default; all calls and corrections share the operation's 45-second budget.
+Do not automatically resend mobile POST messages or replay Live audio.
+Unfinished text-turn failures remove the undelivered patient message;
+classification failures after closure preserve answers with `finalizado=true`.
+New voice jobs commit `PENDIENTE` before external work and automatically recover
+typed transient faults, with at most two persisted attempts. Final text transient
+faults schedule the remaining attempt after commit. Exhausted/permanent faults
+leave `FALLIDA`; current mobile has no reprocessing button. Both modalities share
+final-result validation and one bounded semantic correction. Compatibility retry
+`POST /api/chat/{id}/clasificacion` adds no patient message and accepts only the
+latest `FALLIDA` chat, never an in-flight `PENDIENTE` job. See
+[the current closure/recovery contract](23-server-owned-voice-closure.md).
+Reception form fallback remains active in `AdmisionRecepcionService`. Preserve
 valid final AI classifications instead of overwriting them with local rules.
 Immediate-attention final messages must include the result's safety recommendation.
 The real chat E2E must verify final origin, structured content and queue priority;
@@ -85,6 +162,10 @@ Chat lifecycle and consultation link:
   `RepoConsultasMedicas.contarIngresadosPorNivelBot/Medico` (`ConteoPorNivelProjection`, `null` nivel = `SIN_REVISION`)
   and `contarIngresadosCon/SinPretriage`.
 - DTOs: `MetricasHospitalResponse`, `DistribucionNivelItem`, `SerieDiariaItem` (`controllers/dtos/metricas`).
+- Metrics demo data is opt-in: `pretriage.seed.metricas-demo.enabled=true` also
+  requires an explicit `pretriage.seed.metricas-demo.hospital-place-id`. Never
+  enable this synthetic-data runner in the application's normal datasource.
+  Configuration and prerequisites: `docs/07-local-development.md`.
 
 Contract rules: everything is anchored on `EntradaCola.fechaHoraIngreso` of the hospital in range;
 `pacientesAtendidos` = those with `AtencionMedica.FINALIZADA`; wait = `fechaHoraInicio - fechaHoraIngreso`
@@ -131,6 +212,7 @@ values in declaration order and `distribucionGravedadMedico` the same 5 + `SIN_R
 - `Sala`
 - `AsignacionMedicoHospital`
 - `RepoSesionesAtencionMedica`
+- `SesionesMedicasAdminService`: sector listing includes only `ACTIVA`/`PAUSADA`, including inactive sectors and legacy room-sector associations. Closing returns a `FINALIZADA` DTO and preserves the database row, but subsequent lists exclude it; this is not a finalized-session history endpoint.
 - `AtencionMedica`
 - `EstadoAtencionMedica`
 - `RepoAtencionesMedicas`
@@ -153,7 +235,7 @@ values in declaration order and `distribucionGravedadMedico` the same 5 + `SIN_R
 - Estimated attention time is dynamic and should be recalculated on every request.
 - Only `EntradaCola.EN_COLA` counts for waiting estimation (both per-patient and per-hospital ranking; never `GestorDeCola.consultasEnEspera`). Per-patient estimation is scoped to the patient's sector (its gestor queue and the hospital+especialidad+sector `ACTIVA` sessions); hospital ranking estimation stays hospital+especialidad-wide.
 - Doctor sessions count for capacity only when `EstadoSesionMedica.ACTIVA`.
-- Nearby hospitals ranking shows only hospitals with `medicosActivos > 0` (`disponible=true`); an empty result means "no hay hospitales disponibles". Ranking wait uses end-of-queue formula `pacientesEnCola / max(medicosActivos,1) * minutosPromedioAtencion`. `ordenarPor` valid values live in `ORDENES_VALIDOS` (`distancia`, `tiempo-atencion`, `valoracion`, combinados con `|` como `distancia|tiempo-atencion|valoracion`), orden indistinto y case-sensitive; el combinado usa suma de rankings (distancia Google + tiempo + valoración, `null` = 0) con desempate por `nombre`. Cada hospital expone `valoracionPromedio` (1.0–5.0 o `null` si Google no tiene rating) y `cantidadValoraciones` (o `null`); el mensaje "sin hospitales valorados" lo muestra el frontend cuando todos los `valoracionPromedio` son `null`.
+- Nearby hospitals ranking shows only hospitals with `medicosActivos > 0` (`disponible=true`); an empty result means "no hay hospitales disponibles". Ranking wait uses end-of-queue formula `pacientesEnCola / max(medicosActivos,1) * minutosPromedioAtencion`. `ordenarPor` valid values live in `ORDENES_VALIDOS` (`distancia`, `tiempo-atencion`, `valoracion`, combinados con `|` como `distancia|tiempo-atencion|valoracion`), orden indistinto y case-sensitive; el combinado usa suma de rankings (distancia geodésica + tiempo + valoración, `null` = 0) con desempate por `nombre`. Cada hospital expone `valoracionPromedio` (1.0–5.0 o `null` si Google no tiene rating) y `cantidadValoraciones` (o `null`); el mensaje "sin hospitales valorados" lo muestra el frontend cuando todos los `valoracionPromedio` son `null`.
 - Paused sessions do not count as active capacity.
 - Zero active doctors still yields an estimate using one virtual doctor, but response must indicate no active doctors.
 - A room cannot have two active or paused sessions at the same time.
@@ -215,7 +297,7 @@ python scripts\e2e_chat.py --backend-url http://localhost:18080 --db-name pretri
 For full confidence:
 
 ```powershell
-.\mvnw.cmd test
+python scripts/test_backend_isolated.py
 ```
 
 Full tests need Docker Desktop access.
@@ -228,6 +310,11 @@ Full tests need Docker Desktop access.
 - Do not count delayed or manually waiting patients as in queue.
 - Do not add admin module assumptions yet; admin is planned but not in scope.
 - Do not expose raw `.env` values in logs or docs.
+- Text messages use `TextoTurnoService`: accept once with a stable UUID, return
+  `202 ChatDTO`, then poll GET. Durable `estadoTurnoTexto` is independent of
+  `estadoClasificacion`. Never replay POST to recover a lost response. A pending
+  or unavailable text turn blocks text and voice; automatic retries are bounded.
+  See `docs/24-durable-text-turns.md` before changing this lifecycle.
 
 ## Documentation Maintenance
 
@@ -247,3 +334,5 @@ Documentation updates are required in the same change as code updates. When chan
 - Reception cannot set or edit priority.
 - Both digital and reception flows must enter the queue through `IngresoColaService`.
 - Keep `docs/09-reception-admission.md` synchronized with backend contracts.
+
+Nearby patient hospital candidates come only from registered DB hospitals matching the selected specialty. `GooglePlacesService.buscarHospitalesRegistrados` uses Place Details for those IDs, geodesic radius 5 km and distance sorting. Never let global Nearby Search or its 20-result limit determine the registered candidate set. Active capacity and queue ranking rules remain unchanged.

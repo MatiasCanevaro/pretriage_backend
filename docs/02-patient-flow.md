@@ -16,7 +16,7 @@ flowchart TD
 ## Steps
 
 1. Patient selects a medical specialty.
-2. Backend retrieves nearby hospitals from Google Places and filters by specialty stored locally.
+2. Backend queries registered hospitals by specialty, resolves their coordinates and metadata with Google Place Details, and filters by geodesic distance within 5 km.
 3. Patient selects a hospital by `placeId` and `codigoEspecialidad`.
 4. Backend creates or updates the active `ConsultaMedica` with the selected hospital and specialty.
 5. Backend assigns a sector to the consultation (`AsignacionSectorService`: active sector of the hospital+specialty with the fewest `EN_COLA` entries and at least one active room). If no sector is available the selection fails.
@@ -84,16 +84,21 @@ Both manual waiting (`POST /api/paciente/consulta/cola/pausa-manual`) and absenc
 
 Patients can cancel their active hospital selection at any point of the attention flow (`POST /api/paciente/consulta/cancelar` — `EsperaPacienteService.cancelarSeleccion`, `docs/06-api-reference.md#cancel-hospital-selection`). The client requests confirmation before calling the endpoint, which is **idempotent**.
 
-From `EN_COLA`, `LLAMADO`, `EN_ESPERA` (manual or `AUSENTE_AL_LLAMADO`) or `ATRASADO`:
+From `EN_COLA`, `EN_ESPERA` (manual or `AUSENTE_AL_LLAMADO`) or `ATRASADO`:
 
 - `EntradaCola.estado = CANCELADA` (clears `tipoPausa`, `fechaHoraLimiteRespuesta`, `fechaHoraUltimaRepregunta`).
 - `ConsultaMedica.estadoConsulta = CANCELADA` (clears `medico` and `sala`).
 - The entry stops counting for estimation and is no longer offered to the doctor (`listarPacientesDisponibles`/`llamarProximo` only read `EN_COLA`; `obtenerSesionActual` only `LLAMADO`/`EN_ATENCION`), so a cancelled patient can never be called again within that selection.
 - If the AI triage chat is still open, it is finalized (`Chat.finalizado = true`).
 
+Mobile clears its saved chat ID only after confirmed cancellation and after a successful
+new hospital selection (HTTP 204). The next interview starts with a new chat even for
+the same hospital and specialty. Failed requests retain the cached ID; historical chats
+and messages remain in the backend.
+
 The endpoint always resolves the patient's **current** hospital selection: it operates on the most recent `EntradaCola` of the patient (`RepoEntradasCola.findFirstByConsultaMedicaPacienteIdOrderByIdDesc`). Older `EntradaCola` records from previous selections that are already `CANCELADA` or `FINALIZADA` are never considered, so a historical entry can neither shadow the active selection nor produce a spurious `409`/no-op response.
 
-It is **not** possible to cancel a consultation in `EN_ATENCION` (in progress) or already `FINALIZADA` (409 `ConflictoDeEstadoException`). Cancellation is terminal: the selection cannot be resumed or re-linked. Reception admissions are out of scope for this endpoint (cancelled through `POST /api/recepcion/admisiones/{admisionId}/cancelar`, `docs/09-reception-admission.md`).
+It is **not** possible to cancel a consultation in `LLAMADO`, `EN_ATENCION` (in progress) or already `FINALIZADA` (409 `ConflictoDeEstadoException`). Cancellation is terminal: the selection cannot be resumed or re-linked. Reception admissions are out of scope for this endpoint (cancelled through `POST /api/recepcion/admisiones/{admisionId}/cancelar`, `docs/09-reception-admission.md`).
 
 ## Medical Studies Management
 
@@ -121,4 +126,4 @@ Patients can manage their medical study files (radiology scans, lab reports, etc
 
 ### Doctor Access
 
-During attention, doctors can view patient studies through the medical history endpoints documented in the API reference.
+During attention, doctors can view patient studies through the medical history endpoints documented in the API reference.

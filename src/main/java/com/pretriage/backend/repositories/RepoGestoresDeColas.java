@@ -12,4 +12,6 @@ public interface RepoGestoresDeColas extends JpaRepository<GestorDeCola, Long> {
 
     Optional<GestorDeCola> findByHospitalIdAndEspecialidadIdAndSectorId(Long idHospital, Long idEspecialidad,
             Long idSector);
+
+    Optional<GestorDeCola> findBySectorId(Long idSector);
 }

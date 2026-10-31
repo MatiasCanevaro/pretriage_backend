@@ -43,6 +43,20 @@ Relevant states in `EstadoConsulta`:
 - `fechaHoraCreacion`
 - `finalizado`
 - `resultadoTriageJson`
+- `estadoClasificacion` (`NO_SOLICITADA`, `PENDIENTE`, `COMPLETADA`, `FALLIDA`)
+- `estadoTurnoTexto` (`SIN_SOLICITAR`, `PENDIENTE`, `COMPLETADA`, `NO_DISPONIBLE`),
+  `solicitudTurnoTextoId`, `intentosTurnoTexto`: durable state of the latest accepted
+  text message, independent of final clinical classification.
+- `turnoTextoEnCurso`, `turnoTextoIniciadoEn`, `errorTurnoTexto`: internal worker claim,
+  lease timestamp and safe failure category. Legacy null state reads as `SIN_SOLICITAR`.
+- `intentosClasificacionAutomaticos`, `recuperacionAutomaticaClasificacion`,
+  `clasificacionAutomaticaEnCurso`, `clasificacionAutomaticaVoz`: internal durable
+  recovery budget, ownership, claim and modality; legacy nulls read as 0/false.
+
+Messages are loaded by `fechaHoraEnvio ASC, id ASC`. For the current voice closure
+and final-classification recovery lifecycle, see
+[server-owned closure](23-server-owned-voice-closure.md). New automatic jobs persist
+`PENDIENTE` before provider work; the patient does not trigger their retries.
 
 The structured triage result is stored as JSON in `resultadoTriageJson` and maps
 to `ConsultaMedica.nivelDeGravedadBot` when the triage finishes.
@@ -58,6 +72,10 @@ or a chat closed without finishing).
 - `autor`
 - `pacienteAutor`
 - `fechaHoraEnvio`
+- `solicitudId`: nullable UUID for patient text submissions. The unique
+  `(chat_id, solicitud_id)` constraint and stored content make delayed duplicate
+  requests idempotent, including after subsequent turns. Voice and legacy messages
+  have no request key. See [durable text turns](24-durable-text-turns.md).
 
 `autor` values in `AutorMensaje`:
 

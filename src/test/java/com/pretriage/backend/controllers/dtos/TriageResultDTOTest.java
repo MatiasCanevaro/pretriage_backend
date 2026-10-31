@@ -17,7 +17,7 @@ class TriageResultDTOTest {
                 5, List.of(), List.of(), List.of(), List.of(), "no informado",
                 "Sin otros datos", 3, false, "Continuar evaluacion presencial");
         ObjectNode json = mapper.valueToTree(resultado);
-        json.put("origenClasificacion", "OLLAMA");
+        json.put("origenClasificacion", "GEMINI");
 
         assertEquals(resultado, mapper.readValue(mapper.writeValueAsString(json), TriageResultDTO.class));
         assertEquals(resultado, mapper.readValue(mapper.writeValueAsString(resultado), TriageResultDTO.class));

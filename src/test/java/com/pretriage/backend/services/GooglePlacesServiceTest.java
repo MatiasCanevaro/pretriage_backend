@@ -28,7 +28,7 @@ import static org.mockito.Mockito.when;
 * Test de integracion donde mockeo las respuestas de la api de google usando wireMockServer
 * */
 
-@SpringBootTest
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @TestPropertySource(properties = { //se sobreescriben los valores del "application.properties" solo para ejecutar este test
         "google.api.key=test-api-key",
         "google.places.base-url=http://localhost:8089/v1/places",
@@ -59,6 +59,74 @@ public class GooglePlacesServiceTest {
     @AfterAll
     static void afterAll() {
         wireMockServer.stop();
+    }
+
+    @Test
+    void clinicasRegistradoApareceDesdeCorrientesSinDependerDeNearbySearch() {
+        wireMockServer.resetRequests();
+        wireMockServer.stubFor(get(urlEqualTo("/v1/places/clinicas-registrado")).willReturn(okJson("""
+                {"id":"clinicas-registrado","displayName":{"text":"Hospital de Clinicas"},
+                 "formattedAddress":"Av. Cordoba 2351, CABA",
+                 "location":{"latitude":-34.5984007,"longitude":-58.3998358},
+                 "rating":4.5,"userRatingCount":100}
+                """)));
+        Hospital clinicas = new Hospital(); clinicas.setPlaceId("clinicas-registrado");
+        var resultado = service.buscarHospitalesRegistrados(-34.602612, -58.427962, List.of(clinicas));
+        assertEquals(1, resultado.size());
+        assertEquals("clinicas-registrado", resultado.getFirst().getPlaceId());
+        assertEquals(4.5, resultado.getFirst().getValoracionPromedio());
+        wireMockServer.verify(0, postRequestedFor(urlEqualTo("/v1/places:searchNearby")));
+        wireMockServer.verify(1, getRequestedFor(urlEqualTo("/v1/places/clinicas-registrado")));
+    }
+
+    @Test
+    void noLimitaLaListaA20HospitalesYLosOrdenaPorDistancia() {
+        wireMockServer.resetRequests();
+        var registrados = new java.util.ArrayList<Hospital>();
+        for (int i=21; i>=0; i--) {
+            String id = "registrado-" + i;
+            double lat = -34.6 + i * 0.0001;
+            Hospital hospital = hospitalConCoordenadas(id, lat, -58.4);
+            registrados.add(hospital);
+            wireMockServer.stubFor(get(urlEqualTo("/v1/places/" + id)).willReturn(okJson(
+                    "{\"id\":\"" + id + "\",\"displayName\":{\"text\":\"" + id + "\"},"
+                    + "\"location\":{\"latitude\":" + lat + ",\"longitude\":-58.4}}")));
+        }
+        var resultado = service.buscarHospitalesRegistrados(-34.6, -58.4, registrados);
+        assertEquals(22, resultado.size());
+        assertEquals("registrado-0", resultado.getFirst().getPlaceId());
+        assertEquals("registrado-21", resultado.getLast().getPlaceId());
+        wireMockServer.verify(0, postRequestedFor(urlEqualTo("/v1/places:searchNearby")));
+    }
+
+    @Test
+    void excluyeHospitalFueraDelRadioSinConsultarGoogleYConservaDatosLocalesSiGoogleFalla() {
+        wireMockServer.resetRequests();
+        Hospital lejano = hospitalConCoordenadas("registrado-lejano", -35.0, -58.4);
+        Hospital cercano = hospitalConCoordenadas("registrado-sin-google", -34.601, -58.4);
+        cercano.setNombre("Hospital registrado");
+        wireMockServer.stubFor(get(urlEqualTo("/v1/places/registrado-sin-google")).willReturn(serverError()));
+        var resultado = service.buscarHospitalesRegistrados(-34.6, -58.4, List.of(lejano, cercano));
+        assertEquals(1, resultado.size());
+        assertEquals("Hospital registrado", resultado.getFirst().getNombre());
+        assertNull(resultado.getFirst().getValoracionPromedio());
+        wireMockServer.verify(0, getRequestedFor(urlEqualTo("/v1/places/registrado-lejano")));
+        wireMockServer.verify(0, postRequestedFor(urlEqualTo("/v1/places:searchNearby")));
+    }
+
+    @Test
+    void sinRegistradosNoConsultaGoogleYRechazaCoordenadasInvalidas() {
+        wireMockServer.resetRequests();
+        assertTrue(service.buscarHospitalesRegistrados(-34.6, -58.4, List.of()).isEmpty());
+        assertThrows(IllegalArgumentException.class, () -> service.buscarHospitalesRegistrados(Double.NaN, -58.4, List.of()));
+        wireMockServer.verify(0, anyRequestedFor(anyUrl()));
+    }
+
+    private Hospital hospitalConCoordenadas(String placeId, double lat, double lon) {
+        Coordenada coordenada = new Coordenada(); coordenada.setLatitud(lat); coordenada.setLongitud(lon);
+        Direccion direccion = new Direccion(); direccion.setCoordenada(coordenada);
+        Hospital hospital = new Hospital(); hospital.setPlaceId(placeId); hospital.setDireccion(direccion);
+        return hospital;
     }
 
     @Test
@@ -331,7 +399,7 @@ public class GooglePlacesServiceTest {
                                                   {
                                                      "travelMode":"WALK",
                                                      "navigationInstruction":{
-                                                        "instructions":"Dirígete al hospital"
+                                                        "instructions":"DirÃ­gete al hospital"
                                                      },
                                                      "distanceMeters":30,
                                                      "duration":"20s"
@@ -339,7 +407,7 @@ public class GooglePlacesServiceTest {
                                                   {
                                                      "travelMode":"TRANSIT",
                                                      "navigationInstruction":{
-                                                        "instructions":"Autobús en dirección a Once"
+                                                        "instructions":"AutobÃºs en direcciÃ³n a Once"
                                                      },
                                                      "transitDetails":{
                                                         "transitLine":{
@@ -377,12 +445,12 @@ public class GooglePlacesServiceTest {
 
         CombinacionRutasDTO pasoCaminando = combinaciones.get(0);
         assertEquals("caminar", pasoCaminando.getTipoTransporte());
-        assertEquals("Dirígete al hospital", pasoCaminando.getIndicaciones());
+        assertEquals("DirÃ­gete al hospital", pasoCaminando.getIndicaciones());
         assertNull(pasoCaminando.getNombreLinea());
 
         CombinacionRutasDTO pasoTransportePublico = combinaciones.get(1);
         assertEquals("transporte-publico", pasoTransportePublico.getTipoTransporte());
-        assertEquals("Autobús en dirección a Once", pasoTransportePublico.getIndicaciones());
+        assertEquals("AutobÃºs en direcciÃ³n a Once", pasoTransportePublico.getIndicaciones());
         assertEquals("Linea 85 A", pasoTransportePublico.getNombreLinea());
     }
 

@@ -106,6 +106,12 @@ These come from `ConsultaMedica.sector` and tell the patient where to wait once 
 
 ## No Active Doctors
 
+Administrative session closure changes an `ACTIVA`/`PAUSADA` session to
+`FINALIZADA` and releases its doctor/room reservation. The finalized row remains
+in the database for historical references, contributes no active capacity, and
+is excluded from the sector's administrative session list. That list is limited
+to sessions still available to manage; it is not a history query.
+
 If there are no active doctors:
 
 - Estimation still uses one virtual doctor.
@@ -142,7 +148,7 @@ minutosEsperaEstimados = bloquesEspera * minutosPromedioAtencion
 fechaHoraAtencionEstimada = now + minutosEsperaEstimados
 ```
 
-Only `EntradaCola.EN_COLA` entries are counted, never `GestorDeCola.consultasEnEspera`. A hospital is considered available for ranking only when `medicosActivos > 0` (`disponible=true`); otherwise it is excluded and an empty ranking means the frontend must display "no hay hospitales disponibles". Valid `ordenarPor` values live in `AtencionHospitalService.ORDENES_VALIDOS` (`distancia`, `tiempo-atencion`, `valoracion` y combinados como `distancia|tiempo-atencion` o `distancia|tiempo-atencion|valoracion`), el orden de los criterios es indistinto, el separador es `|`, los valores son case-sensitive y extensible; el combinado usa suma de rankings (distancia según la posición en Google + tiempo según minutosEspera + valoración según `valoracionPromedio` de Google, con `null` tratado como 0), y los empates se rompen por `nombre` y luego por el orden de Google.
+Only `EntradaCola.EN_COLA` entries are counted, never `GestorDeCola.consultasEnEspera`. A hospital is considered available for ranking only when `medicosActivos > 0` (`disponible=true`); otherwise it is excluded and an empty ranking means the frontend must display "no hay hospitales disponibles". Valid `ordenarPor` values live in `AtencionHospitalService.ORDENES_VALIDOS` (`distancia`, `tiempo-atencion`, `valoracion` y combinados como `distancia|tiempo-atencion` o `distancia|tiempo-atencion|valoracion`), el orden de los criterios es indistinto, el separador es `|`, los valores son case-sensitive y extensible; el combinado usa suma de rankings (distancia según la posición por distancia geodésica + tiempo según minutosEspera + valoración según `valoracionPromedio` de Google, con `null` tratado como 0), y los empates se rompen por `nombre` y luego por el orden por distancia geodésica.
 
 ## When Estimation Changes
 

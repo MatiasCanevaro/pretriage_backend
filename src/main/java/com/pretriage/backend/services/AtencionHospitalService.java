@@ -109,18 +109,12 @@ public class AtencionHospitalService {
         }
 
         EspecialidadMedica especialidad = obtenerEspecialidad(codigoEspecialidad);
-        List<HospitalCercanoDTO> hospitalesCercanos = googlePlacesService.buscarHospitales(latitud, longitud);
-        List<String> placeIds = hospitalesCercanos.stream()
-                .map(HospitalCercanoDTO::getPlaceId)
-                .toList();
-
-        if (placeIds.isEmpty()) {
-            return List.of();
-        }
-
-        Map<String, Hospital> hospitalesPorPlaceId = repoHospitales
-                .findByPlaceIdInAndEspecialidadesCodigo(placeIds, especialidad.getCodigo())
-                .stream()
+        List<Hospital> registrados = repoHospitales.findDistinctByEspecialidadesCodigo(especialidad.getCodigo());
+        if (registrados.isEmpty()) return List.of();
+        List<HospitalCercanoDTO> hospitalesCercanos = googlePlacesService
+                .buscarHospitalesRegistrados(latitud, longitud, registrados);
+        Map<String, Hospital> hospitalesPorPlaceId = registrados.stream()
+                .filter(hospital -> hospital.getPlaceId() != null && !hospital.getPlaceId().isBlank())
                 .collect(Collectors.toMap(Hospital::getPlaceId, Function.identity()));
 
         List<HospitalCercanoDTO> resultado = hospitalesCercanos.stream()
@@ -164,7 +158,7 @@ public class AtencionHospitalService {
                     .toList();
         }
 
-        // distancia: conserva el orden de proximidad de Google Places
+        // distancia: conserva el orden geodesico de los hospitales registrados
         return resultado;
     }
 
@@ -172,7 +166,7 @@ public class AtencionHospitalService {
      * Orden combinado: para cada criterio pedido se calcula la posicion del
      * hospital en su orden individual y se suman; desempata por nombre (el
      * devuelto por Google) y, con nombres iguales o ausentes, conserva el orden
-     * de Google (el sort es estable sobre una lista que viene en ese orden).
+     * por distancia geodesica (el sort es estable sobre esa lista).
      */
     private List<HospitalCercanoDTO> ordenarPorSumaDeRankings(List<HospitalCercanoDTO> resultado,
             List<String> criterios) {

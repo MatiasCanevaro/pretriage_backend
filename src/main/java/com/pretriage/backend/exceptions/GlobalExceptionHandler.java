@@ -5,14 +5,16 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
-import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
@@ -21,6 +23,12 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class GlobalExceptionHandler {
 
+    @ExceptionHandler(AsyncRequestNotUsableException.class)
+    public void handleDisconnectedClient(AsyncRequestNotUsableException e) {
+        // The response is already unusable; writing an error payload would only trigger another failure.
+        log.debug("Cliente desconectado durante respuesta asincrónica: {}", e.getMessage());
+    }
+
     @ExceptionHandler({ CredencialValidaYaExisteException.class, CredencialInvalidaException.class,
             ObraSocialSinValidadorException.class, PacienteNoExisteException.class,
             NoSePudoCrearUsuario.class, NoSePudoEstimarElHorarioDeAtencion.class, ChatFinalizadoException.class,
@@ -28,13 +36,28 @@ public class GlobalExceptionHandler {
             RecepcionistaNoExisteException.class, AtencionPendienteException.class,
             NoSuchElementException.class, IllegalStateException.class, IllegalArgumentException.class,
             TokenCambioContraseniaInvalidoException.class, NoSePudoCambiarContraseniaException.class,
-            ConstraintViolationException.class, ChatNoEncontradoException.class, ContraseniaInvalidaException.class, 
-            NoResourceFoundException.class, HttpMediaTypeNotSupportedException.class })
+            ConstraintViolationException.class, ChatNoEncontradoException.class, ContraseniaInvalidaException.class })
     public ResponseEntity<Map<String, String>> handleExceptions(
             RuntimeException e) {
 
         return ResponseEntity.badRequest()
                 .body(Map.of("error", e.getMessage()));
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<Map<String, String>> handleNoResourceFound(NoResourceFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("error", "Recurso no encontrado."));
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<Map<String, String>> handleMediaTypeNotSupported(
+            HttpMediaTypeNotSupportedException e) {
+        return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
+                .headers(e.getHeaders())
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("error", "Tipo de contenido no soportado."));
     }
 
     @ExceptionHandler(AccessDeniedException.class)

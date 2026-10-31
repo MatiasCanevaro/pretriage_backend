@@ -55,9 +55,18 @@ reenvío rota el token y vence el enlace anterior.
 Desde PowerShell, en la raíz del backend:
 
 ```powershell
-docker compose up -d postgres
-.\mvnw.cmd spring-boot:run
+.\iniciar-backend.cmd
 ```
+
+También podés abrir `iniciar-backend.cmd` con doble clic. Requiere Java 21 y
+Docker Desktop iniciado; usa el Maven Wrapper, carga `.env` desde la raíz y
+arranca sin IDE ni DevTools, con un heap máximo de 768 MB para el backend.
+El script fija `ddl-auto=update` para conservar los datos y no ejecuta tests
+ni seeds. Detenelo con **Ctrl+C**; PostgreSQL queda iniciado.
+
+Opciones: `-Port 8081`, `-MaxHeapMb 1024`, `-NoDockerCompose` (base ya iniciada)
+y `-CheckOnly` (verificación sin arrancar servicios). Ver
+[desarrollo local](docs/07-local-development.md#start-without-an-ide-windows).
 
 El backend queda disponible en:
 
