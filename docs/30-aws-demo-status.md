@@ -1,25 +1,27 @@
 # Estado de la demo AWS
 
-Estado verificado el 31/10/2026. La infraestructura del backend está desplegada
-en `us-east-1`; la publicación del frontend en Amplify y su DNS todavía están
-pendientes.
+Estado verificado el 31/10/2026. El backend está **en ejecución** por pedido del
+usuario; el frontend se desplegó correctamente en Amplify.
+`app.pretriage.com.ar` responde por HTTPS con certificado válido y Amplify
+informa `AVAILABLE`.
 
-La instancia se detuvo y volvió a iniciar para comprobar el arranque en frío.
-Conservó la Elastic IP `52.1.161.207` y el volumen `vol-07be65d0e72b72b10`.
-Después de la verificación final de HTTP, EC2 quedó **detenida** para evitar
-cargos de cómputo mientras se autoriza Amplify. Se confirmó nuevamente la misma
-IP y el mismo volumen en estado detenido. La Elastic IP y el almacenamiento
-continúan facturándose aun con la instancia apagada.
+La instancia se detuvo y volvió a iniciar para comprobar el arranque en frío;
+conservó la Elastic IP `52.1.161.207` y el volumen
+`vol-07be65d0e72b72b10`. Tras una detención previa, el usuario pidió dejarla
+encendida y volvió a arrancar. Está **RUNNING**, SSM está Online y
+`https://api.pretriage.com.ar/actuator/health/readiness` respondió HTTP `200`
+con estado `UP`. La Elastic IP y el almacenamiento continúan facturándose; el
+cómputo también se factura mientras EC2 permanezca encendida.
 
 ## Componentes desplegados
 
 | Componente | Estado |
 | --- | --- |
 | CloudFormation `pretriage-demo` | `UPDATE_COMPLETE`, incluida la Elastic IP elegida por el usuario |
-| EC2 | `i-02cb7756f580fa419`, `t3a.medium` (2 vCPU, 4 GiB), volumen raíz cifrado gp3 de 24 GiB con retención al eliminar el stack |
+| EC2 | `i-02cb7756f580fa419`, actualmente `RUNNING`, `t3a.medium` (2 vCPU, 4 GiB), volumen raíz cifrado gp3 de 24 GiB con retención al eliminar el stack |
 | IPv4 pública | Elastic IP `52.1.161.207`, administrada por el stack; se conservó al detener e iniciar EC2 |
 | Contenedores | El inicio automático por `pretriage.service` completó sin intervención manual: PostgreSQL 18 y backend `healthy`, Caddy en ejecución |
-| Acceso operativo | SSM verificado Online durante las pruebas; sin acceso SSH configurado |
+| Acceso operativo | SSM Online; sin acceso SSH configurado |
 | S3 | `pretriage-demo-clinicalfilesbucket-45qsffs15mc2`, privado, cifrado SSE-S3 y versionado; la instancia accede mediante su rol |
 | ECR | `827641190526.dkr.ecr.us-east-1.amazonaws.com/pretriage-demo-backendimagerepository-92vmgwg0evhc:demo-e153b1f`; digest `sha256:38f3d3209a6f4f04a12dfc65bd3c19586b4071b8bdf34537b59604927d09921b` |
 | API | Tras el arranque en frío, `https://api.pretriage.com.ar/actuator/health/readiness` respondió HTTP `200` y `UP` por Cloudflare; SSL/TLS Full (strict) y proxy DNS habilitados |
@@ -60,18 +62,48 @@ Los checks de GitHub Actions del código publicado pasaron en
 [backend](https://github.com/MatiasCanevaro/pretriage_backend/actions/runs/41233853414)
 y [frontend](https://github.com/MatiasCanevaro/pretriage_frontend_web/actions/runs/41233812125).
 
-## Frontend pendiente
+## Frontend en Amplify
 
-Amplify Hosting todavía no está creado. La conexión con GitHub no pudo autorizarse:
-la integración devolvió `403 ResourceNotAccessible` al intentar habilitar los
-webhooks. El propietario debe autorizar o instalar la aplicación GitHub de AWS
-Amplify para el repositorio original `MatiasCanevaro/pretriage_frontend_web` en
-`us-east-1`. Se eligió ese repositorio original, no un fork. No se contactó a
-terceras personas.
+Amplify Hosting se creó en `us-east-1` (App ID `dy8mupnkj7a55`) para el repositorio
+`Pretriage/pretriage_frontend_web`, con plataforma `WEB_COMPUTE` y la variable
+`BACKEND_API_URL` apuntando a `https://api.pretriage.com.ar`. El despliegue de la
+rama `desarrollo`, job 1, terminó `SUCCEED` el 31/10/2026 (20:22:45 UTC). La URL
+de Amplify está disponible en
+[desarrollo.dy8mupnkj7a55.amplifyapp.com](https://desarrollo.dy8mupnkj7a55.amplifyapp.com).
 
-El registro DNS `app.pretriage.com.ar` no se creó porque todavía no hay un
-destino de Amplify. La API quedó configurada y verificada, pero no existe aún una
-URL pública de la aplicación frontend.
+La asociación personalizada actual es `app.pretriage.com.ar` para la rama
+`desarrollo`. Sus CNAME están configurados en Cloudflare como DNS only; la raíz
+`/` y `/login` respondieron HTTP 200 y el certificado TLS es válido para
+`*.pretriage.com.ar` y `pretriage.com.ar`, con vencimiento el 17/05/2027. En la
+última consulta, Amplify informó `AVAILABLE` con `verified=true`; la aplicación
+responde por el hostname. El CloudFront
+`403` reportado anteriormente no se reprodujo en esta verificación final.
+Amplify no tiene reglas personalizadas de reescritura (`customRules=[]`), por lo
+que se conserva el enrutamiento SSR de Next.js.
+
+La metadata de Amplify confirma el repositorio y la rama configurados; la
+lectura de la API de GitHub para verificar el contenido actual de ese repositorio
+no estuvo disponible durante esta revisión.
+
+## APK Android para la demo
+
+Se compiló un APK de depuración firmado desde el repositorio móvil, sin cambios
+en sus archivos versionados:
+
+```powershell
+./gradlew.bat :composeApp:assembleDebug -PBACKEND_BASE_URL=https://api.pretriage.com.ar --console=plain
+```
+
+La salida se capturó en un log temporal y se detuvo Gradle al finalizar. Pasaron
+la compilación, la inspección del paquete y la verificación de la firma. La URL
+generada y empaquetada es `https://api.pretriage.com.ar`; el cliente deriva
+`wss://api.pretriage.com.ar/api/chat/{id}/voz` para voz. Esto no sustituye una
+prueba autenticada desde un dispositivo.
+
+El archivo local, excluido de Git, es
+`target/aws-deploy/android/pretriage-android-debug-api-pretriage-com-ar.apk`
+(82.285.073 bytes), con SHA-256
+`cb081358ebcd686b6e65408aa175bbdf44fbd4511df3de238f14eed620f4c0e0`.
 
 ## Datos y validaciones
 

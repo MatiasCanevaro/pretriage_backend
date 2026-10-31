@@ -128,10 +128,10 @@ La configuración de despliegue está separada del entorno de desarrollo:
 `infra/aws/demo-stack.yaml` prepara EC2, una Elastic IP, S3 privado y ECR;
 aplicarla crea recursos facturables. El cómputo se puede detener conservando los
 datos y la dirección IP; almacenamiento y la Elastic IP siguen sujetos a sus
-tarifas. El frontend se adapta a Next.js
-15.5.28 para Amplify Hosting compute; resta validar la vista previa del hosting.
-La demo usará una base nueva; la carga inicial de datos y usuarios queda para
-una etapa posterior.
+tarifas. El frontend Next.js 15.5.28 se desplegó en Amplify Hosting compute y
+`app.pretriage.com.ar` responde por HTTPS con certificado válido y Amplify
+informa `AVAILABLE`. La demo usa una base nueva; la carga
+inicial de datos y usuarios queda para una etapa posterior.
 
 ## Verificación
 
