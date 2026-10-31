@@ -26,28 +26,29 @@ flowchart LR
 1. Confirmá la región asignada en **AWS Settings → View all projects → Overview → Additional Info → Region**. La configuración que se revisó para este proyecto apunta a `us-east-1`, pero la región asignada manda. Si no podés confirmarla allí, compará `aws configure get region --profile <perfil>` con la configuración del proyecto antes de seguir. No despliegues en una región distinta.
 2. El estado consultado el 31/10/2026 indicaba plan **Paid** y `FreeTierAPI=0`; los créditos promocionales no se verificaron. Revisá **AWS Settings → Billing** antes de crear recursos y confirmá que el límite de gasto del proyecto sea adecuado.
 3. Necesitás AWS CLI v2, una sesión autenticada para un perfil con permiso de crear el stack, construir o publicar imágenes en ECR y administrar la instancia. La plantilla solo da permisos de lectura de ECR al rol de EC2; no concede permisos ECR a personas.
-4. Necesitás un VPC existente y una subnet pública de ese VPC con ruta `0.0.0.0/0` hacia un Internet Gateway. El inventario actual encontró un VPC default y una subnet pública; confirmá los IDs y que correspondan a la región asignada. La plantilla asigna una IPv4 pública efímera.
+4. Necesitás un VPC existente y una subnet pública de ese VPC con ruta `0.0.0.0/0` hacia un Internet Gateway. El inventario actual encontró un VPC default y una subnet pública; confirmá los IDs y que correspondan a la región asignada. La plantilla reserva y asocia una Elastic IP para conservar la IPv4 pública entre paradas e inicios.
 5. El dominio `pretriage.com.ar` debe estar activo en Cloudflare. La plantilla incluye las 15 redes IPv4 publicadas por Cloudflare en la lista consultada. Revisá la lista oficial antes de desplegar y mantenela actualizada: [rangos IPv4 de Cloudflare](https://www.cloudflare.com/ips-v4/).
 6. Tené disponible Auth0 y las claves que realmente se usarán. Gemini y Google Maps son opcionales para iniciar el backend, pero sus funciones necesitan las claves de esos proveedores. No pegues secretos en comandos, argumentos, el repositorio ni en la imagen Docker.
 
 ## Costos para planificar
 
-La plantilla usa `t3a.medium` (2 vCPU, 4 GiB) con CPU credit mode `standard`, una raíz EBS cifrada gp3 de 24 GiB y una IPv4 pública efímera mientras corre. No crea NAT Gateway, balanceador ni Elastic IP. El host debe permanecer detenido fuera de las demos.
+La plantilla usa `t3a.medium` (2 vCPU, 4 GiB) con CPU credit mode `standard`, una raíz EBS cifrada gp3 de 24 GiB y una Elastic IP asociada que conserva el DNS al detener EC2. No crea NAT Gateway ni balanceador. La IPv4 reservada genera cargos aun cuando EC2 está detenida.
 
 Precios públicos consultados el 31/10/2026 para `us-east-1`:
 
 | Recurso | Referencia usada | Ejemplo |
 | --- | --- | --- |
 | EC2 `t3a.medium` Linux | [Precios T3 de AWS](https://aws.amazon.com/ec2/instance-types/t3/) | USD 0,0376 por hora activa |
-| IPv4 pública en uso | [Precios de VPC](https://aws.amazon.com/vpc/pricing/) | USD 0,005 por hora activa |
+| Elastic IP / IPv4 pública reservada | [Precios de VPC](https://aws.amazon.com/vpc/pricing/) | USD 0,005 por hora; aproximadamente USD 3,65 por 730 horas, incluso con EC2 detenida |
 | EBS gp3 | [Precios de EBS](https://aws.amazon.com/ebs/pricing/) | USD 0,08/GiB-mes; 24 GiB ≈ USD 1,92/mes |
 | S3 Standard | [Precios de S3](https://aws.amazon.com/s3/pricing/) | Primer nivel: alrededor de USD 0,023/GB-mes, más solicitudes y versiones |
 | ECR privado | [Precios de ECR](https://aws.amazon.com/ecr/pricing/) | Almacenamiento alrededor de USD 0,10/GB-mes; transferencia a EC2 en la misma región no tiene cargo |
 | Amplify con SSR | [Precios de Amplify](https://aws.amazon.com/amplify/pricing/) | Puede sumar builds, transferencia, solicitudes y duración SSR según uso |
 
-Con esos valores, 100 horas de instancia e IPv4 más 30 días de volumen suman
-aproximadamente **USD 6,18** (3,76 + 0,50 + 1,92). Si queda activa 720 horas
-durante un mes de 30 días, la estimación es aproximadamente **USD 32,59**. Son
+Con esos valores, 100 horas de instancia, Elastic IP reservada durante 730 horas
+y 30 días de volumen suman aproximadamente **USD 9,33** (3,76 + 3,65 + 1,92).
+Si queda activa las 730 horas del mes de referencia, la estimación es
+aproximadamente **USD 33,02** (27,45 + 3,65 + 1,92). Son
 referencias, no una cotización. No incluyen S3 y sus versiones/solicitudes,
 almacenamiento de ECR, transferencia, Amplify y sus solicitudes/duración SSR, Cloudflare, Gemini, Google Maps,
 impuestos ni descuentos/créditos. La raíz EBS, S3 versionado y las imágenes ECR
@@ -254,7 +255,7 @@ desde la lista de prefijos IPv4 de Cloudflare.
 
 ## 5. Configurar Cloudflare y Amplify
 
-1. En Cloudflare, creá o actualizá un único registro A `api.pretriage.com.ar` con la IPv4 de `InstancePublicIp` y dejalo **Proxied**. El helper solo actualiza un registro A existente y exige que haya exactamente uno.
+1. En Cloudflare, creá o actualizá un único registro A `api.pretriage.com.ar` con la Elastic IP asignada a la instancia y dejalo **Proxied**. El helper solo actualiza un registro A existente y exige que haya exactamente uno. La Elastic IP se informa al completar el stack; no copies una IP de una sesión anterior.
 2. Publicá los cambios locales del repositorio web en la rama que conectes a Amplify. El checkout revisado usa `desarrollo`; no asumir que GitHub contiene los cambios locales sin publicar. `pretriage_frontend_web/package.json` fija Next.js **15.5.28** y `pretriage_frontend_web/amplify.yml` usa Node 22, `npm ci`, `BACKEND_API_URL` y artefactos `.next`. Es Amplify Hosting para SSR; no se agrega un backend Amplify Gen 2.
    En la consola de Amplify, conectá `MatiasCanevaro/pretriage_frontend_web` y elegí esa rama. Autorizá la GitHub App de Amplify para el repositorio y usá Hosting compute (`WEB_COMPUTE`), con el rol de servicio de SSR que ofrece la consola. El frontend llama por HTTPS a Spring Boot; no necesita permisos sobre el bucket clínico ni un rol de despliegue de Amplify Gen 2. [Despliegue de Next.js SSR](https://docs.aws.amazon.com/amplify/latest/userguide/deploy-nextjs-app.html).
 3. En los ajustes de variables de entorno de la rama de Amplify que se va a publicar, definí `BACKEND_API_URL=https://api.pretriage.com.ar`. Es una URL del backend, no una clave secreta; el código la consume en rutas/funciones de servidor. El `.env.example` local usa `http://localhost:8080` solo para desarrollo.
@@ -339,12 +340,15 @@ los servicios en el siguiente boot.
 .\scripts\aws-demo.ps1 -Action stop -Profile $awsProfile -Region $awsRegion
 ```
 
-Detenela cuando termine la demo. `stop` conserva el sistema de archivos y la
-base, pero libera la IPv4 pública; el almacenamiento EBS permanece facturable.
-Al volver a `start`, la IPv4 cambia y el registro de Cloudflare debe apuntar al
-nuevo valor antes de usar el API.
+Detenela cuando termine la demo. `stop` conserva el sistema de archivos, la
+base y la Elastic IP asociada. EC2 deja de cobrar cómputo mientras está detenida,
+pero el volumen EBS y la Elastic IP reservada siguen facturándose. Al volver a
+`start`, la dirección se conserva y el registro A de Cloudflare no necesita
+cambios.
 
-El helper puede actualizar el A existente de Cloudflare al iniciar. Cargá el
+Si fuera necesario corregir manualmente el A existente, el helper puede
+actualizarlo al iniciar, aunque no hace falta en los ciclos normales de
+stop/start con la Elastic IP. Cargá el
 token de Cloudflare en memoria desde el almacén seguro local; no lo escribas en
 la línea de comando ni en el historial de PowerShell. El script necesita además
 `CLOUDFLARE_ZONE_ID` y cambia el registro a proxied con TTL automático:

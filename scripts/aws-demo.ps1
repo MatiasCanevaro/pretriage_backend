@@ -201,7 +201,7 @@ switch ($Action) {
         Wait-ForInstance -InstanceId $instanceId -State 'instance-running'
         Wait-ForInstanceStatusOk -InstanceId $instanceId
         $instance = Get-Instance -InstanceId $instanceId
-        Write-Output ("EC2 instance is ready: {0}; public IP: {1}" -f `
+        Write-Output ("EC2 instance is ready: {0}; assigned fixed public IPv4: {1}" -f `
             $instanceId, $(if ($instance.PublicIp) { $instance.PublicIp } else { '<none>' }))
 
         if ($UpdateCloudflareDns) {
@@ -211,7 +211,7 @@ switch ($Action) {
             Update-CloudflareApiRecord -PublicIp $instance.PublicIp
         }
         elseif ($instance.PublicIp) {
-            Write-Output ("Point the existing A record api.pretriage.com.ar to {0}, or pass -UpdateCloudflareDns." -f $instance.PublicIp)
+            Write-Output ("Keep the existing A record api.pretriage.com.ar pointed to the fixed public IPv4 {0}. No DNS change is needed after a normal stop/start." -f $instance.PublicIp)
         }
     }
 

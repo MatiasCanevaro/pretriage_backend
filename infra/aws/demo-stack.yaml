@@ -1,7 +1,8 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >-
   Temporary Pretriage demo host and private clinical-file bucket — uses an existing
-  public subnet, Cloudflare-proxied TLS, and SSM access without a NAT gateway, load balancer, or SSH access.
+  public subnet, a fixed Elastic IP, Cloudflare-proxied TLS, and SSM access without a NAT gateway,
+  load balancer, or SSH access.
 
 Metadata:
   AWSToolsMetrics:
@@ -12,7 +13,8 @@ Metadata:
       - Use only the confirmed project Region; this template follows AWS::Region.
       - Proxy the API hostname through Cloudflare and configure Caddy with an Origin CA cert in Full (strict) mode.
       - Keep Cloudflare IPv4 ranges current in CloudflareIpv4PrefixList; no SSH, HTTP, or database ports are exposed.
-      - Stop the instance when idle; its transient public IPv4 changes on stop/start.
+      - Stop the instance when idle; the fixed Elastic IP remains allocated and incurs its hourly public IPv4 charge while stopped.
+      - Deleting the stack releases the Elastic IP; the clinical S3 bucket and root EBS volume remain retained.
       - The root EBS volume and S3 bucket retain data after stack deletion; manage and clean them deliberately.
 
 Parameters:
@@ -172,6 +174,23 @@ Resources:
         - Cidr: 131.0.72.0/22
           Description: Cloudflare IPv4
 
+  DemoElasticIp:
+    Type: AWS::EC2::EIP
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Provides a stable API origin address across EC2 stop/start cycles; allocation incurs the accepted hourly public IPv4 charge while the instance is stopped.
+        must:
+          - Associate only with DemoInstance and retain the allocation until the demo stack is deliberately deleted.
+          - Point the Cloudflare proxied API hostname at this stable address.
+        mutable: change-with-constraints
+        mutability:
+          Domain: must-remain-vpc
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-api-origin'
+
   DemoInstanceRole:
     Type: AWS::IAM::Role
     Metadata:
@@ -255,11 +274,11 @@ Resources:
     Type: AWS::EC2::Instance
     Metadata:
       com.aws.cloudformation.Context:
-        why: On-demand Docker host in an existing public subnet; no NAT gateway, load balancer, Elastic IP, or SSH exposure.
+        why: On-demand Docker host in an existing public subnet; no NAT gateway, load balancer, or SSH exposure. A fixed Elastic IP keeps the API address stable across stop/start and continues to incur an hourly address charge while stopped.
         must:
           - Use IMDSv2 and a hop limit of 2 so Docker SDK clients can obtain the narrowly scoped instance role credentials.
           - Keep the 24 GiB encrypted gp3 root volume after instance termination; back up PostgreSQL separately before destructive host operations.
-          - Stop the host when idle; its public IPv4 is ephemeral and changes after stop/start.
+          - Stop the host when idle; DemoElasticIp remains associated across stop/start and incurs its hourly public IPv4 charge while stopped.
           - Do not publish PostgreSQL or application container ports; expose only the HTTPS reverse proxy through Cloudflare.
         mutable: change-with-constraints
         mutability:
@@ -311,15 +330,30 @@ Resources:
           install -d -o root -g root -m 0700 /opt/pretriage/certs
           docker compose version
 
+  DemoElasticIpAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Binds the stable API origin address to the EC2 instance's primary network interface.
+        must:
+          - Associate DemoElasticIp with DemoInstance and do not introduce a second ENI or change its networking during updates.
+        mutable: change-with-constraints
+    Properties:
+      AllocationId: !GetAtt DemoElasticIp.AllocationId
+      InstanceId: !Ref DemoInstance
+
 Outputs:
   InstanceId:
     Description: EC2 instance ID for start/stop operations and SSM sessions.
     Value: !Ref DemoInstance
   InstancePublicIp:
-    Description: Ephemeral public IPv4; changes after stop/start.
-    Value: !GetAtt DemoInstance.PublicIp
+    Description: Fixed Elastic IPv4 for the API origin; remains stable after stop/start and is billed hourly while allocated.
+    Value: !Ref DemoElasticIp
+  ElasticIpAllocationId:
+    Description: Allocation ID for the fixed API origin Elastic IP; deleting this stack releases the address.
+    Value: !GetAtt DemoElasticIp.AllocationId
   InstancePublicDnsName:
-    Description: Ephemeral public DNS name; update Cloudflare after stop/start if it changes.
+    Description: EC2 public DNS name associated with the instance; use InstancePublicIp for the stable Cloudflare origin address.
     Value: !GetAtt DemoInstance.PublicDnsName
   SsmStartSessionCommand:
     Description: Run locally after AWS CLI authentication and Session Manager plugin setup.

@@ -118,15 +118,17 @@ configurado por `aws.s3.bucket-name` son `s3:GetObject`, `s3:PutObject` y
 
 La configuración de despliegue está separada del entorno de desarrollo:
 
+- [Estado del despliegue y pendientes](docs/30-aws-demo-status.md).
 - [Despliegue y costos de la demo](docs/28-aws-demo-deployment.md).
 - [Variables, salud, S3 y CORS del backend](docs/27-aws-backend-runtime.md).
 - [Compatibilidad de Amplify, frontend, móvil y Cloudflare](docs/29-aws-frontend-and-dns.md).
 
 `Dockerfile` construye una imagen Java 21 sin credenciales locales.
 `compose.aws.yaml` ejecuta PostgreSQL 18, backend y Caddy. La infraestructura de
-`infra/aws/demo-stack.yaml` prepara EC2, S3 privado y ECR; aplicarla crea recursos
-facturables. El cómputo se puede detener conservando los datos; almacenamiento y
-otros servicios siguen sujetos a sus tarifas. El frontend se adapta a Next.js
+`infra/aws/demo-stack.yaml` prepara EC2, una Elastic IP, S3 privado y ECR;
+aplicarla crea recursos facturables. El cómputo se puede detener conservando los
+datos y la dirección IP; almacenamiento y la Elastic IP siguen sujetos a sus
+tarifas. El frontend se adapta a Next.js
 15.5.28 para Amplify Hosting compute; resta validar la vista previa del hosting.
 La demo usará una base nueva; la carga inicial de datos y usuarios queda para
 una etapa posterior.

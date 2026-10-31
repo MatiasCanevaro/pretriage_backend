@@ -4,6 +4,9 @@ Esta guía recoge el diseño previsto para `pretriage.com.ar`. Documenta los
 ajustes y las verificaciones pendientes; no afirma que el sitio o la API estén
 desplegados en producción.
 
+El [estado real de la demo y los pendientes](30-aws-demo-status.md) registra
+la infraestructura creada después de esta preparación.
+
 ## Frontend web y soporte de Next.js
 
 El frontend web se adapta a Next.js 15.5.28 para Amplify Hosting compute,
@@ -154,12 +157,16 @@ agregar los destinos de rama y CNAME de verificación que muestre Amplify, todos
 como **DNS only**. No cambiar una opción global de proxy o redirección que afecte
 a otros nombres de la zona.
 
-Crear `api.pretriage.com.ar` como un registro A a la IPv4 pública de EC2 y
+Crear `api.pretriage.com.ar` como un registro A a la Elastic IP asociada a EC2 y
 mantenerlo **Proxied** (nube naranja). La API usa un certificado Cloudflare
 Origin CA, que cifra el tramo Cloudflare-origen y funciona con `Full (strict)`;
 los navegadores no confían directamente en ese certificado. Por eso el nombre
 API debe permanecer proxied y no se debe cambiar a DNS only. [Cloudflare Origin CA](https://developers.cloudflare.com/ssl/origin-configuration/origin-ca/)
 y [Full (strict)](https://developers.cloudflare.com/ssl/origin-configuration/ssl-modes/full-strict/).
+
+La Elastic IP asignada debe mantenerse asociada a la instancia al detenerla;
+así el registro A no requiere cambios en cada inicio. Configurar ese registro
+una vez con la dirección comunicada por CloudFormation.
 
 Crear el certificado Origin CA para `api.pretriage.com.ar` y guardar sus PEM en
 el host:
