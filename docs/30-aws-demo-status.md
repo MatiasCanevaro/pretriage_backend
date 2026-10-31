@@ -4,11 +4,12 @@ Estado verificado el 31/10/2026. La infraestructura del backend está desplegada
 en `us-east-1`; la publicación del frontend en Amplify y su DNS todavía están
 pendientes.
 
-Al cerrar esta verificación, EC2 quedó **detenida** para evitar cargos de
-cómputo mientras se autoriza Amplify. Se comprobó que la Elastic IP permanecía
-asociada y que el volumen seguía adjunto. La reserva IPv4 y el almacenamiento
-continúan facturándose. El arranque y la verificación HTTPS posterior al cambio
-final de DNS quedan para la continuación.
+La instancia se detuvo y volvió a iniciar para comprobar el arranque en frío.
+Conservó la Elastic IP `52.1.161.207` y el volumen `vol-07be65d0e72b72b10`.
+Después de la verificación final de HTTP, EC2 quedó **detenida** para evitar
+cargos de cómputo mientras se autoriza Amplify. Se confirmó nuevamente la misma
+IP y el mismo volumen en estado detenido. La Elastic IP y el almacenamiento
+continúan facturándose aun con la instancia apagada.
 
 ## Componentes desplegados
 
@@ -16,25 +17,28 @@ final de DNS quedan para la continuación.
 | --- | --- |
 | CloudFormation `pretriage-demo` | `UPDATE_COMPLETE`, incluida la Elastic IP elegida por el usuario |
 | EC2 | `i-02cb7756f580fa419`, `t3a.medium` (2 vCPU, 4 GiB), volumen raíz cifrado gp3 de 24 GiB con retención al eliminar el stack |
-| IPv4 pública | Elastic IP administrada por el stack; conserva la dirección al detener e iniciar EC2 |
-| Contenedores | PostgreSQL 18 y Spring Boot `healthy`; Caddy en ejecución con HTTPS verificado; servicio systemd `pretriage` habilitado |
+| IPv4 pública | Elastic IP `52.1.161.207`, administrada por el stack; se conservó al detener e iniciar EC2 |
+| Contenedores | El inicio automático por `pretriage.service` completó sin intervención manual: PostgreSQL 18 y backend `healthy`, Caddy en ejecución |
 | Acceso operativo | SSM verificado Online durante las pruebas; sin acceso SSH configurado |
 | S3 | `pretriage-demo-clinicalfilesbucket-45qsffs15mc2`, privado, cifrado SSE-S3 y versionado; la instancia accede mediante su rol |
 | ECR | `827641190526.dkr.ecr.us-east-1.amazonaws.com/pretriage-demo-backendimagerepository-92vmgwg0evhc:demo-e153b1f`; digest `sha256:38f3d3209a6f4f04a12dfc65bd3c19586b4071b8bdf34537b59604927d09921b` |
-| API | `https://api.pretriage.com.ar/actuator/health` respondió `UP` por HTTPS a través de Cloudflare; SSL/TLS Full (strict) y proxy DNS habilitados |
+| API | Tras el arranque en frío, `https://api.pretriage.com.ar/actuator/health/readiness` respondió HTTP `200` y `UP` por Cloudflare; SSL/TLS Full (strict) y proxy DNS habilitados |
 
 El usuario eligió una Elastic IP para conservar la dirección pública al detener
-y volver a iniciar EC2. Se debe configurar el registro A de Cloudflare una vez
-con el valor de `InstancePublicIp` del stack; las paradas normales no requieren
-cambiar DNS. La reserva de IPv4 continúa facturándose mientras EC2 está apagada.
-El helper mantiene opcionalmente la actualización explícita de Cloudflare; ver
-[despliegue del backend](28-aws-demo-deployment.md).
+y volver a iniciar EC2. El registro A proxied de Cloudflare se actualizó una vez
+a `52.1.161.207`. El DNS final resolvió el error `522`: readiness respondió
+HTTP `200` y `UP` por HTTPS después del arranque en frío. Las paradas normales
+no requieren cambiar DNS. La reserva de IPv4 continúa facturándose mientras EC2
+está apagada. El helper mantiene opcionalmente la actualización explícita de
+Cloudflare; ver [despliegue del backend](28-aws-demo-deployment.md).
 
 La actualización agregó la dirección y su asociación; el plan validado marcó
-`Replacement: False` para EC2 y conservó la AMI y el volumen existentes.
-La comprobación pública posterior a esa asociación todavía devolvió `522`;
-queda pendiente confirmar el cambio final del registro A a la Elastic IP
-indicada en las salidas del stack y repetir la prueba con EC2 encendida.
+`Replacement: False` para EC2. En el ciclo de parada e inicio, la instancia
+volvió a asociar la misma Elastic IP y mantuvo adjunto el mismo volumen raíz.
+`pretriage.service` estaba habilitado y su inicio automático terminó con código
+0; PostgreSQL y backend quedaron saludables sin iniciar manualmente los
+contenedores. La prueba readiness HTTPS posterior confirmó el acceso por el
+dominio final.
 
 La imagen del backend fue publicada en el repositorio ECR. La autenticación
 temporal de ECR se limpió después de la publicación. El paquete temporal de
@@ -79,7 +83,8 @@ que los flujos autenticados completos hayan sido validados con usuarios reales.
 La plantilla pasó `cfn-lint` y las comprobaciones seleccionadas de `cfn-guard`;
 dos patrones estructurales produjeron falsos positivos documentados. CloudTrail
 dispone del historial de eventos de 90 días, pero no se configuró un trail pago.
-Las comprobaciones públicas por HTTPS pasaron: readiness `200`, Actuator
+Las comprobaciones públicas por HTTPS se repitieron después del arranque con
+la IP fija y el DNS definitivo y pasaron: readiness `200`, Actuator
 restringido `401`, ruta de voz con cabeceras Upgrade sin token `401`, ruta SSE
 sin token `401`, preflight del origen autorizado `200` y origen desconocido
 `403`. Esto verifica alcance y control de acceso; la sesión real de voz con
