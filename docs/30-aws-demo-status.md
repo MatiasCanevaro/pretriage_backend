@@ -4,6 +4,12 @@ Estado verificado el 31/10/2026. La infraestructura del backend está desplegada
 en `us-east-1`; la publicación del frontend en Amplify y su DNS todavía están
 pendientes.
 
+Al cerrar esta verificación, EC2 quedó **detenida** para evitar cargos de
+cómputo mientras se autoriza Amplify. Se comprobó que la Elastic IP permanecía
+asociada y que el volumen seguía adjunto. La reserva IPv4 y el almacenamiento
+continúan facturándose. El arranque y la verificación HTTPS posterior al cambio
+final de DNS quedan para la continuación.
+
 ## Componentes desplegados
 
 | Componente | Estado |
@@ -26,6 +32,9 @@ El helper mantiene opcionalmente la actualización explícita de Cloudflare; ver
 
 La actualización agregó la dirección y su asociación; el plan validado marcó
 `Replacement: False` para EC2 y conservó la AMI y el volumen existentes.
+La comprobación pública posterior a esa asociación todavía devolvió `522`;
+queda pendiente confirmar el cambio final del registro A a la Elastic IP
+indicada en las salidas del stack y repetir la prueba con EC2 encendida.
 
 La imagen del backend fue publicada en el repositorio ECR. La autenticación
 temporal de ECR se limpió después de la publicación. El paquete temporal de
