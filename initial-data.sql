@@ -6,7 +6,7 @@ VALUES (-34.5970161, -58.4217347),
 (-34.600502, -58.4243975),
 (-34.5983236, -58.4145931);
                                 
-INSERT INTO direccion (calle, altura, ciudad, provincia, codigoPostal, id_coordenada)
+INSERT INTO direccion (calle, altura, ciudad, provincia, codigo_postal, id_coordenada)
 VALUES ('Av. Córdoba', '3922','Cdad. Autónoma de Buenos Aires', 'Buenos Aires', 'C1188AAF', 1),
 ('Av. Córdoba', '3933','Cdad. Autónoma de Buenos Aires', 'Buenos Aires', 'C1188AAF', 2),
 ('Francisco Acuña de Figueroa','1240', 'Cdad. Autónoma de Buenos Aires', 'Buenos Aires', 'C1180 AAX', 3),
@@ -31,7 +31,7 @@ VALUES ('Güemes Hospital', 'ChIJs-z8Lo_KvJURmzvvmNOCPBs', 1),
 INSERT INTO  hospital_especialidad_medica (id_especialidad_medica, id_hospital)
 VALUES (1,1),(4,1),
 (1,2),(4,2),
-(1,3),(4,3),(3,3)(2,3),(5,3),
+(1,3),(4,3),(3,3),(2,3),(5,3),
 (1,4),(2,4),
 (1,5),
 (1,6),(2,6),(3,6),(4,6),(5,6);
