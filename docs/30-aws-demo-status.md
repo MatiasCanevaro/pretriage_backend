@@ -107,10 +107,16 @@ El archivo local, excluido de Git, es
 
 ## Datos y validaciones
 
-No se cargaron usuarios ni datos clínicos. La base contiene únicamente el
-catálogo inicial de especialidades generado por el inicio habitual de la
-aplicación. La salud del contenedor confirma que el proceso responde; no implica
-que los flujos autenticados completos hayan sido validados con usuarios reales.
+En la verificación del 31/10 no se cargaron usuarios ni datos clínicos y la base
+contenía el catálogo inicial de especialidades. Posteriormente se agregaron
+scripts SQL manuales al repositorio. El 04/11 se verificaron desde Android el
+acceso autenticado, perfil, visualización de un estudio, especialidades y mapa;
+la API devolvió cero hospitales disponibles y cero obras sociales. Las pruebas
+de consulta y chat quedan pendientes de un escenario de atención disponible.
+El script de seed de demo está preparado y pasó pruebas aisladas de generación
+y persistencia PostgreSQL; su ejecución en Auth0 y AWS sigue diferida por pedido
+del usuario. Publicarlo no aplica datos. Ver
+[guía de carga de datos sintéticos](31-demo-data-seeding.md).
 
 La plantilla pasó `cfn-lint` y las comprobaciones seleccionadas de `cfn-guard`;
 dos patrones estructurales produjeron falsos positivos documentados. CloudTrail
