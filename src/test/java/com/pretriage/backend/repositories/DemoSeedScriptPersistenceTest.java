@@ -8,8 +8,7 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.test.context.transaction.AfterTransaction;
 
 import java.io.File;
 import java.nio.charset.StandardCharsets;
@@ -27,7 +26,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** Executes the deterministic SQL fixture emitted by the demo seed CLI against isolated PostgreSQL. */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Transactional(propagation = Propagation.NOT_SUPPORTED)
 class DemoSeedScriptPersistenceTest {
 
     private static final String SEED_KEY = "demo-fixture-v1";
@@ -195,8 +193,20 @@ class DemoSeedScriptPersistenceTest {
         String sql = new String(output, StandardCharsets.UTF_8);
         assertEquals(0, exitCode, "Fixture SQL generator must exit successfully: " + sql);
         assertFalse(sql.isBlank(), "Fixture SQL generator must emit SQL on stdout");
-        assertTrue(sql.contains("BEGIN;") && sql.contains("COMMIT;"), "Fixture SQL must be transactional");
-        return sql;
+        assertEquals(1L, sql.lines().filter("BEGIN;"::equals).count(), "Fixture must have one transaction start");
+        assertEquals(1L, sql.lines().filter("COMMIT;"::equals).count(), "Fixture must have one transaction end");
+        // Keep the generated body inside DataJpaTest's transaction. Executing its
+        // outer COMMIT here would leak demo data into the other repository tests.
+        return String.join("\n", sql.lines()
+                .filter(line -> !line.equals("BEGIN;") && !line.equals("COMMIT;"))
+                .toList());
+    }
+
+    @AfterTransaction
+    void fixtureDataIsRolledBack() {
+        assertEquals(0L, count("SELECT COUNT(*) FROM hospital WHERE place_id = 'persistence-test-sentinel'"));
+        assertEquals(0L, count("SELECT COUNT(*) FROM hospital WHERE place_id IN ('demo-fixture-aleman', 'demo-fixture-italiano')"));
+        assertEquals(0L, count("SELECT COUNT(*) FROM pg_tables WHERE schemaname = current_schema() AND tablename IN ('demo_seed_runs', 'demo_seed_registry')"));
     }
 
     private void executeSql(String sql) {

@@ -137,4 +137,6 @@ python scripts/test_backend_isolated.py --test DemoSeedScriptPersistenceTest
 GitHub Actions también ejecuta las pruebas Python sin acceso a servicios y la
 suite Java contra un PostgreSQL descartable llamado `pretriage_test_ci`, con
 datasource explícito y Docker Compose de Spring deshabilitado. La prueba de
-persistencia rechaza nombres de bases que no sean de pruebas aisladas.
+persistencia rechaza nombres de bases que no sean de pruebas aisladas y ejecuta
+el cuerpo del SQL dentro de la transacción del test, verificando después del
+rollback que no queden hospitales ni tablas de control del fixture.
